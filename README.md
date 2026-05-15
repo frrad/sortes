@@ -8,7 +8,7 @@ Kotlin + Jetpack Compose. `minSdk` 26, `targetSdk` 35.
 
 This project is set up to be developed primarily in Claude Code on the web.
 
-- **CI** — `.github/workflows/ci.yml` runs lint, unit tests, and a debug APK
+- **CI** — `.github/workflows/ci.yaml` runs lint, unit tests, and a debug APK
   build on every push and pull request. The APK and reports are uploaded as
   workflow artifacts.
 - **Branch APKs** — `.github/workflows/release.yml` builds a debug APK for
