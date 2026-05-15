@@ -4,6 +4,14 @@ An Android app for reading academic papers.
 
 Kotlin + Jetpack Compose. `minSdk` 26, `targetSdk` 35.
 
+## The name
+
+*Sortes* is Latin for "lots" — as in drawing lots. It's the root of words
+like *sortilege* and *sortition*, and shows up in the historical practice
+of *sortes Vergilianae* / *sortes biblicae*: opening a book (Virgil, the
+Bible) to a random passage and reading whatever you land on for guidance.
+The app borrows the idea — let chance pick the paper, then read it.
+
 ## Development
 
 This project is set up to be developed primarily in Claude Code on the web.
