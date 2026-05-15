@@ -3,6 +3,11 @@
 # the app. Idempotent: re-running is cheap once the SDK is in place.
 set -euo pipefail
 
+# Run in the background so the session starts without waiting for the SDK
+# install. Note: a build/lint/test command issued before this finishes may
+# fail because the SDK isn't ready yet.
+echo '{"async": true, "asyncTimeout": 600000}'
+
 # Only needed in remote (Claude Code on the web) environments. Locally the
 # developer is expected to have their own Android SDK / Android Studio.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
