@@ -1,0 +1,64 @@
+name: Branch APK
+
+on:
+  push:
+    branches:
+      - "**"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Stage APK and metadata
+        id: stage
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_REF_NAME}"
+          slug="$(echo "$branch" | tr '/' '-' | tr -cs 'A-Za-z0-9._-' '-')"
+          short_sha="${GITHUB_SHA::7}"
+          tag="build-${slug}"
+          apk_name="sortes-${slug}-${short_sha}.apk"
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/${apk_name}"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.stage.outputs.tag }}"
+          branch="${{ steps.stage.outputs.branch }}"
+          short_sha="${{ steps.stage.outputs.short_sha }}"
+          # Remove any previous rolling release/tag for this branch so the
+          # APK download URL for "latest on this branch" stays predictable.
+          gh release delete "$tag" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$tag" dist/*.apk \
+            --target "$GITHUB_SHA" \
+            --title "Build: $branch ($short_sha)" \
+            --notes "Automated debug build of \`$branch\` at \`$short_sha\`. Install on a device with unknown-sources enabled. Not for production." \
+            --prerelease
