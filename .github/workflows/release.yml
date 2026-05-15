@@ -17,16 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           branch="${GITHUB_REF_NAME}"
-          slug="$(echo "$branch" | tr '/' '-' | tr -cs 'A-Za-z0-9._-' '-')"
+          slug="$(printf '%s' "$branch" | tr '/' '-' | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//')"
           short_sha="${GITHUB_SHA::7}"
           tag="build-${slug}"
           apk_name="sortes-${slug}-${short_sha}.apk"
@@ -56,7 +56,8 @@ jobs:
           short_sha="${{ steps.stage.outputs.short_sha }}"
           # Remove any previous rolling release/tag for this branch so the
           # APK download URL for "latest on this branch" stays predictable.
-          gh release delete "$tag" --cleanup-tag --yes 2>/dev/null || true
+          gh release delete "$tag" --yes 2>/dev/null || true
+          git push origin ":refs/tags/$tag" 2>/dev/null || true
           gh release create "$tag" dist/*.apk \
             --target "$GITHUB_SHA" \
             --title "Build: $branch ($short_sha)" \
