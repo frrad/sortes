@@ -31,7 +31,7 @@ fun PapersScreen(
 }
 
 @Composable
-private fun PapersList(papers: List<Paper>, modifier: Modifier = Modifier) {
+internal fun PapersList(papers: List<Paper>, modifier: Modifier = Modifier) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
