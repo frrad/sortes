@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.sortes.app.data.Paper
 import dev.sortes.app.data.ZoomStore
@@ -199,20 +201,24 @@ internal fun PageReader(
                     }
                 },
         ) {
-            page?.onSuccess {
-                Image(
-                    bitmap = it.asImageBitmap(),
-                    contentDescription = "Page ${index + 1}",
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }?.onFailure {
-                Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
-            }
             val result = analysis
-            if (panelOpen && result != null) {
-                val panelModifier = Modifier.align(Alignment.BottomCenter)
-                val pageLabel = "${index + 1} / ${pages.pageCount}"
-                if (paper != null) {
+            val pageLabel = "${index + 1} / ${pages.pageCount}"
+            // With the zoom panel open, the page sits above it rather than under it, so the
+            // whole crop stays in view while you judge it.
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    page?.onSuccess {
+                        // Rendered for the whole screen; above the panel it's only scaled down.
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "Page ${index + 1}",
+                            modifier = Modifier.fillMaxSize().testTag("page"),
+                        )
+                    }?.onFailure {
+                        Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
+                    }
+                }
+                if (panelOpen && paper != null) {
                     ZoomPanel(
                         pageLabel = pageLabel,
                         analysis = paper.crop,
@@ -222,19 +228,20 @@ internal fun PageReader(
                         onScaleChange = onSaveScale,
                         onAuto = { onSaveScale(null) },
                         onClose = { panelOpen = false },
-                        modifier = panelModifier,
-                    )
-                } else {
-                    val error = result.exceptionOrNull()
-                    Text(
-                        text = "$pageLabel · Couldn't analyze this paper for zoom: " +
-                            (error?.message ?: error),
-                        modifier = panelModifier
-                            .fillMaxWidth()
-                            .background(ReaderPaper)
-                            .padding(16.dp),
                     )
                 }
+            }
+            if (panelOpen && result != null && paper == null) {
+                val error = result.exceptionOrNull()
+                Text(
+                    text = "$pageLabel · Couldn't analyze this paper for zoom: " +
+                        (error?.message ?: error),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(ReaderPaper)
+                        .padding(16.dp),
+                )
             }
         }
     }

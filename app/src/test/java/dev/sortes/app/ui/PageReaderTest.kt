@@ -261,6 +261,28 @@ class PageReaderTest {
     }
 
     @Test
+    fun pageSitsAboveTheOpenPanelWithTheSameCrop() {
+        showZoomed()
+        val rendered = pages.rendered.toList()
+        val screen = composeRule.onRoot().fetchSemanticsNode().boundsInWindow
+
+        openPanel()
+
+        val page = composeRule.onNodeWithTag("page").fetchSemanticsNode().boundsInWindow
+        val panel = composeRule.onNodeWithTag("zoomPanel").fetchSemanticsNode().boundsInWindow
+        assertTrue("page $page overlaps panel $panel", page.bottom <= panel.top)
+        assertEquals(screen.top, page.top)
+        // The same render, only scaled: the crop isn't changed and the analysis isn't redone.
+        assertEquals(rendered, pages.rendered.toList())
+
+        composeRule.onNodeWithText("Close").performClick()
+        idle()
+
+        assertEquals(screen, composeRule.onNodeWithTag("page").fetchSemanticsNode().boundsInWindow)
+        assertEquals(rendered, pages.rendered.toList())
+    }
+
+    @Test
     fun tapsOnThePanelDoNotTurnThePage() {
         showZoomed()
         val renders = pages.rendered.size
