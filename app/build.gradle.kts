@@ -54,6 +54,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {
@@ -92,6 +93,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.okhttp.mockwebserver)
+    // android.jar only has throwing stubs of org.json; use the real thing in JVM tests.
+    testImplementation(libs.org.json)
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.androidx.ui.test.junit4)

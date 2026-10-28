@@ -63,6 +63,32 @@ class ArxivIdTest {
     }
 
     @Test
+    fun alphaxivPaperUrls() {
+        assertParses("https://www.alphaxiv.org/abs/2311.08105", "2311.08105")
+        assertParses("https://alphaxiv.org/abs/2311.08105v2", "2311.08105", 2)
+        assertParses("alphaxiv.org/abs/2311.08105", "2311.08105")
+        assertParses("https://www.alphaxiv.org/overview/2311.08105", "2311.08105")
+        assertParses("https://www.alphaxiv.org/pdf/2311.08105v1", "2311.08105", 1)
+        assertParses("https://www.alphaxiv.org/abs/2311.08105.pdf", "2311.08105")
+        assertParses("https://www.alphaxiv.org/abs/2311.08105.md", "2311.08105")
+        assertParses("https://www.alphaxiv.org/es/abs/2311.08105", "2311.08105")
+        assertParses("https://www.alphaxiv.org/zh-CN/overview/2311.08105", "2311.08105")
+        assertParses("https://www.alphaxiv.org/abs/2311.08105?tab=comments#c1", "2311.08105")
+        assertParses("https://www.alphaxiv.org/abs/hep-th/9901001", "hep-th/9901001")
+        assertParses("Check this out on alphaXiv: https://www.alphaxiv.org/abs/2311.08105", "2311.08105")
+    }
+
+    @Test
+    fun otherAlphaxivPagesAreNotPapers() {
+        assertNull(ArxivId.parse("https://www.alphaxiv.org/shared/folder/01a1838a-db89-71d0-956c-e8067fdfee2a"))
+        assertNull(ArxivId.parse("https://www.alphaxiv.org/audio/2311.08105"))
+        assertNull(ArxivId.parse("https://www.alphaxiv.org/html/2311.08105"))
+        assertNull(ArxivId.parse("https://notalphaxiv.org/abs/2311.08105"))
+        assertNull(ArxivId.parse("https://alphaxiv.org.evil.com/abs/2311.08105"))
+        assertNull(ArxivId.parse("https://www.alphaxiv.org/toolong/abs/2311.08105"))
+    }
+
+    @Test
     fun htmlUrls() {
         assertParses("https://arxiv.org/html/2401.12345v2", "2401.12345", 2)
         assertParses("https://arxiv.org/html/2401.12345v2/#S3", "2401.12345", 2)

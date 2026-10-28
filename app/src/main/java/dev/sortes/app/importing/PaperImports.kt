@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import dev.sortes.app.arxiv.HttpArxivClient
+import dev.sortes.app.arxiv.RateLimitedArxivClient
 import dev.sortes.app.data.PaperDatabase
+import dev.sortes.app.sources.FolderSyncs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,9 +20,10 @@ class PaperImports private constructor(context: Context) {
 
     private val appContext = context.applicationContext
 
-    private val importer = PaperImporter(
+    internal val importer = PaperImporter(
         dao = PaperDatabase.get(appContext).paperDao(),
-        arxiv = HttpArxivClient(),
+        // Shared by every arXiv request in the process (add dialog, shares, folder syncs).
+        arxiv = RateLimitedArxivClient(HttpArxivClient()),
         libraryDir = PaperImporter.libraryDir(appContext),
     )
 
@@ -40,9 +43,12 @@ class PaperImports private constructor(context: Context) {
         }
     }
 
-    fun import(request: ShareRequest) = when (request) {
-        is ShareRequest.Arxiv -> importArxiv(request.text)
-        is ShareRequest.Pdf -> importPdf(Uri.parse(request.uri))
+    fun import(request: ShareRequest) {
+        when (request) {
+            is ShareRequest.Arxiv -> importArxiv(request.text)
+            is ShareRequest.Pdf -> importPdf(Uri.parse(request.uri))
+            is ShareRequest.AlphaxivFolder -> FolderSyncs.get(appContext).addAndSync(request.folderId)
+        }
     }
 
     fun dismissStatus() = tracker.dismiss()

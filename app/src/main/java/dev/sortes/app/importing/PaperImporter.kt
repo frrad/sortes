@@ -17,6 +17,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 
+/** Result of an arXiv import: the paper, and whether this call added it to the library. */
+data class ArxivImport(val paper: Paper, val inserted: Boolean)
+
 /** Adds papers to the library from arXiv or from PDF files. Failures throw [IOException]. */
 class PaperImporter(
     private val dao: PaperDao,
@@ -30,8 +33,13 @@ class PaperImporter(
     /** Imports the paper named by an arXiv ID or URL in [text], or returns it if already present. */
     suspend fun importArxiv(text: String): Paper {
         val arxivId = ArxivId.parse(text) ?: throw IOException("Not an arXiv ID or URL")
-        return arxivLock.withLock {
-            dao.findByPdfUrl(arxivId.pdfUrl)?.let { return@withLock it }
+        return importArxiv(arxivId).paper
+    }
+
+    /** Imports [arxivId] unless it's already present; [ArxivImport.inserted] tells which. */
+    suspend fun importArxiv(arxivId: ArxivId): ArxivImport =
+        arxivLock.withLock {
+            dao.findByPdfUrl(arxivId.pdfUrl)?.let { return@withLock ArxivImport(it, inserted = false) }
             val entry = arxiv.fetch(arxivId.id)
             val paper = Paper(
                 title = entry.title,
@@ -44,12 +52,11 @@ class PaperImporter(
             val id = dao.insert(paper)
             // -1: another importer (e.g. another activity instance) added it first.
             if (id == -1L) {
-                dao.findByPdfUrl(arxivId.pdfUrl) ?: throw IOException("Couldn't save paper")
+                ArxivImport(dao.findByPdfUrl(arxivId.pdfUrl) ?: throw IOException("Couldn't save paper"), inserted = false)
             } else {
-                paper.copy(id = id)
+                ArxivImport(paper.copy(id = id), inserted = true)
             }
         }
-    }
 
     /**
      * Copies a PDF into the library and adds it, titled after [displayName]. [open] is called

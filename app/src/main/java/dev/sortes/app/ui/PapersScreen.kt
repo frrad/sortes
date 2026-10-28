@@ -44,6 +44,7 @@ import dev.sortes.app.ui.theme.SortesTheme
 @Composable
 fun PapersScreen(
     onPaperClick: (Paper) -> Unit,
+    onOpenSources: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PapersViewModel = viewModel(),
 ) {
@@ -58,6 +59,7 @@ fun PapersScreen(
         PapersList(
             papers = papers,
             onPaperClick = onPaperClick,
+            onOpenSources = onOpenSources,
             importStatus = importStatus,
             onDismissImportStatus = viewModel::dismissImportStatus,
         )
@@ -125,6 +127,7 @@ internal fun PapersList(
     papers: List<Paper>,
     modifier: Modifier = Modifier,
     onPaperClick: (Paper) -> Unit = {},
+    onOpenSources: () -> Unit = {},
     importStatus: ImportStatus? = null,
     onDismissImportStatus: () -> Unit = {},
 ) {
@@ -135,11 +138,17 @@ internal fun PapersList(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(
-                text = "Papers",
-                style = MaterialTheme.typography.headlineMedium,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 4.dp),
-            )
+            ) {
+                Text(
+                    text = "Papers",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onOpenSources) { Text("Sources") }
+            }
         }
         if (importStatus != null) {
             item(key = "import-status") {

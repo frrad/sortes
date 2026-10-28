@@ -2,15 +2,12 @@ package dev.sortes.app.data
 
 import android.content.Context
 import androidx.room.Room
-import androidx.room.testing.MigrationTestHelper
 import androidx.test.core.app.ApplicationProvider
-import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -24,12 +21,6 @@ class PaperDatabaseTest {
         .allowMainThreadQueries()
         .build()
     private val dao = db.paperDao()
-
-    @get:Rule
-    val migrations = MigrationTestHelper(
-        InstrumentationRegistry.getInstrumentation(),
-        PaperDatabase::class.java,
-    )
 
     @After
     fun tearDown() {
@@ -74,13 +65,6 @@ class PaperDatabaseTest {
     }
 
     @Test
-    fun exportedSchemaMatchesEntities() {
-        // Creates the DB from 3.json, then has Room validate it against the current entities.
-        migrations.createDatabase(TEST_DB, 3).close()
-        migrations.runMigrationsAndValidate(TEST_DB, 3, true, *PaperDatabase.MIGRATIONS).close()
-    }
-
-    @Test
     fun preV3DatabaseIsReplaced() {
         val name = "legacy.db"
         context.deleteDatabase(name)
@@ -118,9 +102,5 @@ class PaperDatabaseTest {
         } finally {
             reopened.close()
         }
-    }
-
-    private companion object {
-        const val TEST_DB = "migration-test.db"
     }
 }

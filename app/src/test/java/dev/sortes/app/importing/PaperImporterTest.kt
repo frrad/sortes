@@ -2,6 +2,7 @@ package dev.sortes.app.importing
 
 import dev.sortes.app.arxiv.ArxivClient
 import dev.sortes.app.arxiv.ArxivEntry
+import dev.sortes.app.arxiv.ArxivId
 import dev.sortes.app.data.Paper
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -154,6 +155,34 @@ class PaperImporterTest {
         assertEquals(2, fetched.size) // both got past the duplicate check
         assertEquals(papers[0], papers[1])
         assertEquals(listOf(papers[0]), dao.papers.value)
+    }
+
+    @Test
+    fun reportsWhetherItInserted() {
+        val first = runBlocking { importer().importArxiv(ArxivId("1706.03762")) }
+        val second = runBlocking { importer().importArxiv(ArxivId("1706.03762", version = 7)) }
+
+        assertTrue(first.inserted)
+        assertFalse(second.inserted)
+        assertEquals(first.paper, second.paper)
+    }
+
+    @Test
+    fun paperAddedByAnotherImporterMidFetchIsNotReportedAsInserted() {
+        // Someone else (e.g. a share) inserts the paper while this import waits on arXiv.
+        arxiv = ArxivClient { id ->
+            runBlocking {
+                dao.insert(Paper(title = "Shared", authors = emptyList(), abstract = "", year = null, venue = null,
+                    pdfUrl = "https://arxiv.org/pdf/$id"))
+            }
+            ENTRY
+        }
+
+        val result = runBlocking { importer().importArxiv(ArxivId("1706.03762")) }
+
+        assertFalse(result.inserted)
+        assertEquals("Shared", result.paper.title)
+        assertEquals(1, dao.papers.value.size)
     }
 
     @Test
