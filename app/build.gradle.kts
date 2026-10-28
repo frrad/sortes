@@ -61,6 +61,17 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    sourceSets {
+        // Exported Room schemas, for MigrationTestHelper. Robolectric only sees app assets, not
+        // test assets, so they ride along in debug builds (a few KB; release is unaffected).
+        getByName("debug").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+ksp {
+    // Commit every exported schema: migration tests are built from them.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -84,6 +95,7 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.androidx.ui.test.junit4)
+    testImplementation(libs.androidx.room.testing)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
