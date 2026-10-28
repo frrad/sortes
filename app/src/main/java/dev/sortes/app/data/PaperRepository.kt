@@ -28,6 +28,7 @@ class PaperRepository(private val dao: PaperDao) {
                     "with recurrence and convolutions entirely.",
                 year = 2017,
                 venue = "NeurIPS",
+                pdfUrl = "https://arxiv.org/pdf/1706.03762",
             ),
             Paper(
                 title = "Deep Residual Learning for Image Recognition",
@@ -37,6 +38,7 @@ class PaperRepository(private val dao: PaperDao) {
                     "used previously.",
                 year = 2016,
                 venue = "CVPR",
+                pdfUrl = "https://arxiv.org/pdf/1512.03385",
             ),
             Paper(
                 title = "BERT: Pre-training of Deep Bidirectional Transformers " +
@@ -49,6 +51,7 @@ class PaperRepository(private val dao: PaperDao) {
                     "bidirectional representations from unlabeled text.",
                 year = 2019,
                 venue = "NAACL",
+                pdfUrl = "https://arxiv.org/pdf/1810.04805",
             ),
         )
     }
