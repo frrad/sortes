@@ -9,9 +9,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -40,7 +46,11 @@ private sealed interface ReaderState {
 // Lint false positive: it flags even a trivial `produceState { value = x }` here.
 @SuppressLint("ProduceStateDoesNotAssignValue")
 @Composable
-fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
+fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    // The navigation bar is hidden to give the page more room, and on Boox firmware
+    // edge swipes run Boox gestures rather than revealing Back, so the reader
+    // provides its own way out.
+    HideNavigationBar()
     val context = LocalContext.current
     val state by produceState<ReaderState>(ReaderState.Loading, paper.id) {
         // This coroutine owns the PdfPages: it lives until the screen leaves composition.
@@ -49,10 +59,33 @@ fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
         awaitDispose { (loaded as? ReaderState.Ready)?.pages?.close() }
     }
 
-    when (val s = state) {
-        ReaderState.Loading -> Message("Loading…", modifier)
-        is ReaderState.Failed -> Message("Couldn't open PDF: ${s.message}", modifier)
-        is ReaderState.Ready -> PageReader(s.pages, modifier)
+    ReaderFrame(onClose, modifier) {
+        when (val s = state) {
+            ReaderState.Loading -> Message("Loading…")
+            is ReaderState.Failed -> Message("Couldn't open PDF: ${s.message}")
+            is ReaderState.Ready -> PageReader(s.pages)
+        }
+    }
+}
+
+/**
+ * Draws [content] full size with a back button over its top-left corner. The reader
+ * is black on white whatever the app theme, so the button and messages are visible
+ * in every state.
+ */
+@Composable
+internal fun ReaderFrame(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalContentColor provides Color.Black) {
+        Box(modifier.fillMaxSize().background(Color.White)) {
+            content()
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopStart)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to papers")
+            }
+        }
     }
 }
 
@@ -85,7 +118,6 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
             .pointerInput(pages) {
                 detectTapGestures { offset ->
                     index = if (offset.x < size.width / 2) {
@@ -120,7 +152,6 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
         Text(
             text = "${index + 1} / ${pages.pageCount}",
             style = MaterialTheme.typography.labelSmall,
-            color = Color.Black,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(4.dp),
@@ -129,7 +160,7 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Message(text: String, modifier: Modifier = Modifier) {
+internal fun Message(text: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
