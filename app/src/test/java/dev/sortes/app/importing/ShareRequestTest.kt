@@ -70,4 +70,35 @@ class ShareRequestTest {
             ShareRequest.from(send, "text/plain", "1706.03762", null, flags = 0x10000000),
         )
     }
+
+    private val folderLink = "https://www.alphaxiv.org/shared/folder/01a1838a-db89-71d0-956c-e8067fdfee2a"
+
+    @Test
+    fun sharedAlphaxivFolderLinkBecomesFolderRequest() {
+        assertEquals(
+            ShareRequest.AlphaxivFolder("01a1838a-db89-71d0-956c-e8067fdfee2a"),
+            ShareRequest.from(send, "text/plain", "Check out \"Sortes\" on alphaXiv: $folderLink", null),
+        )
+    }
+
+    @Test
+    fun folderLinkWinsOverArxivIdInSameText() {
+        assertEquals(
+            ShareRequest.AlphaxivFolder("01a1838a-db89-71d0-956c-e8067fdfee2a"),
+            ShareRequest.from(send, "text/plain", "arXiv:1706.03762 and more in $folderLink", null),
+        )
+    }
+
+    @Test
+    fun alphaxivPaperLinkIsStillAnArxivRequest() {
+        assertEquals(
+            ShareRequest.Arxiv("https://www.alphaxiv.org/abs/2311.08105"),
+            ShareRequest.from(send, "text/plain", "https://www.alphaxiv.org/abs/2311.08105", null),
+        )
+    }
+
+    @Test
+    fun folderShareIsIgnoredWhenRestored() {
+        assertNull(ShareRequest.from(send, "text/plain", folderLink, null, restored = true))
+    }
 }

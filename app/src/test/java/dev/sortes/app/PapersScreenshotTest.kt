@@ -94,6 +94,20 @@ class PapersScreenshotTest {
         assertTrue(picked)
     }
 
+    @Test
+    fun sourcesButtonOpensSources() {
+        var opened = false
+        composeRule.setContent {
+            SortesTheme {
+                PapersList(papers = SAMPLE, onOpenSources = { opened = true })
+            }
+        }
+
+        composeRule.onNodeWithText("Sources").performClick()
+
+        assertTrue(opened)
+    }
+
     private companion object {
         val SAMPLE = listOf(
             Paper(

@@ -77,7 +77,7 @@ class PaperDatabaseTest {
     fun exportedSchemaMatchesEntities() {
         // Creates the DB from 3.json, then has Room validate it against the current entities.
         migrations.createDatabase(TEST_DB, 3).close()
-        migrations.runMigrationsAndValidate(TEST_DB, 3, true, *PaperDatabase.MIGRATIONS).close()
+        migrations.runMigrationsAndValidate(TEST_DB, 4, true, *PaperDatabase.MIGRATIONS).close()
     }
 
     @Test
