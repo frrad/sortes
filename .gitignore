@@ -12,3 +12,4 @@ captures/
 *.keystore
 *.jks
 .kotlin/
+!app/debug.keystore
