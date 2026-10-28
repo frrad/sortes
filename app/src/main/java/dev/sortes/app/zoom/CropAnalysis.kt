@@ -127,6 +127,23 @@ class CropAnalysis private constructor(
  * possible; among equally good positions, the one nearest [anchor].
  */
 fun placeWindow(mask: InkMask, aspect: Float, scale: Float, anchor: Anchor): CropWindow =
+    placeWindowCells(mask, aspect, scale, anchor).window
+
+/**
+ * Mask cells from ([left], [top]) inclusive to ([right], [bottom]) exclusive. It may reach past
+ * the mask into the padding around it.
+ */
+data class CellRect(val left: Int, val top: Int, val right: Int, val bottom: Int)
+
+/** A window placed on a page, and the [cells] of the page's mask it was chosen to cover. */
+data class PlacedWindow(val window: CropWindow, val cells: CellRect)
+
+/**
+ * Like [placeWindow], also giving the cells the window covers, exactly as the analysis counts
+ * them. The cells come from the analysis' own whole-cell frame: rederiving them from the window
+ * can be off by a cell where the padding is an odd number of cells.
+ */
+fun placeWindowCells(mask: InkMask, aspect: Float, scale: Float, anchor: Anchor): PlacedWindow =
     PaddedPage(mask, aspect).fit(scale).window(anchor, scale)
 
 private fun List<Float>.median(): Float? =
@@ -137,6 +154,10 @@ private class PaddedPage(mask: InkMask, aspect: Float) {
     val width: Int
     val height: Int
     val inkCount = mask.inkCount
+
+    /** Where the mask sits in the frame: the padding left of and above it, in cells. */
+    val offX: Int
+    val offY: Int
 
     // sums[y * (width + 1) + x] = ink in the frame above and left of (x, y).
     private val sums: IntArray
@@ -149,8 +170,8 @@ private class PaddedPage(mask: InkMask, aspect: Float) {
             width = mask.width
             height = (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
         }
-        val offX = (width - mask.width) / 2
-        val offY = (height - mask.height) / 2
+        offX = (width - mask.width) / 2
+        offY = (height - mask.height) / 2
         val stride = width + 1
         sums = IntArray(stride * (height + 1))
         for (y in 0 until height) {
@@ -210,7 +231,7 @@ private class PaddedPage(mask: InkMask, aspect: Float) {
         )
 
         /** The good position nearest [anchor], as a window on the padded frame. */
-        fun window(anchor: Anchor, scale: Float): CropWindow {
+        fun window(anchor: Anchor, scale: Float): PlacedWindow {
             val refX = anchor.u * rangeX
             val refY = anchor.v * rangeY
             val (x, y) = if (good.isEmpty()) {
@@ -226,11 +247,13 @@ private class PaddedPage(mask: InkMask, aspect: Float) {
             // Center the exact-scale window on the cell window, which rounding made slightly off.
             val left = (x + w / 2f) / page.width - scale / 2
             val top = (y + h / 2f) / page.height - scale / 2
-            return CropWindow(
+            val window = CropWindow(
                 left = left.coerceIn(0f, 1f - scale),
                 top = top.coerceIn(0f, 1f - scale),
                 scale = scale,
             )
+            val cells = CellRect(x - page.offX, y - page.offY, x - page.offX + w, y - page.offY + h)
+            return PlacedWindow(window, cells)
         }
     }
 }

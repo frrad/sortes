@@ -23,11 +23,20 @@ class FakePages(
 ) : PageSource {
 
     val rendered: MutableList<Pair<Int, Region>> = Collections.synchronizedList(mutableListOf())
+
+    /** Every render's page and region, as in [rendered], with the bitmap size it was asked for. */
+    val renders: MutableList<Render> = Collections.synchronizedList(mutableListOf())
+
+    data class Render(val index: Int, val region: Region, val width: Int, val height: Int)
     val masked: MutableList<Int> = Collections.synchronizedList(mutableListOf())
 
     /** While set, mask rendering (and so analysis) waits for it to complete. */
     @Volatile
     var maskGate: CompletableDeferred<Unit>? = null
+
+    /** While set, rendering pages waits for it to complete. */
+    @Volatile
+    var renderGate: CompletableDeferred<Unit>? = null
 
     override val pageCount: Int get() = masks.size
 
@@ -48,8 +57,10 @@ class FakePages(
     }
 
     override suspend fun renderRegion(index: Int, region: Region, width: Int, height: Int): Bitmap {
+        renderGate?.await()
         if (index in broken) throw IOException("Can't render page $index")
         rendered += index to region
+        renders += Render(index, region, width, height)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
