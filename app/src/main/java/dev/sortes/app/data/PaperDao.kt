@@ -15,4 +15,10 @@ interface PaperDao {
 
     @Insert
     suspend fun insertAll(papers: List<Paper>)
+
+    @Insert
+    suspend fun insert(paper: Paper): Long
+
+    @Query("SELECT * FROM papers WHERE pdfUrl = :url LIMIT 1")
+    suspend fun findByPdfUrl(url: String): Paper?
 }

@@ -9,6 +9,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -23,13 +24,15 @@ class PdfSourceTest {
 
     private val server = MockWebServer()
     private lateinit var cacheDir: File
+    private lateinit var libraryDir: File
     private lateinit var source: PdfSource
 
     @Before
     fun setUp() {
         server.start()
         cacheDir = File(tmp.root, "pdfs")
-        source = PdfSource(cacheDir)
+        libraryDir = File(tmp.root, "papers")
+        source = PdfSource(cacheDir, libraryDir)
     }
 
     @After
@@ -108,6 +111,71 @@ class PdfSourceTest {
         runBlocking { source.fetch(paper(id = 1)) }
 
         assertEquals(2, server.requestCount)
+    }
+
+    private fun localPaper(id: Long, name: String, url: String? = null) =
+        paper(id, url).copy(localFile = name)
+
+    private fun importedFile(name: String) =
+        File(libraryDir.apply { mkdirs() }, name).apply { writeBytes(PDF_BYTES) }
+
+    @Test
+    fun localFileIsServedWithoutNetwork() {
+        val imported = importedFile("paper-123.pdf")
+
+        val file = runBlocking { source.fetch(localPaper(id = 7, name = "paper-123.pdf")) }
+
+        assertEquals(imported, file)
+        assertEquals(0, server.requestCount)
+        assertCacheEmpty()
+    }
+
+    @Test
+    fun localFileTakesPrecedenceOverUrl() {
+        val imported = importedFile("paper-1.pdf")
+
+        val file = runBlocking {
+            source.fetch(localPaper(id = 7, name = "paper-1.pdf", url = server.url("/x.pdf").toString()))
+        }
+
+        assertEquals(imported, file)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun missingLocalFileFailsWithoutFallingBackToNetwork() {
+        val e = assertThrows(IOException::class.java) {
+            runBlocking {
+                source.fetch(localPaper(id = 7, name = "gone.pdf", url = server.url("/x.pdf").toString()))
+            }
+        }
+        assertEquals("Imported PDF is missing", e.message)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun localFileNameCannotEscapeLibrary() {
+        File(tmp.root, "outside.pdf").writeBytes(PDF_BYTES)
+        libraryDir.mkdirs()
+
+        for (name in listOf("../outside.pdf", "/etc/passwd", "..", ".", "")) {
+            assertThrows(name, IOException::class.java) {
+                runBlocking { source.fetch(localPaper(id = 7, name = name)) }
+            }
+        }
+    }
+
+    @Test
+    fun evictNeverDeletesImportedFile() {
+        val imported = importedFile("paper-9.pdf")
+        // A cached download for the same id must not be confused with the import either.
+        cacheDir.mkdirs()
+        File(cacheDir, "7.pdf").writeBytes(PDF_BYTES)
+
+        source.evict(localPaper(id = 7, name = "paper-9.pdf"))
+
+        assertTrue(imported.exists())
+        assertArrayEquals(PDF_BYTES, imported.readBytes())
     }
 
     private fun assertCacheEmpty() {
