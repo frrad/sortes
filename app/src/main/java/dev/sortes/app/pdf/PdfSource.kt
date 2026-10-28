@@ -12,9 +12,9 @@ import java.net.URL
 import kotlin.coroutines.coroutineContext
 
 /** Resolves a [Paper] to a local PDF file, downloading and caching it on first use. */
-class PdfSource(context: Context) {
+class PdfSource(private val cacheDir: File) {
 
-    private val cacheDir = File(context.cacheDir, "pdfs")
+    constructor(context: Context) : this(File(context.cacheDir, "pdfs"))
 
     suspend fun fetch(paper: Paper): File = withContext(Dispatchers.IO) {
         val url = paper.pdfUrl ?: throw IOException("No PDF for this paper")
@@ -22,7 +22,7 @@ class PdfSource(context: Context) {
         if (!file.exists()) {
             cacheDir.mkdirs()
             // Unique temp file so overlapping downloads of the same paper can't clobber each other.
-            val tmp = File.createTempFile("${paper.id}-", ".part", cacheDir)
+            val tmp = File.createTempFile("pdf-${paper.id}-", ".part", cacheDir)
             try {
                 download(url, tmp)
                 if (!tmp.renameTo(file) && !file.exists()) throw IOException("Could not save PDF")
