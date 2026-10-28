@@ -34,8 +34,13 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     val contentModifier = Modifier.padding(innerPadding)
                     if (openPaper != null) {
-                        BackHandler { openPaperId = null }
-                        ReaderScreen(paper = openPaper, modifier = contentModifier)
+                        val closeReader = { openPaperId = null }
+                        BackHandler(onBack = closeReader)
+                        ReaderScreen(
+                            paper = openPaper,
+                            onClose = closeReader,
+                            modifier = contentModifier,
+                        )
                     } else {
                         PapersScreen(
                             onPaperClick = { openPaperId = it.id },

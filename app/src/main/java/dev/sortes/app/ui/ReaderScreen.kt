@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +44,11 @@ private sealed interface ReaderState {
 // Lint false positive: it flags even a trivial `produceState { value = x }` here.
 @SuppressLint("ProduceStateDoesNotAssignValue")
 @Composable
-fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
+fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    // The navigation bar is hidden to give the page more room, and on Boox firmware
+    // edge swipes run Boox gestures rather than revealing Back, so the reader
+    // provides its own way out.
+    HideNavigationBar()
     val context = LocalContext.current
     val state by produceState<ReaderState>(ReaderState.Loading, paper.id) {
         // This coroutine owns the PdfPages: it lives until the screen leaves composition.
@@ -49,10 +57,31 @@ fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
         awaitDispose { (loaded as? ReaderState.Ready)?.pages?.close() }
     }
 
-    when (val s = state) {
-        ReaderState.Loading -> Message("Loading…", modifier)
-        is ReaderState.Failed -> Message("Couldn't open PDF: ${s.message}", modifier)
-        is ReaderState.Ready -> PageReader(s.pages, modifier)
+    ReaderFrame(onClose, modifier) {
+        when (val s = state) {
+            ReaderState.Loading -> Message("Loading…")
+            is ReaderState.Failed -> Message("Couldn't open PDF: ${s.message}")
+            is ReaderState.Ready -> PageReader(s.pages)
+        }
+    }
+}
+
+/** Draws [content] full size with a back button over its top-left corner. */
+@Composable
+internal fun ReaderFrame(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier.fillMaxSize()) {
+        content()
+        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopStart)) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back to papers",
+                tint = Color.Black,
+            )
+        }
     }
 }
 
