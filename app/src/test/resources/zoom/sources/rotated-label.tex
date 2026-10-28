@@ -1,8 +1,9 @@
 \documentclass[10pt]{article}
 \usepackage[letterpaper,margin=1in]{geometry}
 \usepackage{lipsum,graphicx,eso-pic}
-% A tall, thin, rotated label hugging the text block: e.g. a journal's vertical section tab.
-\AddToShipoutPictureBG{\AtPageLowerLeft{\put(60,250){\rotatebox{90}{\Large\textbf{Section 1 --- Introduction and Background}}}}}
+% A tall, thin, rotated label in the margin, clear of the text but too far from the page edge for a
+% stamp: e.g. a journal's vertical section tab.
+\AddToShipoutPictureBG{\AtPageLowerLeft{\put(44,250){\rotatebox{90}{\Large\textbf{Section 1 --- Introduction and Background}}}}}
 \begin{document}
 \lipsum[1-8]
 \end{document}

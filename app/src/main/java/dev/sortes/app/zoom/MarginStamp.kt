@@ -1,48 +1,83 @@
 package dev.sortes.app.zoom
 
 /**
- * Ignores margin stamps: the vertical line of text arXiv prints down the left margin
- * of a paper's first page ("arXiv:1706.03762v7 [cs.CL] 2 Aug 2023"), and similar stamps other
- * servers put in either side margin. Left in, a stamp drags the crop window toward the page edge.
+ * Ignores margin stamps: the vertical line of text arXiv prints down the left margin of a
+ * paper's first page ("arXiv:1706.03762v7 [cs.CL] 2 Aug 2023"). Left in, a stamp drags the crop
+ * window toward the page edge. The rule looks at both side margins, so a stamp on the right is
+ * treated the same way.
  *
  * A stamp is recognized purely by its shape, so the rule is conservative. Looking at the page's
  * inked columns, the outermost run of them on the left or right is a stamp only if it is
  *  - right at the page edge: within the outer [STAMP_MAX_EDGE] of the width,
  *  - thin: at most [STAMP_MAX_WIDTH] of the page width,
- *  - tall: at least [STAMP_MIN_HEIGHT] of the page height and [STAMP_MIN_ELONGATION] times its width,
- *  - one continuous line: ink on at least [STAMP_MIN_ROW_FILL] of the rows it spans,
  *  - clear of everything else: no ink at all in the [STAMP_MIN_GAP] of the width next to it,
- *    and something else on the page.
- * Line numbers fail the continuity test (they leave a gap between every line) and sit nearer the
- * text; margin notes and figures are too wide; anything touching the text block isn't separate.
+ *    and something else on the page,
+ *  - tall: at least [STAMP_MIN_HEIGHT] of the page height and [STAMP_MIN_ELONGATION] times its width,
+ *  - one continuous line: ink on at least [STAMP_MIN_ROW_FILL] of the rows it spans, and an
+ *    unbroken run of inked rows at least [STAMP_MIN_RUN] of the page height long.
+ * Line numbers fail the continuity tests (every line ends in blank rows, so no run is longer
+ * than a line) and usually sit nearer the text; margin notes and figures are too wide; anything
+ * touching the text block isn't separate. A rotated label right at the page edge, though, looks
+ * just like a stamp and is ignored too.
  */
 object MarginStampRule : IgnorableInkRule {
     override fun strip(mask: InkMask): InkMask {
+        val (left, right) = verdicts(mask)
         val bands = mask.inkedColumnRuns()
-        if (bands.size < 2) return mask
-        val stamps = listOf(bands.first(), bands.last()).filterIndexed { i, band ->
-            val gap = if (i == 0) bands[1].first - band.last - 1 else band.first - bands[bands.size - 2].last - 1
-            mask.isStamp(band, gap)
-        }
-        // Nothing but "stamps" means there's no text block for them to stand apart from.
-        if (stamps.isEmpty() || stamps.size == bands.size) return mask
+        val stamps = listOfNotNull(
+            bands.firstOrNull()?.takeIf { left == null },
+            bands.lastOrNull()?.takeIf { right == null },
+        )
+        if (stamps.isEmpty()) return mask
         return InkMask(mask.width, mask.height, BooleanArray(mask.width * mask.height) { i ->
             val x = i % mask.width
             mask[x, i / mask.width] && stamps.none { x in it }
         })
     }
+
+    /**
+     * Why the outermost run of inked columns on the left and on the right of [mask] isn't a
+     * stamp, or null for a side whose run is one. Checks run in the order of [NotAStamp], and the
+     * first that fails is reported.
+     */
+    internal fun verdicts(mask: InkMask): Pair<NotAStamp?, NotAStamp?> {
+        val bands = mask.inkedColumnRuns()
+        if (bands.size < 2) return NotAStamp.NothingElse to NotAStamp.NothingElse
+        val left = mask.check(bands.first(), gap = bands[1].first - bands.first().last - 1)
+        val right = mask.check(bands.last(), gap = bands.last().first - bands[bands.size - 2].last - 1)
+        // Two "stamps" and nothing else: there's no text block for them to stand apart from.
+        if (left == null && right == null && bands.size == 2) {
+            return NotAStamp.NothingElse to NotAStamp.NothingElse
+        }
+        return left to right
+    }
 }
 
-private fun InkMask.isStamp(band: IntRange, gap: Int): Boolean {
+/** The check that ruled a run of columns out as a stamp. */
+internal enum class NotAStamp { NothingElse, AwayFromEdge, TooWide, TooClose, TooShort, TooSquat, Broken }
+
+private fun InkMask.check(band: IntRange, gap: Int): NotAStamp? {
     val bandWidth = band.last - band.first + 1
     val edge = minOf(band.last + 1, width - band.first)
-    if (edge > width * STAMP_MAX_EDGE) return false
-    if (bandWidth > width * STAMP_MAX_WIDTH) return false
-    if (gap < maxOf(MIN_GAP_CELLS.toFloat(), width * STAMP_MIN_GAP)) return false
-    val rows = (0 until height).filter { y -> band.any { x -> this[x, y] } }
-    val span = rows.last() - rows.first() + 1
-    if (span < height * STAMP_MIN_HEIGHT || span < bandWidth * STAMP_MIN_ELONGATION) return false
-    return rows.size >= span * STAMP_MIN_ROW_FILL
+    if (edge > width * STAMP_MAX_EDGE) return NotAStamp.AwayFromEdge
+    if (bandWidth > width * STAMP_MAX_WIDTH) return NotAStamp.TooWide
+    if (gap < maxOf(MIN_GAP_CELLS.toFloat(), width * STAMP_MIN_GAP)) return NotAStamp.TooClose
+    val inked = BooleanArray(height) { y -> band.any { x -> this[x, y] } }
+    val top = inked.indexOfFirst { it }
+    val span = inked.indexOfLast { it } - top + 1
+    if (span < height * STAMP_MIN_HEIGHT) return NotAStamp.TooShort
+    // Can only decide on landscape pages: on portrait ones, thin and tall already imply it.
+    if (span < bandWidth * STAMP_MIN_ELONGATION) return NotAStamp.TooSquat
+    var longest = 0
+    var run = 0
+    for (row in inked) {
+        run = if (row) run + 1 else 0
+        longest = maxOf(longest, run)
+    }
+    if (inked.count { it } < span * STAMP_MIN_ROW_FILL || longest < height * STAMP_MIN_RUN) {
+        return NotAStamp.Broken
+    }
+    return null
 }
 
 /**
@@ -82,8 +117,16 @@ const val STAMP_MIN_ELONGATION = 6f
 /** Share of the rows a stamp spans that must hold some of its ink. */
 const val STAMP_MIN_ROW_FILL = 0.5f
 
+/**
+ * Longest unbroken run of inked rows a stamp must have, as a fraction of the page height.
+ * A stamp's letters run into each other for a word or more (9-35 cells on real pages at
+ * analysis size); line numbers break after every line (2-3 cells).
+ */
+const val STAMP_MIN_RUN = 0.03f
+
 /** Blank space a stamp needs between it and the rest of the page, as a fraction of the width. */
 const val STAMP_MIN_GAP = 0.015f
 
-private const val MIN_GAP_CELLS = 2
+/** Runs already merge across one blank column, so the gap between two runs is at least 2. */
+private const val MIN_GAP_CELLS = 3
 private const val MAX_BLANK_IN_RUN = 1

@@ -23,8 +23,10 @@ class PaperAnalysis(
     suspend fun place(source: PageSource, index: Int, scale: Float, anchor: Anchor): Placement {
         val page = source.pageSize(index)
         val (width, height) = maskSize(page, density)
-        val mask = source.renderMask(index, width, height).withoutIgnorableInk()
+        val rendered = source.renderMask(index, width, height)
         return withContext(Dispatchers.Default) {
+            // The same stripped mask for both, so ignored ink is never shown as cut off.
+            val mask = rendered.withoutIgnorableInk()
             val placed = placeWindowCells(mask, aspect, scale, anchor)
             Placement(placed.window, cutInk(mask, page, placed.cells))
         }
