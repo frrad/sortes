@@ -1,0 +1,349 @@
+package dev.sortes.app.ui
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.captureRoboImage
+import dev.sortes.app.ui.theme.SortesTheme
+import dev.sortes.app.zoom.Region
+import dev.sortes.app.zoom.TestPage
+import kotlinx.coroutines.CompletableDeferred
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import kotlin.math.abs
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = "w360dp-h480dp")
+class PageReaderTest {
+
+    @get:Rule
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    // Text block at (100, 100)-(500, 700) points on a 600x800 page, page number below it.
+    private val pages = FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
+    private val saves = mutableListOf<Float?>()
+    private var saved by mutableStateOf<Float?>(null)
+    private var closes = 0
+    private var readerSize by mutableStateOf<Pair<Dp, Dp>?>(null)
+
+    /** Shows the reader as the app does: inside [ReaderFrame], with its back arrow. */
+    private fun show(savedScale: Float? = null, darkTheme: Boolean = false) {
+        saved = savedScale
+        composeRule.setContent {
+            SortesTheme(darkTheme = darkTheme, dynamicColor = false) {
+                ReaderFrame(onClose = { closes++ }) {
+                    val size = readerSize
+                    Box(if (size == null) Modifier else Modifier.size(size.first, size.second)) {
+                        PageReader(pages, saved, onSaveScale = { saves += it; saved = it })
+                    }
+                }
+            }
+        }
+    }
+
+    /** Shows the reader and waits for the zoomed first page. */
+    private fun showZoomed(savedScale: Float? = null, darkTheme: Boolean = false) {
+        show(savedScale, darkTheme)
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+    }
+
+    /** Waits until the latest render satisfies [done]. Analysis runs off the main thread. */
+    private fun awaitRendered(done: (Pair<Int, Region>) -> Boolean) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (true) {
+            composeRule.waitForIdle()
+            val last = pages.rendered.lastOrNull()
+            if (last != null && done(last)) break
+            check(System.currentTimeMillis() < deadline) { "Rendered only ${pages.rendered}" }
+            Thread.sleep(10)
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun lastRendered(): Pair<Int, Region> = pages.rendered.last()
+
+    /** Narrower than the whole padded page, which is at least the page's 600 points wide. */
+    private fun Region.isZoomed() = width < 590f
+
+    private fun Region.contains(left: Float, top: Float, right: Float, bottom: Float) =
+        this.left <= left && this.top <= top &&
+            this.left + width >= right && this.top + height >= bottom
+
+    private fun tapZoomZone() {
+        composeRule.onRoot().performTouchInput { click(bottomCenter - Offset(0f, 5f)) }
+    }
+
+    private fun tapForward() {
+        composeRule.onRoot().performTouchInput { click(centerRight - Offset(10f, 0f)) }
+    }
+
+    /** Opens the zoom panel, retrying while the analysis it needs is still running. */
+    private fun openPanel() {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (true) {
+            tapZoomZone()
+            composeRule.waitForIdle()
+            if (composeRule.onAllNodesWithTag("zoomPanel").fetchSemanticsNodes().isNotEmpty()) break
+            check(System.currentTimeMillis() < deadline) { "Zoom panel never opened" }
+            Thread.sleep(10)
+        }
+    }
+
+    @Test
+    fun opensOnTheFirstPageZoomedToTheText() {
+        showZoomed()
+
+        val (index, region) = lastRendered()
+        assertEquals(0, index)
+        assertTrue("$region", region.contains(100f, 100f, 500f, 700f))
+        // Tight on the text: the page number below it is cropped off.
+        assertTrue("$region", region.top + region.height < 760f)
+    }
+
+    @Test
+    fun noPageCounterOnThePage() {
+        showZoomed()
+
+        composeRule.onNodeWithText("1 / 3").assertDoesNotExist()
+    }
+
+    @Test
+    fun panelShowsThePageNumber() {
+        showZoomed()
+        tapForward()
+        awaitRendered { it.first == 1 }
+
+        openPanel()
+
+        composeRule.onNodeWithText("2 / 3").assertExists()
+    }
+
+    @Test
+    fun showsWholePagesWhileAnalyzing() {
+        val gate = CompletableDeferred<Unit>()
+        pages.maskGate = gate
+        show()
+        awaitRendered { it.first == 0 }
+
+        assertTrue("${lastRendered()}", lastRendered().second.contains(0f, 0f, 600f, 800f))
+        // Pages still turn, and render whole.
+        tapForward()
+        awaitRendered { it.first == 1 }
+        assertTrue("${lastRendered()}", lastRendered().second.contains(0f, 0f, 600f, 800f))
+        // There's no curve yet, so the zoom controls don't open...
+        tapZoomZone()
+        composeRule.onNodeWithTag("zoomPanel").assertDoesNotExist()
+
+        gate.complete(Unit)
+
+        // ...nor pop up later; the page zooms in once the analysis is done.
+        awaitRendered { (index, region) -> index == 1 && region.isZoomed() }
+        composeRule.onNodeWithTag("zoomPanel").assertDoesNotExist()
+    }
+
+    @Test
+    fun usesTheSavedZoom() {
+        show(savedScale = 0.9f)
+        // 0.9 of the padded page, which is 600 x 800 points or more.
+        awaitRendered { (_, region) -> region.width in 535f..600f * 0.95f }
+
+        val region = lastRendered().second
+        assertTrue("$region", region.contains(100f, 100f, 500f, 760f))
+    }
+
+    @Test
+    fun tapsTurnPagesWithTheSameCrop() {
+        showZoomed()
+        val first = lastRendered().second
+
+        tapForward()
+        awaitRendered { it.first == 1 }
+        assertEquals(1 to first, lastRendered())
+
+        composeRule.onRoot().performTouchInput { click(centerLeft + Offset(10f, 0f)) }
+        awaitRendered { it.first == 0 }
+        assertEquals(0 to first, lastRendered())
+    }
+
+    @Test
+    fun bottomMiddleOpensAndClosesTheZoomPanel() {
+        showZoomed()
+        val renders = pages.rendered.size
+        composeRule.onNodeWithTag("zoomPanel").assertDoesNotExist()
+
+        openPanel()
+
+        composeRule.onNodeWithTag("lostInkCurve").assertExists()
+        composeRule.onNodeWithText("Auto ✓").assertIsNotEnabled()
+        composeRule.onNodeWithText("1 / 3").assertExists()
+        // The page didn't turn.
+        assertEquals(renders, pages.rendered.size)
+
+        composeRule.onNodeWithText("Close").performClick()
+        composeRule.onNodeWithTag("zoomPanel").assertDoesNotExist()
+    }
+
+    @Test
+    fun tapsOnThePanelDoNotTurnThePage() {
+        showZoomed()
+        val renders = pages.rendered.size
+        openPanel()
+
+        composeRule.onNodeWithTag("lostInkCurve").performTouchInput { click(centerRight) }
+        composeRule.onNodeWithTag("lostInkCurve").performTouchInput { click(centerLeft) }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("1 / 3").assertExists()
+        assertEquals(renders, pages.rendered.size)
+    }
+
+    @Test
+    fun sliderSavesTheChosenZoomAndRerenders() {
+        showZoomed()
+        val auto = lastRendered().second
+        openPanel()
+
+        // Slide all the way left: the whole page.
+        composeRule.onNodeWithTag("zoomSlider").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        awaitRendered { (_, region) -> !region.isZoomed() }
+
+        assertEquals(listOf<Float?>(1f), saves)
+        val whole = lastRendered().second
+        assertTrue("$whole vs $auto", whole.width > auto.width)
+        assertTrue("$whole", whole.contains(0f, 0f, 600f, 800f))
+        composeRule.onNodeWithText("Zoom 1.00× · nothing cut off").assertExists()
+    }
+
+    @Test
+    fun autoButtonForgetsTheSavedZoom() {
+        show(savedScale = 1f)
+        awaitRendered { (_, region) -> !region.isZoomed() }
+        openPanel()
+
+        composeRule.onNodeWithText("Auto").performClick()
+        awaitRendered { (_, region) -> region.isZoomed() }
+
+        assertEquals(listOf<Float?>(null), saves)
+        composeRule.onNodeWithText("Auto ✓").assertExists()
+        val region = lastRendered().second
+        assertTrue("$region", region.top + region.height < 760f)
+    }
+
+    @Test
+    fun reanalyzesWhenTheScreenChangesShape() {
+        readerSize = 300.dp to 400.dp
+        showZoomed()
+        val masksBefore = pages.masked.size
+
+        // Landscape, within the 360dp-wide test screen. The padded page is now 800 points tall.
+        readerSize = 340.dp to 255.dp
+        awaitRendered { (_, r) -> abs(r.width / r.height - 4f / 3) < 0.01f && r.height < 790f }
+
+        // A fresh analysis for the new shape, which fits the text block's height.
+        assertTrue(pages.masked.size > masksBefore)
+        val region = lastRendered().second
+        assertTrue("$region", region.top <= 100f && region.top + region.height >= 700f)
+    }
+
+    @Test
+    fun zeroSizeLayoutRendersNothing() {
+        readerSize = 0.dp to 0.dp
+        show()
+        composeRule.waitForIdle()
+        Thread.sleep(100)
+        composeRule.waitForIdle()
+
+        assertEquals(emptyList<Int>(), pages.masked.toList())
+        assertEquals(emptyList<Pair<Int, Region>>(), pages.rendered.toList())
+    }
+
+    @Test
+    fun backArrowClosesWithoutTurningThePage() {
+        showZoomed()
+        val renders = pages.rendered.size
+
+        composeRule.onNodeWithContentDescription("Back to papers").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(1, closes)
+        assertEquals(renders, pages.rendered.size)
+    }
+
+    @Test
+    fun backArrowStillWorksWithThePanelOpen() {
+        showZoomed()
+        openPanel()
+
+        composeRule.onNodeWithContentDescription("Back to papers").performClick()
+
+        assertEquals(1, closes)
+    }
+
+    @Test
+    fun panelIsBlackOnWhiteInDarkTheme() {
+        showZoomed(darkTheme = true)
+        openPanel()
+
+        val window = drawWindow()
+        for (label in listOf("Close", "Auto ✓", "1 / 3")) {
+            val bounds = composeRule.onNodeWithText(label).fetchSemanticsNode().boundsInWindow
+            val luminances = (bounds.left.toInt() until bounds.right.toInt()).flatMap { x ->
+                (bounds.top.toInt() until bounds.bottom.toInt()).map { y ->
+                    Color(window.getPixel(x, y)).luminance()
+                }
+            }
+            assertTrue("$label: no dark text", luminances.min() < 0.3f)
+            assertTrue("$label: no light background", luminances.max() > 0.9f)
+        }
+        val panel = composeRule.onNodeWithTag("zoomPanel").fetchSemanticsNode().boundsInWindow
+        assertEquals(
+            Color.White,
+            Color(window.getPixel(panel.center.x.toInt(), (panel.top + 3).toInt())),
+        )
+    }
+
+    // captureToImage() times out under Robolectric, so draw the window ourselves.
+    private fun drawWindow(): Bitmap {
+        val view = composeRule.activity.window.decorView
+        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            .also { view.draw(Canvas(it)) }
+    }
+
+    @Test
+    fun zoomPanelScreenshot() {
+        showZoomed()
+        openPanel()
+
+        composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/reader_zoom_panel.png")
+    }
+}

@@ -2,8 +2,12 @@ package dev.sortes.app.pdf
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import dev.sortes.app.zoom.InkMask
+import dev.sortes.app.zoom.PageSize
+import dev.sortes.app.zoom.Region
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,36 +21,58 @@ import java.io.File
  * Renders pages of a PDF to bitmaps. Pages are vector data, so each call renders
  * fresh at the requested size; callers should ask for the size they will display.
  */
-class PdfPages private constructor(private val renderer: PdfRenderer) : Closeable {
+class PdfPages private constructor(private val renderer: PdfRenderer) : PageSource, Closeable {
 
     // PdfRenderer allows only one open page at a time and isn't thread-safe.
     private val mutex = Mutex()
     private var closed = false
 
-    val pageCount: Int get() = renderer.pageCount
+    override val pageCount: Int = renderer.pageCount
 
-    /** Renders page [index] as large as fits within [maxWidth] x [maxHeight] pixels. */
-    suspend fun render(index: Int, maxWidth: Int, maxHeight: Int): Bitmap =
+    // Read as pages are first used, so one unreadable page doesn't stop the others opening.
+    private val pageSizes = arrayOfNulls<PageSize>(pageCount)
+
+    override suspend fun pageSize(index: Int): PageSize =
+        pageSizes[index] ?: withPage(index) { it.size() }
+
+    override suspend fun renderMask(index: Int, width: Int, height: Int): InkMask {
+        val bitmap = render(index, width, height) { size ->
+            Matrix().apply { setScale(width / size.width, height / size.height) }
+        }
+        return withContext(Dispatchers.Default) {
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+            bitmap.recycle()
+            InkMask.fromArgb(pixels, width, height)
+        }
+    }
+
+    override suspend fun renderRegion(index: Int, region: Region, width: Int, height: Int): Bitmap =
+        render(index, width, height) { regionTransform(region, width, height) }
+
+    private suspend fun render(
+        index: Int,
+        width: Int,
+        height: Int,
+        transform: (PageSize) -> Matrix,
+    ): Bitmap = withPage(index) { page ->
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        // Pages render onto a transparent bitmap; give them a paper background.
+        bitmap.eraseColor(Color.WHITE)
+        page.render(bitmap, null, transform(page.size()), PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        bitmap
+    }
+
+    private suspend fun <T> withPage(index: Int, block: (PdfRenderer.Page) -> T): T =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 check(!closed) { "PdfPages is closed" }
-                renderer.openPage(index).use { page ->
-                    val scale = minOf(
-                        maxWidth.toFloat() / page.width,
-                        maxHeight.toFloat() / page.height,
-                    )
-                    val bitmap = Bitmap.createBitmap(
-                        (page.width * scale).toInt().coerceAtLeast(1),
-                        (page.height * scale).toInt().coerceAtLeast(1),
-                        Bitmap.Config.ARGB_8888,
-                    )
-                    // Pages render onto a transparent bitmap; give them a paper background.
-                    bitmap.eraseColor(Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    bitmap
-                }
+                renderer.openPage(index).use(block)
             }
         }
+
+    private fun PdfRenderer.Page.size(): PageSize =
+        PageSize(width.toFloat(), height.toFloat()).also { pageSizes[index] = it }
 
     /** Closes once any in-flight render finishes, so it's safe to call from the UI thread. */
     override fun close() {
@@ -77,4 +103,10 @@ class PdfPages private constructor(private val renderer: PdfRenderer) : Closeabl
             return PdfPages(renderer)
         }
     }
+}
+
+/** Maps page points to bitmap pixels so that [region] fills a [width] x [height] bitmap. */
+internal fun regionTransform(region: Region, width: Int, height: Int): Matrix = Matrix().apply {
+    setTranslate(-region.left, -region.top)
+    postScale(width / region.width, height / region.height)
 }
