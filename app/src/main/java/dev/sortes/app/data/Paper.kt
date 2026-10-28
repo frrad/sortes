@@ -11,4 +11,5 @@ data class Paper(
     val abstract: String,
     val year: Int?,
     val venue: String?,
+    val pdfUrl: String? = null,
 )

@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [Paper::class], version = 1, exportSchema = false)
+@Database(entities = [Paper::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class PaperDatabase : RoomDatabase() {
     abstract fun paperDao(): PaperDao
@@ -21,7 +21,10 @@ abstract class PaperDatabase : RoomDatabase() {
                     context.applicationContext,
                     PaperDatabase::class.java,
                     "papers.db",
-                ).build().also { instance = it }
+                )
+                    // Pre-release: drop and re-seed rather than writing migrations.
+                    .fallbackToDestructiveMigration()
+                    .build().also { instance = it }
             }
     }
 }

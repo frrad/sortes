@@ -23,15 +23,20 @@ import dev.sortes.app.ui.theme.SortesTheme
 
 @Composable
 fun PapersScreen(
+    onPaperClick: (Paper) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PapersViewModel = viewModel(),
 ) {
     val papers by viewModel.papers.collectAsStateWithLifecycle()
-    PapersList(papers = papers, modifier = modifier)
+    PapersList(papers = papers, onPaperClick = onPaperClick, modifier = modifier)
 }
 
 @Composable
-internal fun PapersList(papers: List<Paper>, modifier: Modifier = Modifier) {
+internal fun PapersList(
+    papers: List<Paper>,
+    modifier: Modifier = Modifier,
+    onPaperClick: (Paper) -> Unit = {},
+) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -53,14 +58,14 @@ internal fun PapersList(papers: List<Paper>, modifier: Modifier = Modifier) {
             }
         }
         items(papers, key = { it.id }) { paper ->
-            PaperCard(paper)
+            PaperCard(paper, onClick = { onPaperClick(paper) })
         }
     }
 }
 
 @Composable
-private fun PaperCard(paper: Paper) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun PaperCard(paper: Paper, onClick: () -> Unit) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
