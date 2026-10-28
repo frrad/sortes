@@ -195,6 +195,113 @@ class CropAnalysisTest {
     }
 
     @Test
+    fun pageNumbersStayInWhenTheWindowCanSlideToThem() {
+        // Text from row 8 to 70 and a page number at row 78: a 74-row window (scale 0.925) holds
+        // both only from rows 5-8 down. Nearer the middle it would cut the page number off while
+        // the rows above the text stay blank.
+        val page = TestPage(60, 80).rect(10, 8, 50, 70).rect(29, 78, 31, 79).mask()
+        val a = analyze(listOf(page))
+
+        val window = a.placements(0.925f).single()
+
+        assertEquals(Clipped(0, 0, 0, 0, 0), window.clipped(page, aspect))
+    }
+
+    @Test
+    fun attentionPage2KeepsItsPageNumberWhenZoomedALittle() {
+        // Page 2 of "Attention Is All You Need" (arXiv 1706.03762) as the reader sees it on a
+        // 3:4 screen: text, then a gap, then the page number. Zooming in a little used to cut
+        // the page number off while blank rows remained above the text.
+        val page = maskFixture("attention-page2.txt")
+        val a = analyze(listOf(page))
+
+        val window = a.placements(0.85f).single()
+
+        assertEquals(Clipped(0, 0, 0, 0, 0), window.clipped(page, aspect))
+    }
+
+    @Test
+    fun attentionPage2LosesOnlyTheInkNoWindowCanKeep() {
+        val page = maskFixture("attention-page2.txt")
+        val a = analyze(listOf(page))
+
+        for (i in a.scales.indices) {
+            val window = a.placements(a.scales[i]).single()
+            assertEquals("scale ${a.scales[i]}", a.lostInk[i], window.clipped(page, aspect).total.toLong())
+        }
+    }
+
+    @Test
+    fun windowsNeverLeaveInkBehindThatSlidingWouldKeep() {
+        val random = Random(7)
+        // Page sizes that pad evenly to a 60x80 frame on a 3:4 screen, so cells line up exactly.
+        val sizes = listOf(60 to 80, 48 to 80, 40 to 80, 60 to 70, 60 to 64)
+        var clippedWindows = 0
+        repeat(6) {
+            val masks = List(5) { syntheticPage(random, sizes.random(random)).mask() }
+            val a = analyze(masks)
+            for (i in a.scales.indices step 3) {
+                val windows = a.placements(a.scales[i])
+                windows.forEachIndexed { p, window ->
+                    val clipped = window.clipped(masks[p], aspect)
+                    if (clipped.total == 0) return@forEachIndexed
+                    clippedWindows++
+                    for ((dx, dy) in towardClipped(clipped)) {
+                        var moved = window
+                        while (true) {
+                            moved = moved.copy(left = moved.left + dx / 60f, top = moved.top + dy / 80f)
+                            if (moved.left < -1e-4f || moved.top < -1e-4f ||
+                                moved.left + moved.scale > 1 + 1e-4f || moved.top + moved.scale > 1 + 1e-4f
+                            ) break
+                            assertTrue(
+                                "page $p at scale ${a.scales[i]}: $window clips $clipped, $moved clips less",
+                                moved.clipped(masks[p], aspect).total >= clipped.total,
+                            )
+                        }
+                    }
+                }
+                // And so each page loses only what no window could keep.
+                val lost = windows.indices.sumOf { windows[it].clipped(masks[it], aspect).total.toLong() }
+                assertEquals("scale ${a.scales[i]}", a.lostInk[i], lost)
+            }
+        }
+        // The pages are dense enough that small windows have to cut into them.
+        assertTrue("$clippedWindows", clippedWindows > 100)
+    }
+
+    /** Unit steps, in cells, toward each edge of a window that ink is clipped beyond. */
+    private fun towardClipped(c: Clipped) = listOfNotNull(
+        (-1 to 0).takeIf { c.left > 0 },
+        (0 to -1).takeIf { c.top > 0 },
+        (1 to 0).takeIf { c.right > 0 },
+        (0 to 1).takeIf { c.bottom > 0 },
+    )
+
+    /** A page of text lines, sometimes with a running head, a page number and stray marks. */
+    private fun syntheticPage(random: Random, size: Pair<Int, Int>): TestPage {
+        val (width, height) = size
+        val page = TestPage(width, height)
+        val left = random.nextInt(1, width / 4)
+        val right = width - random.nextInt(1, width / 4)
+        val top = random.nextInt(2, height / 4)
+        val bottom = height - random.nextInt(4, height / 4)
+        for (y in top until bottom step 2) {
+            page.rect(left, y, right - random.nextInt(0, (right - left) / 3), y + 1)
+        }
+        if (random.nextBoolean()) page.rect(left, top - 2, right, top - 1)
+        if (random.nextBoolean()) {
+            val y = random.nextInt(bottom + 1, height)
+            page.rect(width / 2 - 1, y, width / 2 + 1, y + 1)
+        }
+        repeat(random.nextInt(3)) {
+            val x = random.nextInt(width)
+            val y = random.nextInt(height)
+            page.rect(x, y, x + 1, y + 1)
+        }
+        return page
+    }
+
+    @Test
     fun nearestIndexSnapsToTheClosestScale() {
         val a = analyze(listOf(textPage().mask()))
 

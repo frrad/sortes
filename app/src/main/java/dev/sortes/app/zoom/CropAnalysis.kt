@@ -73,7 +73,8 @@ class CropAnalysis private constructor(
     /**
      * Where windows of [scale] typically sit: the median of the analyzed pages' best positions.
      * Pages with several equally good positions take the one nearest this, so the text doesn't
-     * jump around as you page through.
+     * jump around as you page through. Only exact ties count: any position that kept less ink
+     * could be slid toward the ink it cuts off, with blank space still on the other side.
      */
     suspend fun anchor(scale: Float): Anchor {
         val centroids = masks.filter { it.inkCount > 0 }.map { mask ->
@@ -95,9 +96,6 @@ class CropAnalysis private constructor(
 
         /** How much looser than the tightest acceptable scale the automatic zoom is. */
         const val AUTO_MARGIN = 0.02f
-
-        /** Ink a page may lose beyond its optimum to keep the window steady across pages. */
-        const val TIE_TOLERANCE = 0.001f
 
         fun defaultScales(): FloatArray {
             val n = ((1f - MIN_SCALE) / SCALE_STEP).roundToInt() + 1
@@ -126,7 +124,7 @@ class CropAnalysis private constructor(
 
 /**
  * Places a window of [scale] on one page, padded to [aspect], so it leaves out as little ink as
- * possible; among (nearly) equally good positions, the one nearest [anchor].
+ * possible; among equally good positions, the one nearest [anchor].
  */
 fun placeWindow(mask: InkMask, aspect: Float, scale: Float, anchor: Anchor): CropWindow =
     PaddedPage(mask, aspect).fit(scale).window(anchor, scale)
@@ -189,7 +187,7 @@ private class PaddedPage(mask: InkMask, aspect: Float) {
 
     fun fit(scale: Float) = Fit(this, windowWidth(scale), windowHeight(scale))
 
-    /** The near-optimal positions for one window size. */
+    /** The positions for one window size that leave out the least ink. */
     class Fit(private val page: PaddedPage, private val w: Int, private val h: Int) {
         private val rangeX = page.width - w
         private val rangeY = page.height - h
@@ -199,8 +197,8 @@ private class PaddedPage(mask: InkMask, aspect: Float) {
         private val good: IntArray = if (page.inkCount == 0) IntArray(0) else {
             val values = IntArray(columns * (rangeY + 1))
             for (y in 0..rangeY) for (x in 0..rangeX) values[y * columns + x] = page.inside(x, y, w, h)
-            val floor = values.max() - (page.inkCount * CropAnalysis.TIE_TOLERANCE).toInt()
-            values.indices.filter { values[it] >= floor }.toIntArray()
+            val best = values.max()
+            values.indices.filter { values[it] == best }.toIntArray()
         }
 
         private fun norm(pos: Double, range: Int) = if (range == 0) 0.5f else (pos / range).toFloat()
