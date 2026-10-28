@@ -35,22 +35,26 @@ class ImportTracker(private val scope: CoroutineScope) {
             running++
             _status.value = ImportStatus.Running(running)
         }
-        return scope.launch {
-            var result: ImportStatus? = null
-            try {
-                result = ImportStatus.Done(block().title)
+        var result: ImportStatus? = null
+        val job = scope.launch {
+            result = try {
+                ImportStatus.Done(block().title)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                result = ImportStatus.Failed(e.message ?: e.toString())
-            } finally {
-                synchronized(lock) {
-                    running--
-                    if (result != null) lastResult = result
-                    _status.value = if (running > 0) ImportStatus.Running(running) else lastResult
-                }
+                ImportStatus.Failed(e.message ?: e.toString())
             }
         }
+        // Not a finally in the body: a job cancelled before it starts never runs its body,
+        // but always completes.
+        job.invokeOnCompletion {
+            synchronized(lock) {
+                running--
+                result?.let { lastResult = it }
+                _status.value = if (running > 0) ImportStatus.Running(running) else lastResult
+            }
+        }
+        return job
     }
 
     /** Hides a finished result; has no effect while imports are running. */
