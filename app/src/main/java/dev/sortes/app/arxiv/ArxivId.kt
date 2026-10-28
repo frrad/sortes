@@ -23,16 +23,22 @@ data class ArxivId(val id: String, val version: Int? = null) {
 
         private val BARE = Regex("""^(?:arxiv:\s*)?$ID$""", RegexOption.IGNORE_CASE)
 
+        private const val ARXIV_PAGE = """(?:www\.|export\.)?arxiv\.org/(?:abs|pdf|html)"""
+
+        // alphaXiv paper pages, optionally under a language prefix such as /es/ or /zh-CN/.
+        private const val ALPHAXIV_PAGE = """(?:www\.)?alphaxiv\.org/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?(?:abs|pdf|overview)"""
+
         private val URL = Regex(
-            """(?<![\w./-])(?:https?://)?(?:www\.|export\.)?arxiv\.org/(?:abs|pdf|html)/$ID(?:\.pdf)?$END""",
+            """(?<![\w./-])(?:https?://)?(?:$ARXIV_PAGE|$ALPHAXIV_PAGE)/$ID(?:\.pdf|\.md)?$END""",
             RegexOption.IGNORE_CASE,
         )
 
         private val PREFIXED = Regex("""(?<!\w)arxiv:\s*$ID$END""", RegexOption.IGNORE_CASE)
 
         /**
-         * Extracts an arXiv ID from user input or shared text: a bare ID, `arXiv:<id>`, or an
-         * arxiv.org abs/pdf/html URL, possibly embedded in longer text. Returns null if none.
+         * Extracts an arXiv ID from user input or shared text: a bare ID, `arXiv:<id>`, an
+         * arxiv.org abs/pdf/html URL, or an alphaxiv.org abs/pdf/overview URL, possibly embedded
+         * in longer text. Returns null if none.
          */
         fun parse(text: String): ArxivId? {
             val trimmed = text.trim()

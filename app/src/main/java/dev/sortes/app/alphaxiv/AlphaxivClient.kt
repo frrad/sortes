@@ -14,6 +14,8 @@ data class AlphaxivFolder(
     val name: String?,
     /** alphaXiv `universalId`s in folder order; for arXiv papers this is the versionless arXiv ID. */
     val paperIds: List<String>,
+    /** False if the folder had more than [HttpAlphaxivClient.MAX_PAGES] pages and only those were read. */
+    val complete: Boolean = true,
 )
 
 /** One page of `GET /folders/v4/shared/{id}/papers`. */
@@ -36,7 +38,7 @@ class HttpAlphaxivClient(
     companion object {
         const val DEFAULT_BASE_URL = "https://api.alphaxiv.org"
 
-        /** Guards against a server that never stops handing out cursors. */
+        /** Bounds the work per sync; a folder past this is read only in part. */
         const val MAX_PAGES = 100
     }
 
@@ -60,7 +62,7 @@ class HttpAlphaxivClient(
             cursor = result.nextCursor ?: return@withContext AlphaxivFolder(name, ids.distinct())
             if (!seenCursors.add(cursor)) throw IOException("alphaXiv returned a repeated page cursor")
         }
-        throw IOException("alphaXiv folder has more than $MAX_PAGES pages")
+        AlphaxivFolder(name, ids.distinct(), complete = false)
     }
 
     private class HttpStatusException(val code: Int) : IOException("alphaXiv request failed: HTTP $code")

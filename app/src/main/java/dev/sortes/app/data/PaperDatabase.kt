@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import dev.sortes.app.BuildConfig
 
 @Database(entities = [Paper::class, FolderSource::class], version = 4, exportSchema = true)
 @TypeConverters(Converters::class)
@@ -36,6 +37,11 @@ abstract class PaperDatabase : RoomDatabase() {
                 .addMigrations(*MIGRATIONS)
                 // Versions before 3 only ever held seed data, so they may still be dropped.
                 .fallbackToDestructiveMigrationFrom(1, 2)
+                .apply {
+                    // Debug builds hop between branches with different schema versions on one
+                    // device; wipe instead of crashing on a downgrade. Release never wipes data.
+                    if (BuildConfig.DEBUG) fallbackToDestructiveMigrationOnDowngrade()
+                }
     }
 }
 

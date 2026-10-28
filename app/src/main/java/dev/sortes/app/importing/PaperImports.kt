@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import dev.sortes.app.arxiv.HttpArxivClient
+import dev.sortes.app.arxiv.RateLimitedArxivClient
 import dev.sortes.app.data.PaperDatabase
 import dev.sortes.app.sources.FolderSyncs
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +22,8 @@ class PaperImports private constructor(context: Context) {
 
     internal val importer = PaperImporter(
         dao = PaperDatabase.get(appContext).paperDao(),
-        arxiv = HttpArxivClient(),
+        // Shared by every arXiv request in the process (add dialog, shares, folder syncs).
+        arxiv = RateLimitedArxivClient(HttpArxivClient()),
         libraryDir = PaperImporter.libraryDir(appContext),
     )
 

@@ -50,6 +50,8 @@ class PaperDatabaseMigrationTest {
         }
     }
 
+    // Room validates a migrated database against the current entities when it opens it, so
+    // this also catches entities drifting from the exported schema.
     @Test
     fun migratedDatabaseOpensWithRoom() {
         helper.createDatabase(TEST_DB, 3).close()

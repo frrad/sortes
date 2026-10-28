@@ -19,6 +19,8 @@ class SourcesViewModel(application: Application) : AndroidViewModel(application)
 
     val syncing: StateFlow<Set<Long>> = folders.syncing
 
+    val error: StateFlow<String?> = folders.error
+
     fun addAndSync(folderId: String) {
         folders.addAndSync(folderId)
     }
@@ -34,4 +36,6 @@ class SourcesViewModel(application: Application) : AndroidViewModel(application)
     fun remove(id: Long) {
         folders.remove(id)
     }
+
+    fun dismissError() = folders.dismissError()
 }

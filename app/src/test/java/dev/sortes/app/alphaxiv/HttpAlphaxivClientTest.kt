@@ -51,6 +51,7 @@ class HttpAlphaxivClientTest {
 
         assertEquals("Sortes", folder.name)
         assertEquals(listOf("2311.08105", "2609.20807", "2602.03839", "2512.03442"), folder.paperIds)
+        assertTrue(folder.complete)
         assertEquals("/folders/v4/shared/$folderId", server.takeRequest().path)
         assertEquals("/folders/v4/shared/$folderId/papers", server.takeRequest().path)
     }
@@ -168,12 +169,27 @@ class HttpAlphaxivClientTest {
     }
 
     @Test
-    fun pageCapStopsEndlessPagination() {
+    fun pageCapReturnsWhatWasReadAsIncomplete() {
         server.enqueue(json(fixture("shared_folder.json")))
         repeat(HttpAlphaxivClient.MAX_PAGES) { server.enqueue(page("2401.%05d".format(it), next = "c$it")) }
 
-        assertThrows(IOException::class.java) { fetch() }
+        val folder = fetch()
+
+        assertFalse(folder.complete)
+        assertEquals(List(HttpAlphaxivClient.MAX_PAGES) { "2401.%05d".format(it) }, folder.paperIds)
         assertEquals(1 + HttpAlphaxivClient.MAX_PAGES, server.requestCount)
+    }
+
+    @Test
+    fun lastPageAtCapIsComplete() {
+        server.enqueue(json(fixture("shared_folder.json")))
+        repeat(HttpAlphaxivClient.MAX_PAGES - 1) { server.enqueue(page("2401.%05d".format(it), next = "c$it")) }
+        server.enqueue(page("2402.00001"))
+
+        val folder = fetch()
+
+        assertTrue(folder.complete)
+        assertEquals(HttpAlphaxivClient.MAX_PAGES, folder.paperIds.size)
     }
 
     @Test

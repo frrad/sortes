@@ -1,5 +1,6 @@
 package dev.sortes.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -40,9 +41,12 @@ fun SourcesScreen(
 ) {
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
     SourcesList(
         sources = sources,
         syncing = syncing,
+        error = error,
+        onDismissError = viewModel::dismissError,
         onAdd = viewModel::addAndSync,
         onSync = viewModel::sync,
         onSyncAll = viewModel::syncAll,
@@ -57,6 +61,8 @@ internal fun SourcesList(
     sources: List<FolderSource>,
     syncing: Set<Long>,
     modifier: Modifier = Modifier,
+    error: String? = null,
+    onDismissError: () -> Unit = {},
     onAdd: (folderId: String) -> Unit = {},
     onSync: (Long) -> Unit = {},
     onSyncAll: () -> Unit = {},
@@ -82,6 +88,19 @@ internal fun SourcesList(
             }
         }
         item { AddSourceField(onAdd) }
+        if (error != null) {
+            item(key = "error") {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onDismissError)
+                        .padding(vertical = 4.dp),
+                )
+            }
+        }
         if (sources.isEmpty()) {
             item {
                 Text(

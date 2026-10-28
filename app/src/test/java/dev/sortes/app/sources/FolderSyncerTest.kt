@@ -5,6 +5,8 @@ import dev.sortes.app.alphaxiv.AlphaxivFolder
 import dev.sortes.app.alphaxiv.AlphaxivFolderNotFoundException
 import dev.sortes.app.arxiv.ArxivClient
 import dev.sortes.app.arxiv.ArxivEntry
+import dev.sortes.app.arxiv.ArxivId
+import dev.sortes.app.importing.ArxivImport
 import dev.sortes.app.data.Paper
 import dev.sortes.app.importing.FakePaperDao
 import dev.sortes.app.importing.PaperImporter
@@ -46,9 +48,8 @@ class FolderSyncerTest {
 
     // The real importer, so dedupe is the one the app uses.
     private val importer by lazy { PaperImporter(dao, arxiv, File(tmp.root, "papers")) }
-    private val pauses = mutableListOf<Long>()
-    private var importArxiv: suspend (String) -> Paper = { importer.importArxiv(it) }
-    private val syncer = FolderSyncer(client, dao, { importArxiv(it) }, fetchSpacingMillis = 3_000, pause = { pauses += it })
+    private var importArxiv: suspend (ArxivId) -> ArxivImport = { importer.importArxiv(it) }
+    private val syncer = FolderSyncer(client) { importArxiv(it) }
 
     private fun sync() = runBlocking { syncer.sync(folderId) }
 
@@ -170,23 +171,27 @@ class FolderSyncerTest {
     }
 
     @Test
-    fun arxivRequestsAreSpacedOut() {
-        sync()
+    fun paperSharedDuringSyncCountsAsAlreadyPresent() {
+        // Another import (e.g. a share) adds 2609.20807 while arXiv is being asked about it.
+        importArxiv = { id ->
+            if (id.id == "2609.20807") existing(id.id)
+            importer.importArxiv(id)
+        }
 
-        // Four fetches, three gaps.
-        assertEquals(listOf(3_000L, 3_000L, 3_000L), pauses)
+        val result = sync()
+
+        assertEquals(SyncResult("Sortes", added = 3, alreadyPresent = 1), result)
+        assertEquals(4, dao.papers.value.size)
     }
 
     @Test
-    fun noPauseForPapersAlreadyPresent() {
-        existing("2311.08105")
-        existing("2609.20807")
-        existing("2602.03839")
+    fun incompleteFolderIsSyncedAndMarkedPartial() {
+        folder = AlphaxivFolder("Big", listOf("2311.08105"), complete = false)
 
-        sync()
+        val result = sync()
 
-        assertEquals(listOf("2512.03442"), fetched)
-        assertEquals(emptyList<Long>(), pauses)
+        assertEquals(SyncResult("Big", added = 1, complete = false), result)
+        assertEquals("Partial, folder too large: 1 added", result.summary())
     }
 
     @Test

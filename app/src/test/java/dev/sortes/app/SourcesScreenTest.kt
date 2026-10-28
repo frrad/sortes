@@ -124,6 +124,25 @@ class SourcesScreenTest {
     }
 
     @Test
+    fun errorIsShownAndDismissable() {
+        var dismissed = false
+        composeRule.setContent {
+            SortesTheme {
+                SourcesList(
+                    sources = SAMPLE,
+                    syncing = emptySet(),
+                    error = "Couldn't save source: disk I/O error",
+                    onDismissError = { dismissed = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Couldn't save source: disk I/O error").performClick()
+
+        assertTrue(dismissed)
+    }
+
+    @Test
     fun backButton() {
         var back = false
         composeRule.setContent {
