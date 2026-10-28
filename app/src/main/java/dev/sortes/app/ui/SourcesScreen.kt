@@ -12,8 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,12 +24,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.sortes.app.alphaxiv.AlphaxivFolderLink
 import dev.sortes.app.data.FolderSource
+import dev.sortes.app.ui.theme.InkBorder
 import java.text.DateFormat
 import java.util.Date
 
@@ -93,7 +95,6 @@ internal fun SourcesList(
                 Text(
                     text = error,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onDismissError)
@@ -156,9 +157,16 @@ private fun AddSourceField(onAdd: (folderId: String) -> Unit) {
     }
 }
 
+internal const val SOURCE_CARD_TAG = "sourceCard"
+
 @Composable
 private fun SourceCard(source: FolderSource, isSyncing: Boolean, onSync: () -> Unit, onRemove: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(
+        border = InkBorder,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(SOURCE_CARD_TAG),
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -167,7 +175,6 @@ private fun SourceCard(source: FolderSource, isSyncing: Boolean, onSync: () -> U
             Text(
                 text = AlphaxivFolderLink.url(source.folderId),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             val status = when {
                 isSyncing -> "Syncing…"

@@ -20,11 +20,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /** The reader must stay black on white, so the back button is visible, in dark theme too. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = "night")
 class ReaderFrameDarkThemeTest {
 
     @get:Rule
@@ -34,8 +36,8 @@ class ReaderFrameDarkThemeTest {
 
     private fun setFailedReaderInDarkTheme() {
         composeRule.setContent {
-            SortesTheme(darkTheme = true, dynamicColor = false) {
-                // Like MainActivity: the Scaffold paints the dark theme's background.
+            SortesTheme {
+                // Like MainActivity: the Scaffold paints the theme's background.
                 Scaffold { padding ->
                     ReaderFrame(onClose = {}, modifier = Modifier.padding(padding)) {
                         contentColor = LocalContentColor.current

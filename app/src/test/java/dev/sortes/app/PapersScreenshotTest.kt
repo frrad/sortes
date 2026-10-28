@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import dev.sortes.app.data.Paper
 import dev.sortes.app.ui.AddPaperDialog
 import dev.sortes.app.importing.ImportStatus
@@ -21,6 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
@@ -38,6 +40,31 @@ class PapersScreenshotTest {
             }
         }
         composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list.png")
+    }
+
+    // The theme ignores the system theme: this should match papers_list.png.
+    @Test
+    @Config(qualifiers = "night")
+    fun papersListInDarkSystemTheme() {
+        composeRule.setContent {
+            SortesTheme {
+                PapersList(papers = SAMPLE)
+            }
+        }
+        composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list_dark_system_theme.png")
+    }
+
+    @Test
+    fun addPaperDialogScreenshot() {
+        composeRule.setContent {
+            SortesTheme {
+                PapersList(papers = SAMPLE)
+                AddPaperDialog(onImportArxiv = {}, onPickPdf = {}, onDismiss = {})
+            }
+        }
+        composeRule.onNodeWithText("Add paper").assertExists()
+        // The dialog is its own window, so capture the whole screen rather than the root node.
+        captureScreenRoboImage("build/outputs/roborazzi/add_paper_dialog.png")
     }
 
     @Test

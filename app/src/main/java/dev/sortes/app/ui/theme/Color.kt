@@ -1,11 +1,12 @@
 package dev.sortes.app.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+/** Everything is drawn in black ink on white paper; see "Design for e-ink" in AGENTS.md. */
+val Ink = Color.Black
+val Paper = Color.White
 
-val Purple40 = Color(0xFF6650A4)
-val PurpleGrey40 = Color(0xFF625B71)
-val Pink40 = Color(0xFF7D5260)
+/** The outline that marks a card, dialog or button, in place of a filled or shadowed surface. */
+val InkBorder = BorderStroke(1.5.dp, Ink)
