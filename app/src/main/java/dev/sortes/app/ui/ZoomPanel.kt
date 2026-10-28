@@ -42,20 +42,25 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.sortes.app.zoom.CropAnalysis
+import dev.sortes.app.zoom.ModelCrops
+import dev.sortes.app.zoom.ZoomCurve
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.roundToInt
 
 /**
  * Manual zoom control: the paper's lost-ink curve with a slider along it. Left is the whole
- * page, right is zoomed in; the curve shows how much ink each zoom level cuts off.
+ * page, right is zoomed in; the curve shows how much ink the crop model's crops cut off at each
+ * zoom level, filling in as the model solves them.
  */
 @Composable
 fun ZoomPanel(
     /** Which page is showing, e.g. "3 / 15"; the reader has no other page counter. */
     pageLabel: String,
-    analysis: CropAnalysis,
+    curve: ZoomCurve,
+    /** The crops at [scale], once solved: the summary for that zoom comes from them exactly. */
+    crops: ModelCrops?,
     /** Whether the curve comes from a sample of the paper's pages. */
     sampled: Boolean,
     scale: Float,
@@ -65,9 +70,9 @@ fun ZoomPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val last = analysis.scales.lastIndex
-    var position by remember(analysis, scale) {
-        mutableFloatStateOf(analysis.nearestIndex(scale).toFloat())
+    val last = curve.scales.lastIndex
+    var position by remember(curve.scales, scale) {
+        mutableFloatStateOf(curve.nearestIndex(scale).toFloat())
     }
     fun indexAt(position: Float) = position.roundToInt().coerceIn(0, last)
     val index = indexAt(position)
@@ -94,7 +99,7 @@ fun ZoomPanel(
                 modifier = Modifier.padding(end = 16.dp),
             )
             Text(
-                text = zoomSummary(analysis, index, sampled),
+                text = zoomSummary(curve, index, crops, sampled),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -115,7 +120,7 @@ fun ZoomPanel(
             ) { Text("Close") }
         }
         LostInkCurve(
-            analysis = analysis,
+            curve = curve,
             selected = index,
             modifier = Modifier
                 .fillMaxWidth()
@@ -126,7 +131,7 @@ fun ZoomPanel(
             value = position,
             onValueChange = { position = it },
             // Read the position now: the slider calls this before recomposing with the new value.
-            onValueChangeFinished = { onScaleChange(analysis.scales[indexAt(position)]) },
+            onValueChangeFinished = { onScaleChange(curve.scales[indexAt(position)]) },
             valueRange = 0f..last.toFloat(),
             colors = SliderDefaults.colors(
                 thumbColor = ink,
@@ -140,13 +145,22 @@ fun ZoomPanel(
     }
 }
 
-internal fun zoomSummary(analysis: CropAnalysis, index: Int, sampled: Boolean): String {
-    val zoom = String.format(Locale.ROOT, "%.2f×", 1f / analysis.scales[index])
-    val lost = analysis.lostFraction(index)
-    if (lost == 0f) return "Zoom $zoom · nothing cut off"
-    val pages = analysis.pagesCropped(index)
-    val of = analysis.pagesAnalyzed
-    return "Zoom $zoom · cuts ${percent(lost)} of ink on $pages of $of${if (sampled) " sampled" else ""} pages"
+/**
+ * What zoom level [index] does: exact from [crops] if they're for that scale, else from the
+ * curve's nearest computed point ("about"), else just the zoom while the curve is computed.
+ */
+internal fun zoomSummary(curve: ZoomCurve, index: Int, crops: ModelCrops?, sampled: Boolean): String {
+    val scale = curve.scales[index]
+    val zoom = String.format(Locale.ROOT, "%.2f×", 1f / scale)
+    val exact = crops?.takeIf { abs(it.scale - scale) < 1e-6f }
+    val point = exact?.let { ZoomCurve.Point(it.cutFraction.toFloat(), it.pagesCut) } ?: curve.points[index]
+    val near = point ?: curve.nearestPoint(index) ?: return "Zoom $zoom"
+    val about = if (point == null) "about " else ""
+    val windows = exact?.k?.takeIf { it > 1 }?.let { " · $it windows" } ?: ""
+    if (near.lostFraction == 0f) return "Zoom $zoom · ${about}nothing cut off$windows"
+    val of = curve.pagesAnalyzed
+    return "Zoom $zoom · cuts $about${percent(near.lostFraction)} of ink on ${near.pagesCut} of $of" +
+        "${if (sampled) " sampled" else ""} pages$windows"
 }
 
 private fun percent(fraction: Float): String = when {
@@ -159,19 +173,20 @@ private fun percent(fraction: Float): String = when {
 private const val CURVE_FLOOR = 1e-4f
 
 /**
- * Lost ink against zoom. The y axis is logarithmic so the small step from trimming page numbers
- * and running heads is visible next to the steep rise from cutting into text.
+ * Lost ink against zoom, through the points computed so far. The y axis is logarithmic so the
+ * small step from trimming page numbers and running heads is visible next to the steep rise
+ * from cutting into text.
  */
 @Composable
-private fun LostInkCurve(analysis: CropAnalysis, selected: Int, modifier: Modifier = Modifier) {
+private fun LostInkCurve(curve: ZoomCurve, selected: Int, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
     val ink = LocalContentColor.current
     val faint = ink.copy(alpha = 0.25f)
     val muted = ink.copy(alpha = 0.5f)
     val labelStyle = TextStyle(fontSize = 9.sp, color = muted)
-    val autoIndex = remember(analysis) { analysis.nearestIndex(analysis.autoScale) }
+    val autoIndex = remember(curve.scales, curve.autoScale) { curve.nearestIndex(curve.autoScale) }
     Canvas(modifier.testTag("lostInkCurve")) {
-        val last = analysis.scales.lastIndex.coerceAtLeast(1)
+        val last = curve.scales.lastIndex.coerceAtLeast(1)
         fun x(i: Int) = size.width * i / last
         fun y(fraction: Float): Float {
             if (fraction <= CURVE_FLOOR) return size.height
@@ -187,9 +202,9 @@ private fun LostInkCurve(analysis: CropAnalysis, selected: Int, modifier: Modifi
         drawLine(muted, Offset(0f, size.height), Offset(size.width, size.height))
 
         val path = Path()
-        for (i in analysis.scales.indices) {
-            val p = Offset(x(i), y(analysis.lostFraction(i)))
-            if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+        curve.sortedPoints.forEachIndexed { n, (i, point) ->
+            val p = Offset(x(i), y(point.lostFraction))
+            if (n == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
         }
         drawPath(path, ink, style = Stroke(width = 2.dp.toPx()))
 

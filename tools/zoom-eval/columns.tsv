@@ -1,7 +1,6 @@
 # The contact sheets' columns: label, algorithm (anchor | model), ink threshold (a luminance,
 # or "default" for the reader's), and weight overrides (name=value,... or -) on top of
 # weights.properties and the command line. All columns apply the reader's ignorable-ink rules.
-anchor, old threshold	anchor	224	-
-anchor	anchor	default	-
+anchor (previous reader)	anchor	default	-
 model (stay put, ε=0)	model	default	epsilon=0
-model	model	default	-
+model (reader)	model	default	-

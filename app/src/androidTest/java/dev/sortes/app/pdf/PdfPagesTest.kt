@@ -92,11 +92,11 @@ class PdfPagesTest {
     @Test
     fun analysisZoomsToTheBlocks() = runBlocking {
         val paper = analyzePaper(pages, 0.75f)
-        val scale = paper.crop.autoScale
+        val scale = paper.auto.scale
 
         // Page 0's 400x600 block is 3:4 and fills 0.75 of the page's height.
         assertTrue("auto $scale", scale in 0.74f..0.8f)
-        val window = paper.window(pages, 0, scale, paper.crop.anchor(scale))
+        val window = paper.place(pages, 0, paper.auto).window
         val region = window.regionOn(pages.pageSize(0), 0.75f)
         assertTrue("$region", region.left <= 102f && region.left + region.width >= 498f)
         assertTrue("$region", region.top <= 102f && region.top + region.height >= 698f)

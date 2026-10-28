@@ -1,6 +1,8 @@
 package dev.sortes.app.zoom
 
 import dev.sortes.app.ui.FakePages
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -50,9 +52,9 @@ class PaperAnalysisTest {
         val paper = runBlocking { analyzePaper(pages, aspect) }
 
         assertEquals(MAX_ANALYZED_PAGES, pages.masked.size)
-        assertEquals(MAX_ANALYZED_PAGES, paper.crop.pagesAnalyzed)
+        assertEquals(MAX_ANALYZED_PAGES, paper.pagesAnalyzed)
         assertEquals(300, paper.pageCount)
-        assertTrue("auto ${paper.crop.autoScale}", paper.crop.autoScale in 0.75f..0.80f)
+        assertTrue("auto ${paper.auto.scale}", paper.auto.scale in 0.75f..0.80f)
     }
 
     @Test
@@ -62,10 +64,7 @@ class PaperAnalysisTest {
         val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
         assertTrue(1 !in pages.masked)
 
-        val window = runBlocking {
-            val scale = paper.crop.autoScale
-            paper.window(pages, 1, scale, paper.crop.anchor(scale))
-        }
+        val window = runBlocking { paper.place(pages, 1, paper.auto) }.window
 
         assertTrue("$window", window.covers(60, 80, aspect, 10, 10, 50, 70))
     }
@@ -77,12 +76,12 @@ class PaperAnalysisTest {
         val page = textPage().rect(25, 2, 35, 4).rect(29, 76, 31, 78).mask()
         val pages = FakePages(List(10) { page })
         val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
-        val scale = 0.76f
+        val crops = runBlocking { paper.cropsAt(0.76f) }
 
         for (index in listOf(0, 1)) {
-            val placement = runBlocking { paper.place(pages, index, scale, paper.crop.anchor(scale)) }
+            val placement = runBlocking { paper.place(pages, index, crops) }
 
-            assertEquals(runBlocking { paper.window(pages, index, scale, paper.crop.anchor(scale)) }, placement.window)
+            assertEquals(crops.windows.single(), placement.window)
             assertTrue("$placement", placement.window.covers(60, 80, aspect, 10, 10, 50, 70))
             val boxes = placement.cut.map { it.region }
             assertEquals("$boxes", 2, boxes.size)
@@ -97,7 +96,7 @@ class PaperAnalysisTest {
         val pages = FakePages(List(3) { textPage().rect(29, 76, 31, 78).mask() })
         val paper = runBlocking { analyzePaper(pages, aspect) }
 
-        val placement = runBlocking { paper.place(pages, 0, 1f, paper.crop.anchor(1f)) }
+        val placement = runBlocking { paper.place(pages, 0, paper.cropsAt(1f)) }
 
         assertEquals(FullPage, placement.window)
         assertEquals(emptyList<CutInk>(), placement.cut)
@@ -110,11 +109,7 @@ class PaperAnalysisTest {
         val pages = FakePages(listOf(maskFixture("attention-p1.txt")) + List(9) { maskFixture("attention-page2.txt") })
         val paper = runBlocking { analyzePaper(pages, aspect) }
 
-        val (first, second) = runBlocking {
-            val scale = paper.crop.autoScale
-            val anchor = paper.crop.anchor(scale)
-            listOf(0, 1).map { paper.window(pages, it, scale, anchor) }
-        }
+        val (first, second) = runBlocking { listOf(0, 1).map { paper.place(pages, it, paper.auto).window } }
 
         assertEquals(second.left, first.left, 0.01f)
         // The text block spans columns 33-157 of the 192-cell page (the stamp is at 5-11).
@@ -127,9 +122,7 @@ class PaperAnalysisTest {
         // leaves the stamp (columns 5-11, or 50-120 points) out, but it's ignored, not cut.
         val pages = FakePages(listOf(maskFixture("attention-p1.txt")) + List(3) { maskFixture("attention-page2.txt") })
         val paper = runBlocking { analyzePaper(pages, aspect) }
-        val scale = 0.7f
-
-        val placement = runBlocking { paper.place(pages, 0, scale, paper.crop.anchor(scale)) }
+        val placement = runBlocking { paper.place(pages, 0, paper.cropsAt(0.7f)) }
 
         assertTrue("${placement.window}", placement.window.regionOn(PageSize(1920f, 2480f), aspect).left > 150f)
         assertTrue("${placement.cut}", placement.cut.none { it.region.left < 150f })
@@ -141,8 +134,9 @@ class PaperAnalysisTest {
 
         val paper = runBlocking { analyzePaper(pages, aspect) }
 
-        assertEquals(3, paper.crop.pagesAnalyzed)
-        assertTrue("auto ${paper.crop.autoScale}", paper.crop.autoScale in 0.75f..0.80f)
+        assertEquals(3, paper.pagesAnalyzed)
+        assertEquals(listOf(0, 2, 4), paper.sample)
+        assertTrue("auto ${paper.auto.scale}", paper.auto.scale in 0.75f..0.80f)
     }
 
     @Test
@@ -150,5 +144,65 @@ class PaperAnalysisTest {
         val pages = FakePages(List(2) { textPage().mask() }, broken = setOf(0, 1))
 
         assertThrows(IOException::class.java) { runBlocking { analyzePaper(pages, aspect) } }
+    }
+
+    // A two-sided layout: text blocks alternate between the left and right of the page.
+    private val leftPage = TestPage(60, 80).rect(2, 10, 38, 70).mask()
+    private val rightPage = TestPage(60, 80).rect(22, 10, 58, 70).mask()
+
+    @Test
+    fun twoSidedPapersGetAWindowPerSideIncludingUnsampledPages() {
+        val pages = FakePages(List(12) { if (it % 2 == 0) leftPage else rightPage })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 6) }
+        // The sample is pages 0, 2, 4, 6, 8 and 11: most right-hand pages are placed unsampled.
+        assertEquals(listOf(0, 2, 4, 6, 8, 11), paper.sample)
+        val crops = runBlocking { paper.cropsAt(0.75f) }
+        assertEquals(2, crops.k)
+
+        for (index in 0 until 12) {
+            val placement = runBlocking { paper.place(pages, index, crops) }
+            assertEquals("page $index", emptyList<CutInk>(), placement.cut)
+            val block = if (index % 2 == 0) 2 to 38 else 22 to 58
+            assertTrue("page $index: ${placement.window}", placement.window.covers(60, 80, aspect, block.first, 10, block.second, 70))
+        }
+    }
+
+    @Test
+    fun cropsAtASavedScaleAreSolvedOnceAndKept() {
+        val pages = FakePages(List(4) { textPage().rect(29, 76, 31, 78).mask() })
+        val paper = runBlocking { analyzePaper(pages, aspect) }
+        val masked = pages.masked.size
+
+        val first = runBlocking { paper.cropsAt(0.8f) }
+        val again = runBlocking { paper.cropsAt(0.8f) }
+
+        assertEquals(0.8f, first.scale)
+        assertTrue(first === again)
+        assertTrue(runBlocking { paper.cropsAt(paper.auto.scale) } === paper.auto)
+        // Solving doesn't render anything again.
+        assertEquals(masked, pages.masked.size)
+    }
+
+    @Test
+    fun theCurveFillsInPointByPointAndIsKept() {
+        val pages = FakePages(List(3) { textPage().rect(29, 76, 31, 78).mask() })
+        val paper = runBlocking { analyzePaper(pages, aspect) }
+
+        val curves = runBlocking { paper.curve().toList() }
+
+        assertEquals(0, curves.first().points.size)
+        val sizes = curves.map { it.points.size }
+        assertEquals(sizes.sorted(), sizes)
+        val last = curves.last()
+        val scales = paper.crop.scales
+        val expected = (scales.indices.filter { it % PaperAnalysis.CURVE_STRIDE == 0 } + last.nearestIndex(paper.auto.scale)).toSet()
+        assertEquals(expected, last.points.keys)
+        // Whole page: nothing cut. At auto: within the budget. Tightest: cutting text.
+        assertEquals(0f, last.points.getValue(0).lostFraction)
+        assertTrue(last.points.getValue(last.nearestIndex(paper.auto.scale)).lostFraction <= CropAnalysis.AUTO_MAX_LOST)
+        assertTrue(last.sortedPoints.last().second.lostFraction > 0.1f)
+
+        // A second collection starts from the kept points.
+        assertEquals(expected, runBlocking { paper.curve().first() }.points.keys)
     }
 }

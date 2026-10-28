@@ -94,6 +94,26 @@ Because the model keeps windows put, it can cut more than per-page optima, so it
 never tighter than the per-page anchor placement's. Across the corpus it came out equal, or 0.005 looser on a few
 papers.
 
+## In the reader
+
+`analyzePaper` renders at most 60 evenly spaced pages (`samplePages`) and strips their
+ignorable ink. It then runs `CropAnalysis` (each page's best window at every scale, used to
+bound the scale search) and `CropModel.auto`. The resulting `PaperAnalysis` holds:
+- `auto`: the crops at the automatic scale;
+- `cropsAt(scale)`: a manual zoom re-solves the model at exactly that scale (cached), so a
+  saved per-paper zoom still gets the model's windows and assignment;
+- `place(page)`: an analysed page gets its assigned window and the cells the model counted.
+  An unanalysed page (in papers over 60 pages) gets the window that costs it least, with ties
+  going to the window of the nearest analysed page on the same side (odd or even). The cut-ink
+  boxes in the frame preview come from those same cells (`cutInk`);
+- `curve()`: the zoom panel's lost-ink curve. It is the model's own cut ink at every 4th scale
+  (0.02 of zoom) plus the automatic one, solved in the background while the panel is open and
+  drawn as it fills in. The summary for the selected zoom is exact once its crops are solved,
+  and "about" the nearest computed point before that.
+
+The previous per-page anchored placement (`CropAnalysis.anchor`, `placeWindow`) is no longer
+used by the reader. It remains for the harness's comparison column.
+
 ## Solver
 
 At a fixed scale, positions are integer cells on a reference page: the paper's most common
