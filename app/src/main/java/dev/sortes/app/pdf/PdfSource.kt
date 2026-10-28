@@ -12,9 +12,9 @@ import java.net.URL
 import kotlin.coroutines.coroutineContext
 
 /** Resolves a [Paper] to a local PDF file, downloading and caching it on first use. */
-class PdfSource(context: Context) {
+class PdfSource(private val cacheDir: File) {
 
-    private val cacheDir = File(context.cacheDir, "pdfs")
+    constructor(context: Context) : this(File(context.cacheDir, "pdfs"))
 
     suspend fun fetch(paper: Paper): File = withContext(Dispatchers.IO) {
         val url = paper.pdfUrl ?: throw IOException("No PDF for this paper")
