@@ -104,6 +104,38 @@ class PaperAnalysisTest {
     }
 
     @Test
+    fun theArxivStampDoesNotPullTheFirstPageAside() {
+        // Attention Is All You Need: page 1 has the arXiv stamp down its left margin, the rest
+        // don't. Page 1's window should line up with the others, on the text, not the stamp.
+        val pages = FakePages(listOf(maskFixture("attention-p1.txt")) + List(9) { maskFixture("attention-page2.txt") })
+        val paper = runBlocking { analyzePaper(pages, aspect) }
+
+        val (first, second) = runBlocking {
+            val scale = paper.crop.autoScale
+            val anchor = paper.crop.anchor(scale)
+            listOf(0, 1).map { paper.window(pages, it, scale, anchor) }
+        }
+
+        assertEquals(second.left, first.left, 0.01f)
+        // The text block spans columns 33-158 of the 192-cell page (the stamp is at 6-10).
+        assertTrue("$first", first.covers(192, 248, aspect, 33, 120, 158, 121))
+    }
+
+    @Test
+    fun theArxivStampIsNotShownAsCutOff() {
+        // Zoomed in to the text block of Attention's page 1 (columns 33-158 of 192), the window
+        // leaves the stamp (columns 6-10, or 60-110 points) out, but it's ignored, not cut.
+        val pages = FakePages(listOf(maskFixture("attention-p1.txt")) + List(3) { maskFixture("attention-page2.txt") })
+        val paper = runBlocking { analyzePaper(pages, aspect) }
+        val scale = 0.7f
+
+        val placement = runBlocking { paper.place(pages, 0, scale, paper.crop.anchor(scale)) }
+
+        assertTrue("${placement.window}", placement.window.regionOn(PageSize(1920f, 2480f), aspect).left > 150f)
+        assertTrue("${placement.cut}", placement.cut.none { it.region.left < 150f })
+    }
+
+    @Test
     fun unreadablePagesAreLeftOut() {
         val pages = FakePages(List(5) { textPage().mask() }, broken = setOf(1, 3))
 
