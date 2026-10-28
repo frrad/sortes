@@ -3,6 +3,7 @@ package dev.sortes.app.ui
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Looper
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -28,8 +29,12 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sortes.app.ui.theme.SortesTheme
 import dev.sortes.app.zoom.Region
@@ -284,6 +289,47 @@ class PageReaderTest {
         assertTrue("$whole vs $auto", whole.width > auto.width)
         assertTrue("$whole", whole.contains(0f, 0f, 600f, 800f))
         composeRule.onNodeWithText("Zoom 1.00× · nothing cut off").assertExists()
+    }
+
+    @Test
+    fun draggingTheSliderSavesWhereItIsReleased() {
+        showZoomed()
+        openPanel()
+
+        // Press mid-track and drag to the far left: a tap would only reach the middle.
+        composeRule.onNodeWithTag("zoomSlider").performTouchInput {
+            swipe(center, centerLeft - Offset(50f, 0f), durationMillis = 300)
+        }
+        awaitRendered { (_, region) -> !region.isZoomed() }
+
+        assertEquals(listOf<Float?>(1f), saves)
+        composeRule.onNodeWithText("Zoom 1.00× · nothing cut off").assertExists()
+    }
+
+    // Regression: the panel sat on the bottom system-gesture strip, where the Boox's SystemUI
+    // takes over finger drags, so the slider took taps but not drags.
+    @Test
+    fun panelControlsStayAboveTheBottomGestureStrip() {
+        showZoomed()
+        openPanel()
+        val strip = 60
+        val view = composeRule.activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        composeRule.runOnUiThread {
+            ViewCompat.dispatchApplyWindowInsets(
+                view,
+                WindowInsetsCompat.Builder()
+                    .setInsets(WindowInsetsCompat.Type.mandatorySystemGestures(), Insets.of(0, 0, 0, strip))
+                    .build(),
+            )
+        }
+        idle()
+
+        val screenBottom = composeRule.onRoot().fetchSemanticsNode().boundsInWindow.bottom
+        val slider = composeRule.onNodeWithTag("zoomSlider").fetchSemanticsNode().boundsInWindow
+        assertTrue(
+            "slider $slider overlaps the strip below ${screenBottom - strip}",
+            slider.bottom <= screenBottom - strip,
+        )
     }
 
     @Test
