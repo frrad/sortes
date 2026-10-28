@@ -43,7 +43,7 @@ fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
         // This coroutine owns the PdfPages: it lives until the screen leaves composition.
         val source = PdfSource(context)
         var pages: PdfPages? = null
-        try {
+        value = try {
             val file = source.fetch(paper)
             withContext(Dispatchers.IO) {
                 pages = try {
@@ -53,12 +53,15 @@ fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
                     throw e
                 }
             }
-            value = ReaderState.Ready(pages!!)
-            awaitDispose {}
+            ReaderState.Ready(pages!!)
         } catch (e: CancellationException) {
+            pages?.close()
             throw e
         } catch (e: Exception) {
-            value = ReaderState.Failed(e.message ?: e.toString())
+            ReaderState.Failed(e.message ?: e.toString())
+        }
+        try {
+            awaitDispose {}
         } finally {
             pages?.close()
         }
