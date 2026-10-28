@@ -16,12 +16,23 @@ class PaperAnalysis(
     val aspect: Float get() = crop.aspect
 
     /** Places a window of [scale] on page [index] of [source], near [anchor]. */
-    suspend fun window(source: PageSource, index: Int, scale: Float, anchor: Anchor): CropWindow {
-        val (width, height) = maskSize(source.pageSize(index), density)
+    suspend fun window(source: PageSource, index: Int, scale: Float, anchor: Anchor): CropWindow =
+        place(source, index, scale, anchor).window
+
+    /** Like [window], plus the ink that window cuts off the page. */
+    suspend fun place(source: PageSource, index: Int, scale: Float, anchor: Anchor): Placement {
+        val page = source.pageSize(index)
+        val (width, height) = maskSize(page, density)
         val mask = source.renderMask(index, width, height)
-        return withContext(Dispatchers.Default) { placeWindow(mask, aspect, scale, anchor) }
+        return withContext(Dispatchers.Default) {
+            val window = placeWindow(mask, aspect, scale, anchor)
+            Placement(window, cutInk(mask, page, aspect, window))
+        }
     }
 }
+
+/** Where a page's crop window sits, and the ink it [cut]s off. */
+data class Placement(val window: CropWindow, val cut: List<CutInk>)
 
 /** Most pages rendered to build the curve: enough to be representative, bounded in time and memory. */
 const val MAX_ANALYZED_PAGES = 60

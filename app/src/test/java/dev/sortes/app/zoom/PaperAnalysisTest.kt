@@ -71,6 +71,39 @@ class PaperAnalysisTest {
     }
 
     @Test
+    fun placementsReportTheInkTheirWindowCutsOff() {
+        // Text block with a running head and page number (cells are 10 points), zoomed in far
+        // enough that both are cut off on every page, whether sampled or not.
+        val page = textPage().rect(25, 2, 35, 4).rect(29, 76, 31, 78).mask()
+        val pages = FakePages(List(10) { page })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        val scale = 0.76f
+
+        for (index in listOf(0, 1)) {
+            val placement = runBlocking { paper.place(pages, index, scale, paper.crop.anchor(scale)) }
+
+            assertEquals(runBlocking { paper.window(pages, index, scale, paper.crop.anchor(scale)) }, placement.window)
+            assertTrue("$placement", placement.window.covers(60, 80, aspect, 10, 10, 50, 70))
+            val boxes = placement.cut.map { it.region }
+            assertEquals("$boxes", 2, boxes.size)
+            val (head, number) = boxes.sortedBy { it.top }
+            assertTrue("$head", head.top < 40f && head.top + head.height <= 100f)
+            assertTrue("$number", number.top >= 700f && number.top + number.height >= 770f)
+        }
+    }
+
+    @Test
+    fun placementsAtFullPageCutNothing() {
+        val pages = FakePages(List(3) { textPage().rect(29, 76, 31, 78).mask() })
+        val paper = runBlocking { analyzePaper(pages, aspect) }
+
+        val placement = runBlocking { paper.place(pages, 0, 1f, paper.crop.anchor(1f)) }
+
+        assertEquals(FullPage, placement.window)
+        assertEquals(emptyList<CutInk>(), placement.cut)
+    }
+
+    @Test
     fun unreadablePagesAreLeftOut() {
         val pages = FakePages(List(5) { textPage().mask() }, broken = setOf(1, 3))
 

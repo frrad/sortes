@@ -43,6 +43,7 @@ import dev.sortes.app.pdf.PdfSource
 import dev.sortes.app.zoom.Anchor
 import dev.sortes.app.zoom.FullPage
 import dev.sortes.app.zoom.PaperAnalysis
+import dev.sortes.app.zoom.Placement
 import dev.sortes.app.zoom.analyzePaper
 import dev.sortes.app.zoom.regionOn
 import kotlinx.coroutines.Dispatchers
@@ -172,18 +173,20 @@ internal fun PageReader(
 
         val currentAnchor = anchor
         // Keeps showing the previous page until the next one has rendered.
-        val page by produceState<Result<Bitmap>?>(
+        val page by produceState<Result<ShownPage>?>(
             null, pages, index, width, height, paper, scale, currentAnchor,
         ) {
             // The zoom is about to change: wait for it rather than render the page twice.
             if (paper != null && currentAnchor == null) return@produceState
             value = catching {
-                val window = if (paper != null && currentAnchor != null) {
-                    paper.window(pages, index, scale, currentAnchor)
+                val placement = if (paper != null && currentAnchor != null) {
+                    paper.place(pages, index, scale, currentAnchor)
                 } else {
-                    FullPage
+                    null
                 }
-                pages.renderRegion(index, window.regionOn(pages.pageSize(index), aspect), width, height)
+                val window = placement?.window ?: FullPage
+                val bitmap = pages.renderRegion(index, window.regionOn(pages.pageSize(index), aspect), width, height)
+                ShownPage(index, bitmap, placement)
             }
         }
 
@@ -207,13 +210,17 @@ internal fun PageReader(
             // whole crop stays in view while you judge it.
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    page?.onSuccess {
-                        // Rendered for the whole screen; above the panel it's only scaled down.
+                    page?.onSuccess { shown ->
+                        // Rendered for the whole screen; above the panel it's only scaled down,
+                        // until the whole-page preview has rendered over it.
                         Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = "Page ${index + 1}",
+                            bitmap = shown.bitmap.asImageBitmap(),
+                            contentDescription = "Page ${shown.index + 1}",
                             modifier = Modifier.fillMaxSize().testTag("page"),
                         )
+                        if (panelOpen && shown.placement != null) {
+                            CropPreview(pages, shown.index, aspect, shown.placement)
+                        }
                     }?.onFailure {
                         Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
                     }
@@ -248,13 +255,16 @@ internal fun PageReader(
 }
 
 /** Runs [block], turning failures other than cancellation into a failed [Result]. */
-private suspend fun <T> catching(block: suspend () -> T): Result<T> = try {
+internal suspend fun <T> catching(block: suspend () -> T): Result<T> = try {
     Result.success(block())
 } catch (e: CancellationException) {
     throw e
 } catch (e: Throwable) {
     Result.failure(e)
 }
+
+/** A page as the reader shows it: [placement] is null while there's no zoom to place. */
+private class ShownPage(val index: Int, val bitmap: Bitmap, val placement: Placement?)
 
 internal enum class TapZone { Back, Forward, ZoomControls }
 
