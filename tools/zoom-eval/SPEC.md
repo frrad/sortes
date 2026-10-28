@@ -9,15 +9,26 @@ harness `zoom-eval` (see `README.md`) compiles and calls that same code.
 Everything is measured on the analysis masks the reader already uses (`zoom/`): each page
 rendered at one density for the paper, so the largest page padded to the screen's aspect
 ratio is 256 cells on its longer side (`analysisDensity`, `maskSize`). A cell is ink if its
-luminance is more than 6 below the page's paper colour (`InkMask.fromArgb`; the paper colour
-is the most common luminance of at least 192, so about 249 on white paper). The page is
-centred in a frame with the screen's aspect ratio, in whole cells (`PaddedPage`). On a
-US-letter page at the Boox aspect (0.769), 1 cell ≈ 3.1 pt.
+luminance is below `InkMask.inkThreshold`, computed per page:
+- **Paper colour:** the median luminance of the page's light pixels (those ≥ 192).
+- **Grain:** ink only darkens, so the paper's grain shows in how far its light pixels stray
+  *above* that median. The spread is their 99th percentile minus the median.
+- **Threshold:** the paper colour minus max(6, spread + 2). On clean white paper that is 249.
 
-The threshold used to be a fixed 224. That dropped the faint anti-aliased edges of thin
-glyphs, so a window could clip a page number on screen while the analysis counted nothing
-cut. Example: the bottom row of Attention p3's "3" is luminance 226 at analysis resolution.
-Measuring relative to the paper colour keeps off-white scans from turning into solid ink.
+Consequences:
+- **Faint glyph edges count.** The old fixed threshold of 224 dropped them, so a window could
+  clip a page number on screen while the analysis counted nothing cut. Example: the bottom row
+  of Attention p3's "3" is luminance 226 at analysis resolution (`InkMaskTest`).
+- **Light shading on white paper is ink.** A code listing or table row at 240 is content, and
+  cutting it shows.
+- **Grain on an off-white scan is paper.** At 245 ± 8 the threshold comes out around 235, so
+  the auto zoom doesn't collapse to the whole page (`InkMaskTest`). The cost is that faint
+  shading lighter than the grain isn't seen there.
+- **A real scan works.** The corpus's Shannon 1948 (an image-only BSTJ scan) zooms to 1.18×,
+  against 1.20× at the old threshold.
+
+The page is centred in a frame with the screen's aspect ratio, in whole cells (`PaddedPage`).
+On a US-letter page at the Boox aspect (0.769), 1 cell ≈ 3.1 pt.
 
 A **window** is a screen-shaped rectangle on the padded frame, given as the reader's
 `CropWindow` (left, top and scale as fractions of the frame). The solver works in whole-cell
@@ -63,8 +74,12 @@ For a scale s, windows W₁…W_K and an assignment k(p) of pages to windows:
   triggered on Latent Diffusion: two windows 6–9 pt apart, with 15 switches, to win a few
   thousandths of centring.
 
-Blank pages cost nothing in any window. The assignment step's tie-break keeps the previous
-page's window, or the window from two pages back when δ₂ > 0.
+Blank pages cost nothing in any window, so ties in the assignment are common. They go:
+- with δ₂ > 0, to the window two pages back, continuing the pattern;
+- otherwise, to the previous page's window.
+
+Ties between window positions go to the one nearest the frame's centre, so an all-blank paper
+below scale 1 gets a centred window.
 
 ## Scale
 
@@ -81,14 +96,17 @@ papers.
 
 ## Solver
 
-At a fixed scale, positions are integer cells on the reference frame, which is the paper's
-most common page shape. Pages of other shapes use the same position as a fraction of their
-frame.
+At a fixed scale, positions are integer cells on a reference page: the paper's most common
+mask size (not padded-frame size, since pages of different sizes can pad to the same frame by
+different amounts). Other pages use the same `CropWindow` (`PaddedPage.positionOf`). Each page's
+crop also carries its own `CropWindow`, centred exactly on its own cells, which is what the
+reader renders.
 
 1. Precompute `cost[p][pos] = α·cut + β·off + ε·excess²` for every page and every position. Ink counts
    come from a summed-area table, and the kept-ink bounding box comes from four binary
    searches on it.
-2. **K = 1**: exact. Take the position minimising Σ_p cost[p][pos] over the full grid.
+2. **K = 1**: exact. Take the position minimising Σ_p cost[p][pos] over the full grid,
+   summed page row by page row into one array.
 3. **K = 2, 3**: seed with the best K−1 windows plus one more. Candidates for the extra window
    are each page's own optimum, plus, for K = 2, an odd/even split. Keep the 6 seeds whose
    immediate assignment is cheapest, then refine each one Lloyd-style:
@@ -101,13 +119,23 @@ frame.
 
 **Complexity.** Let P be pages, G grid positions per page (≈ (0.17·W)·(0.17·H) ≈ 33 × 43 ≈
 1,400 at scale 0.83; ≈ 4,000 at 0.7) and K ≤ 3.
-- Precompute: O(P·G·log 256).
-- Each Lloyd round: O(K·P·G) for updates and O(P·K²) for pair-Viterbi assignment.
+- Precompute: O(P·G·log 256), into one flat buffer reused across the scale search.
+- Each Lloyd round: O(P·G) for the window updates, and O(P·K³) for the pair-Viterbi
+  assignment (K² states, K predecessors each).
 - Per scale: a few tens of millions of operations.
 
-Measured on this host for a whole paper (rendering with mutool, all four columns and the
-contact sheet): 0.8–6 s. I haven't timed the solver on its own, and nothing has been profiled
-on the tablet. A reader version would reuse `CropAnalysis`'s summed-area tables.
+**Scale search.** The search starts at the per-page bound and gallops looser (1, 2, 4, …
+steps) until the model's crops are within budget. It then bisects back between the last miss
+and the first fit, treating the model's cut as rising with zoom. That is a handful of solves
+even when the bound is far off.
+
+Measured on this host (`summary.tsv`'s `millis`: the analysis plus the automatic solve, not
+rendering):
+- Attention (15 pages): about 100 ms;
+- Latent Diffusion (45 pages): about 0.3 s;
+- GPT-3 (75 pages, more than the reader's 60-page sample): about 0.45 s.
+
+The tablet is several times slower; the reader PR measures it there.
 
 ## Default weights (`CropModelWeights`)
 

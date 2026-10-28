@@ -69,7 +69,7 @@ class ContactSheet(
                 val t = r.crops.pages[p]
                 g.color = Color.BLACK
                 g.drawString(
-                    "W${t.window + 1} cut %.2f%% of page, off %.3f".format(t.pageCut * 100, t.offCentre),
+                    "W${t.windowIndex + 1} cut %.2f%% of page, off %.3f".format(t.pageCut * 100, t.offCentre),
                     tx, y0 + 16 + thumbH + 11,
                 )
             }
@@ -107,7 +107,7 @@ class ContactSheet(
         g.drawImage(pageImage(p, size, k), (padX * k).roundToInt(), (padY * k).roundToInt(), null)
 
         val t = r.crops.pages[p]
-        val window = r.crops.windows[t.window]
+        val window = t.window
         val region = window.regionOn(size, aspect)
         val rx = ((region.left + padX) * k)
         val ry = ((region.top + padY) * k)
@@ -139,7 +139,7 @@ class ContactSheet(
         g.fillRect(0, ry.toInt(), rx.toInt(), (ry + rh).toInt() - ry.toInt())
         g.fillRect((rx + rw).toInt(), ry.toInt(), thumbW, (ry + rh).toInt() - ry.toInt())
 
-        g.color = WINDOW_COLORS.getOrElse(t.window) { Color.GRAY }
+        g.color = WINDOW_COLORS.getOrElse(t.windowIndex) { Color.GRAY }
         g.stroke = BasicStroke(2f)
         g.drawRect(rx.roundToInt(), ry.roundToInt(), rw.roundToInt() - 1, rh.roundToInt() - 1)
         g.color = Color.DARK_GRAY

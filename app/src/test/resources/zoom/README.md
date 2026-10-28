@@ -1,7 +1,9 @@
 # Ink-mask fixtures
 
 Real pages as the zoom analysis sees them, rendered with `scripts/render-ink-mask.py`
-(`#` ink, `.` paper, one line per pixel row).
+(`#` ink, `.` paper, one line per pixel row), at the reader's paper-relative ink threshold
+(`InkMask.inkThreshold`). `attention-p3-foot-gray.txt` is greyscale (`--gray`), for tests of
+the threshold itself: rows 220-247 of page 3 of arXiv 1706.03762v7.
 
 | Fixture | Source |
 | --- | --- |
@@ -16,7 +18,7 @@ content that must be kept:
 - `line-numbers.txt`: `lineno` defaults, 1in margins.
 - `line-numbers-narrow-margin.txt`: `lineno` defaults, 0.75in margins.
 - `line-numbers-footnotesize.txt`, `line-numbers-small.txt`: larger numbers, 0.75in margins.
-  The `\small` ones ink 53% of their rows, so only the unbroken-run test keeps them.
+  The `\small` ones ink 64% of their rows, so only the unbroken-run test keeps them.
 - `margin-notes.txt`: `\marginpar` notes in a wide left margin.
 - `rotated-label.txt`: a tall rotated label in the left margin, clear of the text but 9% of
   the width in. The same label right at the page edge would be taken for a stamp.

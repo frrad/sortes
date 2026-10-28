@@ -158,7 +158,8 @@ class MarginStampTest {
 
     @Test
     fun removesTheArxivStampFromRealFirstPages() {
-        // Each of these has the stamp in columns 5-10, then a clear gap before the text.
+        // Each of these has the stamp in columns 5-10 (5-11 for Attention), then a clear gap before
+        // the text.
         assertStampRemovedLeft(maskFixture("attention-p1.txt"), stampEnd = 12)
         assertStampRemovedLeft(maskFixture("bert-p1.txt"), stampEnd = 12)
         // ResNet's text comes within 4 cells of the stamp.
@@ -177,7 +178,7 @@ class MarginStampTest {
     @Test
     fun keepsLargerLineNumbersInNarrowMargins() {
         // \small line numbers with 0.75in margins: right by the edge, thin, clear of the text,
-        // tall, and ink on 53% of their rows. Only the unbroken-run test tells them from a stamp.
+        // tall, and ink on 60-64% of their rows. Only the unbroken-run test tells them from a stamp.
         assertKeptLeft(maskFixture("line-numbers-small.txt"), NotAStamp.Broken)
         assertKeptLeft(maskFixture("line-numbers-footnotesize.txt"), NotAStamp.Broken)
         assertKeptLeft(maskFixture("line-numbers-narrow-margin.txt"), NotAStamp.Broken)

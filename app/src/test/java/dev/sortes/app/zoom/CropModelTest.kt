@@ -45,7 +45,7 @@ class CropModelTest {
         val sparse = page(rect(10, 30, 50, 60), pageNumber)
         val crops = solve(dense + sparse, 0.75f)
         assertEquals(1, crops.k)
-        assertTrue(crops.pages.all { it.window == 0 })
+        assertTrue(crops.pages.all { it.windowIndex == 0 })
         assertEquals(8L * 6, crops.cutCells)
     }
 
@@ -54,7 +54,7 @@ class CropModelTest {
         val crops = solve(List(8) { if (it % 2 == 0) left else right }, 0.75f)
         assertEquals(2, crops.k)
         assertEquals(0L, crops.cutCells)
-        assertArrayEquals(IntArray(8) { it % 2 }, crops.pages.map { it.window }.toIntArray())
+        assertArrayEquals(IntArray(8) { it % 2 }, crops.pages.map { it.windowIndex }.toIntArray())
         assertEquals(0, crops.breaks)
     }
 
@@ -99,13 +99,13 @@ class CropModelTest {
     @Test
     fun blankPagesKeepThePreviousWindowWithoutABreakPenalty() {
         val crops = solve(listOf(left, right, page(), left), 0.75f, CropModelWeights(delta2 = 0.0))
-        assertEquals(crops.pages[1].window, crops.pages[2].window)
+        assertEquals(crops.pages[1].windowIndex, crops.pages[2].windowIndex)
     }
 
     @Test
     fun blankPagesContinueAnAlternation() {
         val crops = solve(listOf(left, right, page(), right), 0.75f)
-        assertEquals(crops.pages[0].window, crops.pages[2].window)
+        assertEquals(crops.pages[0].windowIndex, crops.pages[2].windowIndex)
         assertEquals(0, crops.breaks)
     }
 
@@ -144,10 +144,10 @@ class CropModelTest {
         val crops = solve(List(6) { if (it % 2 == 0) left else right }, 0.75f)
         val model = CropModel(aspect)
         val ref = CropModel.referenceInk(listOf(left, right))
-        assertEquals(crops.pages[0].window, model.assign(left, crops, ref).window)
-        assertEquals(crops.pages[1].window, model.assign(right, crops, ref).window)
+        assertEquals(crops.pages[0].windowIndex, model.assign(left, crops, ref).windowIndex)
+        assertEquals(crops.pages[1].windowIndex, model.assign(right, crops, ref).windowIndex)
         // A blank page has no preference: it takes the one suggested.
-        assertEquals(1, model.assign(page(), crops, ref, preferred = 1).window)
+        assertEquals(1, model.assign(page(), crops, ref, preferred = 1).windowIndex)
     }
 
     @Test
@@ -176,12 +176,18 @@ class CropModelTest {
 
     // Property tests on random papers.
 
-    private fun randomPaper(random: Random): List<InkMask> = List(random.nextInt(2, 9)) {
-        val p = TestPage(60, 80)
+    /**
+     * Random pages of mixed sizes, so some are padded at the sides and some above and below, by
+     * odd and even numbers of cells, with a few random ink rectangles.
+     */
+    private fun randomPaper(random: Random, pages: Int = random.nextInt(2, 9)): List<InkMask> = List(pages) {
+        val w = random.nextInt(50, 71)
+        val h = random.nextInt(64, 91)
+        val p = TestPage(w, h)
         repeat(random.nextInt(0, 6)) {
-            val l = random.nextInt(0, 55)
-            val t = random.nextInt(0, 75)
-            p.rect(l, t, (l + random.nextInt(1, 30)).coerceAtMost(60), (t + random.nextInt(1, 30)).coerceAtMost(80))
+            val l = random.nextInt(0, w - 4)
+            val t = random.nextInt(0, h - 4)
+            p.rect(l, t, (l + random.nextInt(1, 30)).coerceAtMost(w), (t + random.nextInt(1, 30)).coerceAtMost(h))
         }
         p.mask()
     }
@@ -208,7 +214,7 @@ class CropModelTest {
             val masks = randomPaper(random)
             val crops = model.solve(masks, 0.7f)
             // Rescoring the solution's own windows gives the same total.
-            val rescored = model.score(masks, crops.pages.map { crops.windows[it.window] })
+            val rescored = model.score(masks, crops.pages.map { crops.windows[it.windowIndex] })
             assertEquals(crops.total, rescored.total, 1e-9)
             // No single window, wherever it sits, does better.
             repeat(10) {
@@ -216,5 +222,69 @@ class CropModelTest {
                 assertTrue(crops.total <= model.score(masks, List(masks.size) { w }).total + 1e-9)
             }
         }
+    }
+
+    @Test
+    fun theAssignmentStepIsOptimal() = runBlocking {
+        // Against brute force over every assignment, for each kind of penalty.
+        val random = Random(17)
+        for ((delta, delta2) in listOf(0.0 to 0.0, 0.03 to 0.0, 0.0 to 0.04, 0.03 to 0.04)) {
+            repeat(30) {
+                val masks = randomPaper(random, pages = random.nextInt(1, 8))
+                val solver = CropModel(aspect, CropModelWeights(delta = delta, delta2 = delta2)).solver(masks, 0.7f)
+                val k = random.nextInt(1, 4)
+                val windows = IntArray(k) { random.nextInt(solver.positions) }
+                val n = masks.size
+                var best = Double.MAX_VALUE
+                val assignment = IntArray(n)
+                fun search(p: Int) {
+                    if (p == n) {
+                        best = minOf(best, solver.pathCost(windows, assignment))
+                        return
+                    }
+                    for (j in 0 until k) {
+                        assignment[p] = j
+                        search(p + 1)
+                    }
+                }
+                search(0)
+                val chosen = solver.assign(windows)
+                assertEquals("δ=$delta δ₂=$delta2 n=$n k=$k", best, solver.pathCost(windows, chosen), 1e-9)
+            }
+        }
+    }
+
+    @Test
+    fun pagesOfOtherSizesRenderOnTheCellsTheModelCounted() = runBlocking {
+        // 57 x 80 and 58 x 80 both pad to 60 x 80 cells at 3:4, but by 3 and 2 cells: the shared
+        // window must land on each page's own cells.
+        val masks = listOf(
+            TestPage(57, 80).rect(8, 10, 49, 70).mask(),
+            TestPage(58, 80).rect(8, 10, 50, 70).mask(),
+            TestPage(57, 80).rect(8, 10, 49, 70).mask(),
+            TestPage(61, 80).rect(9, 10, 52, 70).mask(),
+        )
+        for (scale in listOf(0.6f, 0.75f, 0.85f)) {
+            val crops = CropModel(aspect).solve(masks, scale)
+            crops.pages.forEachIndexed { p, crop ->
+                val mask = masks[p]
+                val r = crop.window.regionOn(PageSize(mask.width.toFloat(), mask.height.toFloat()), aspect)
+                val c = crop.cells
+                val clampedX = crop.window.left == 0f || crop.window.left == 1f - scale
+                val clampedY = crop.window.top == 0f || crop.window.top == 1f - scale
+                assertEquals("page $p x at $scale", (c.left + c.right) / 2f, r.left + r.width / 2, if (clampedX) 0.5f else 0.02f)
+                assertEquals("page $p y at $scale", (c.top + c.bottom) / 2f, r.top + r.height / 2, if (clampedY) 0.5f else 0.02f)
+                // The shared window maps back to the same cells.
+                assertEquals(crop.cells, CropModel(aspect).score(listOf(mask), listOf(crops.windows[crop.windowIndex])).pages[0].cells)
+            }
+        }
+    }
+
+    @Test
+    fun aBlankPaperBelowFullPageIsCentred() = runBlocking {
+        val crops = CropModel(aspect).solve(listOf(page(), page()), 0.5f)
+        assertEquals(1, crops.k)
+        assertEquals(0.25f, crops.windows[0].left, 0.01f)
+        assertEquals(0.25f, crops.windows[0].top, 0.01f)
     }
 }

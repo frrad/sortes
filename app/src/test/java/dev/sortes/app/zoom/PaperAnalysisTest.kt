@@ -117,14 +117,14 @@ class PaperAnalysisTest {
         }
 
         assertEquals(second.left, first.left, 0.01f)
-        // The text block spans columns 33-158 of the 192-cell page (the stamp is at 6-10).
+        // The text block spans columns 33-157 of the 192-cell page (the stamp is at 5-11).
         assertTrue("$first", first.covers(192, 248, aspect, 33, 120, 158, 121))
     }
 
     @Test
     fun theArxivStampIsNotShownAsCutOff() {
-        // Zoomed in to the text block of Attention's page 1 (columns 33-158 of 192), the window
-        // leaves the stamp (columns 6-10, or 60-110 points) out, but it's ignored, not cut.
+        // Zoomed in to the text block of Attention's page 1 (columns 33-157 of 192), the window
+        // leaves the stamp (columns 5-11, or 50-120 points) out, but it's ignored, not cut.
         val pages = FakePages(listOf(maskFixture("attention-p1.txt")) + List(3) { maskFixture("attention-page2.txt") })
         val paper = runBlocking { analyzePaper(pages, aspect) }
         val scale = 0.7f

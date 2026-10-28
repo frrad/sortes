@@ -19,6 +19,39 @@ class InkMaskTest {
     }
 
     @Test
+    fun shadedBoxesOnWhitePaperAreInk() {
+        // A code listing on a 240-grey background: content, so kept like text.
+        val page = IntArray(100) { i -> if (i / 10 in 3..6 && i % 10 in 2..7) gray(240) else gray(255) }
+        val mask = InkMask.fromArgb(page, 10, 10)
+        assertEquals(24, mask.inkCount)
+        assertEquals(249, InkMask.inkThreshold(IntArray(100) { 255 }))
+    }
+
+    /** A grainy off-white scan: paper at 245 ± [noise], with a dark text block. */
+    private fun scan(noise: Int, random: kotlin.random.Random): IntArray = IntArray(60 * 80) { i ->
+        val x = i % 60
+        val y = i / 60
+        if (x in 10 until 50 && y in 10 until 70 && y % 3 != 0) gray(30) else gray(245 + random.nextInt(-noise, noise + 1))
+    }
+
+    @Test
+    fun grainOnAnOffWhiteScanIsPaper() {
+        val pixels = scan(8, kotlin.random.Random(3))
+        val mask = InkMask.fromArgb(pixels, 60, 80)
+        // Only the text block's inked rows: 40 x 40 cells.
+        assertEquals(40 * 40, mask.inkCount)
+        assertTrue(InkMask.inkThreshold(IntArray(pixels.size) { pixels[it] and 0xFF }) < 237)
+    }
+
+    @Test
+    fun aGrainyScanStillZoomsToItsText() = kotlinx.coroutines.runBlocking {
+        val random = kotlin.random.Random(5)
+        val masks = List(4) { InkMask.fromArgb(scan(8, random), 60, 80) }
+        val analysis = CropAnalysis.of(masks, 0.75f)
+        assertTrue("auto ${analysis.autoScale} ink ${masks.map { it.inkCount }} lost ${(0 until analysis.scales.size step 10).map { analysis.lostFraction(it) }}", analysis.autoScale < 0.85f)
+    }
+
+    @Test
     fun aPageWithNoLightPixelsMeasuresAgainstWhite() {
         val mask = InkMask.fromArgb(IntArray(16) { gray(100) }, 4, 4)
         assertEquals(16, mask.inkCount)

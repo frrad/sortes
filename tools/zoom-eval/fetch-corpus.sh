@@ -5,8 +5,13 @@ set -eu
 dir=${1:-$HOME/.cache/sortes-zoom-eval/pdf}
 mkdir -p "$dir"
 cd "$(dirname "$0")"
-grep -v '^#' corpus.tsv | while IFS="$(printf '\t')" read -r id file _; do
+grep -v '^#' corpus.tsv | while IFS="$(printf '\t')" read -r id file _ _ url; do
     [ -s "$dir/$file" ] && continue
+    if [ -n "${url:-}" ]; then
+        curl -sfL -o "$dir/$file" "$url"
+        echo "fetched $id"
+        continue
+    fi
     case $id in
         *-p*-*)
             # An excerpt of a long book: id is <arxiv id>-p<first>-<last>.

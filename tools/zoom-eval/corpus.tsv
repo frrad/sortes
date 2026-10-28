@@ -1,4 +1,4 @@
-# id	file (in the PDF cache dir)	category	title
+# id	file (in the PDF cache dir)	category	title	[url, if not arXiv]
 1706.03762	1706.03762.pdf	single-column	Attention Is All You Need
 1810.04805	1810.04805.pdf	two-column (A4)	BERT
 1512.03385	1512.03385.pdf	two-column	ResNet (Deep Residual Learning)
@@ -19,3 +19,5 @@
 1406.2661	1406.2661.pdf	short	GAN
 2106.10165-p20-49	2106.10165-p20-49.pdf	two-sided book (A4), pp. 20-49	Principles of Deep Learning Theory
 2104.13478-p20-49	2104.13478-p20-49.pdf	two-sided book, margin notes, pp. 20-49	Geometric Deep Learning
+2005.14165	2005.14165.pdf	single-column, long (75 pp, sampled by the reader)	GPT-3 (Language Models are Few-Shot Learners)
+shannon1948	shannon1948.pdf	scanned (image-only, 1948 BSTJ)	Shannon, A Mathematical Theory of Communication	https://archive.org/download/bstj27-3-379/bstj27-3-379.pdf
