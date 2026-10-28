@@ -25,8 +25,8 @@ class PaperAnalysis(
         val (width, height) = maskSize(page, density)
         val mask = source.renderMask(index, width, height)
         return withContext(Dispatchers.Default) {
-            val window = placeWindow(mask, aspect, scale, anchor)
-            Placement(window, cutInk(mask, page, aspect, window))
+            val placed = placeWindowCells(mask, aspect, scale, anchor)
+            Placement(placed.window, cutInk(mask, page, placed.cells))
         }
     }
 }

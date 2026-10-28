@@ -186,7 +186,7 @@ internal fun PageReader(
                 }
                 val window = placement?.window ?: FullPage
                 val bitmap = pages.renderRegion(index, window.regionOn(pages.pageSize(index), aspect), width, height)
-                ShownPage(index, bitmap, placement)
+                ShownPage(index, bitmap, aspect, placement)
             }
         }
 
@@ -218,8 +218,10 @@ internal fun PageReader(
                             contentDescription = "Page ${shown.index + 1}",
                             modifier = Modifier.fillMaxSize().testTag("page"),
                         )
-                        if (panelOpen && shown.placement != null) {
-                            CropPreview(pages, shown.index, aspect, shown.placement)
+                        // Drawn for the screen shape it was placed for, and only while that
+                        // shape's analysis is current.
+                        if (panelOpen && paper != null && shown.placement != null) {
+                            CropPreview(pages, shown.index, shown.aspect, shown.placement)
                         }
                     }?.onFailure {
                         Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
@@ -263,8 +265,11 @@ internal suspend fun <T> catching(block: suspend () -> T): Result<T> = try {
     Result.failure(e)
 }
 
-/** A page as the reader shows it: [placement] is null while there's no zoom to place. */
-private class ShownPage(val index: Int, val bitmap: Bitmap, val placement: Placement?)
+/**
+ * A page as the reader shows it, rendered for a screen of [aspect]: [placement] is null while
+ * there's no zoom to place.
+ */
+private class ShownPage(val index: Int, val bitmap: Bitmap, val aspect: Float, val placement: Placement?)
 
 internal enum class TapZone { Back, Forward, ZoomControls }
 

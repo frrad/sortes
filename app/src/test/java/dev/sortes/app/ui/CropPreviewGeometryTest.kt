@@ -7,6 +7,7 @@ import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.Region
 import dev.sortes.app.zoom.regionOn
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CropPreviewGeometryTest {
@@ -67,5 +68,37 @@ class CropPreviewGeometryTest {
 
         // The page is centred in 100 points of padding on each side.
         assertEquals(Rect(390f / 8, 760f / 8, 410f / 8, 780f / 8), rect)
+    }
+
+    // A crop from (100, 100) to (300, 400) with a 6 px frame outside it.
+    private val crop = Rect(100f, 100f, 300f, 400f)
+    private val frame = crop.inflate(6f)
+
+    @Test
+    fun boxesAwayFromTheCropArePadded() {
+        val headline = Rect(150f, 20f, 250f, 40f)
+
+        assertEquals(Rect(147f, 17f, 253f, 43f), cutBox(headline, crop, frame, padding = 3f, reach = 10f))
+    }
+
+    @Test
+    fun slicesUnderTheFrameStickOutPastIt() {
+        // The bottom of a page number, 2 px below the crop: it hides under the frame.
+        val sliver = Rect(190f, 400f, 210f, 402f)
+
+        val box = cutBox(sliver, crop, frame, padding = 3f, reach = 10f)
+
+        assertEquals(Rect(187f, 397f, 213f, 416f), box)
+        assertTrue(box.bottom > frame.bottom)
+    }
+
+    @Test
+    fun boxesReachPastTheFrameOnEverySideTheyAreCut() {
+        // Ink straddling the bottom-right corner.
+        val corner = Rect(290f, 390f, 305f, 404f)
+
+        val box = cutBox(corner, crop, frame, padding = 3f, reach = 10f)
+
+        assertEquals(Rect(287f, 387f, 316f, 416f), box)
     }
 }

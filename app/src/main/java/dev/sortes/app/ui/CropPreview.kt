@@ -1,6 +1,7 @@
 package dev.sortes.app.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -11,15 +12,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -48,13 +51,13 @@ internal fun CropPreview(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // A margin for the outlines, which are drawn outside what they mark.
         val margin = with(LocalDensity.current) { PREVIEW_MARGIN.roundToPx() }
         val (width, height) = fitAspect(constraints.maxWidth - 2 * margin, constraints.maxHeight - 2 * margin, aspect)
         if (width <= 0 || height <= 0) return@BoxWithConstraints
-        val preview by produceState<Result<Rendered>?>(null, pages, index, aspect, width, height) {
-            value = null // Never show another page's preview with this one's frame.
-            value = catching {
+        // Kept while a new size renders, so a panel that changes height doesn't blank the page.
+        var preview by remember(pages, index, aspect) { mutableStateOf<Result<Rendered>?>(null) }
+        LaunchedEffect(pages, index, aspect, width, height) {
+            preview = catching {
                 val page = pages.pageSize(index)
                 val shown = FullPage.regionOn(page, aspect)
                 Rendered(pages.renderRegion(index, shown, width, height), page, shown)
@@ -63,6 +66,8 @@ internal fun CropPreview(
         preview?.onSuccess { (bitmap, page, shown) ->
             val ink = LocalContentColor.current
             val density = LocalDensity.current
+            val crop = placement.window.regionOn(page, aspect).toPixels(shown, width, height)
+            val cuts = placement.cut.map { it.region.toPixels(shown, width, height) }
             // Covers whatever was shown here before.
             Box(Modifier.fillMaxSize().background(ReaderPaper), contentAlignment = Alignment.Center) {
                 Box(
@@ -73,25 +78,32 @@ internal fun CropPreview(
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Page ${index + 1}, whole",
+                        // Scaled until a render at a new size replaces it.
                         modifier = Modifier.fillMaxSize(),
                     )
-                    // Outlines go outside their boxes, so they never cover the ink they mark.
-                    Marker(placement.window.regionOn(page, aspect).toPixels(shown, width, height), "cropFrame") {
-                        val stroke = FRAME_STROKE.toPx()
-                        val r = Rect(Offset.Zero, size).inflate(stroke / 2)
-                        drawRect(ink, r.topLeft, r.size, style = Stroke(stroke))
-                    }
-                    for (cut in placement.cut) {
-                        Marker(cut.region.toPixels(shown, width, height), "cutInk") {
-                            val stroke = CUT_STROKE.toPx()
-                            val r = Rect(Offset.Zero, size).inflate(CUT_PADDING.toPx() + stroke / 2)
-                            val dash = CUT_DASH.toPx()
-                            drawRect(
-                                ink, r.topLeft, r.size,
-                                style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash))),
-                            )
+                    Canvas(Modifier.fillMaxSize()) {
+                        val frameStroke = FRAME_STROKE.toPx()
+                        // The frame is drawn just outside the crop, so it never covers kept ink.
+                        val frame = crop.inflate(frameStroke)
+                        val line = crop.inflate(frameStroke / 2)
+                        drawRect(ink, line.topLeft, line.size, style = Stroke(frameStroke))
+                        val cutStroke = CUT_STROKE.toPx()
+                        val dash = CUT_DASH.toPx()
+                        // Boxes are cut away where the frame is, so they never cover kept ink either.
+                        clipRect(frame.left, frame.top, frame.right, frame.bottom, ClipOp.Difference) {
+                            for (cut in cuts) {
+                                val box = cutBox(cut, crop, frame, CUT_PADDING.toPx(), CUT_REACH.toPx())
+                                    .deflate(cutStroke / 2)
+                                drawRect(
+                                    ink, box.topLeft, box.size,
+                                    style = Stroke(cutStroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash))),
+                                )
+                            }
                         }
                     }
+                    // Where the frame and boxes mark, for tests and accessibility tools.
+                    Marker(crop, "cropFrame")
+                    for (cut in cuts) Marker(cut, "cutInk")
                 }
             }
         }?.onFailure {
@@ -105,16 +117,31 @@ internal fun CropPreview(
 
 private data class Rendered(val bitmap: Bitmap, val page: PageSize, val shown: Region)
 
-/** An invisible box laid out over [rect] (in pixels of its parent) that draws [draw] around itself. */
+/** An invisible box laid out over [rect], in pixels of its parent. */
 @Composable
-private fun Marker(rect: Rect, tag: String, draw: DrawScope.() -> Unit) {
+private fun Marker(rect: Rect, tag: String) {
     val density = LocalDensity.current
     Box(
         Modifier
             .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
             .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
-            .drawBehind(draw)
             .testTag(tag),
+    )
+}
+
+/**
+ * The outline for cut-off ink at [cut], beside a [crop] whose frame reaches out to [frame]: [cut]
+ * with [padding] around it, and on each side where the ink is past the crop, reaching at least
+ * [reach] past the frame. Ink cut off by a sliver hides under the frame, so its box must stick
+ * out from the frame to be seen.
+ */
+internal fun cutBox(cut: Rect, crop: Rect, frame: Rect, padding: Float, reach: Float): Rect {
+    val box = cut.inflate(padding)
+    return Rect(
+        left = if (cut.left < crop.left) minOf(box.left, frame.left - reach) else box.left,
+        top = if (cut.top < crop.top) minOf(box.top, frame.top - reach) else box.top,
+        right = if (cut.right > crop.right) maxOf(box.right, frame.right + reach) else box.right,
+        bottom = if (cut.bottom > crop.bottom) maxOf(box.bottom, frame.bottom + reach) else box.bottom,
     )
 }
 
@@ -138,9 +165,13 @@ internal fun Region.toPixels(shown: Region, width: Int, height: Int): Rect {
     )
 }
 
-private val PREVIEW_MARGIN = 8.dp
+/** Room around the page for the frame and boxes, which are drawn outside what they mark. */
+private val PREVIEW_MARGIN = 12.dp
 private val FRAME_STROKE = 3.dp
 private val CUT_STROKE = 1.5.dp
 private val CUT_DASH = 4.dp
 /** Room between cut-off ink and the dashed box around it. */
 private val CUT_PADDING = 2.dp
+
+/** How far a box sticks out past the frame, at least, so a sliver hidden under the frame shows. */
+private val CUT_REACH = 5.dp

@@ -1,37 +1,28 @@
 package dev.sortes.app.zoom
 
-import kotlin.math.roundToInt
-
 /** A box around ink that a crop window leaves out: [region] in page points, [cells] of ink inside. */
 data class CutInk(val region: Region, val cells: Int)
 
 /**
- * The ink on a page of [page] size, seen through its analysis [mask], that [window] (on the page
- * padded to [aspect]) leaves out, grouped into boxes. Cut cells with at most [gap] blank cells
+ * The ink on a page of [page] size, seen through its analysis [mask], that a window covering
+ * [cells] of the mask leaves out, grouped into boxes. Cut cells with at most [gap] blank cells
  * between them share a box, so a cut-off running head is one box rather than one per letter.
  *
  * Boxes cover only the cut part of the ink: a line straddling the window's edge gets a box from
- * the edge outwards. Cells count as cut the same way the analysis counts lost ink, so the cells of
- * all boxes add up to the ink [window] loses.
+ * the edge outwards. Given the cells from [placeWindowCells], the cells of all boxes add up to the
+ * ink the analysis counts as lost.
  */
 fun cutInk(
     mask: InkMask,
     page: PageSize,
-    aspect: Float,
-    window: CropWindow,
+    cells: CellRect,
     gap: Int = CUT_INK_GAP,
 ): List<CutInk> {
     require(gap >= 0) { "gap must not be negative: $gap" }
     val w = mask.width
     val h = mask.height
-    // The window in mask cells. It is placed in whole cells and then sized exactly, which moves
-    // each edge by less than half a cell, so rounding recovers the cells it covers.
-    val r = window.regionOn(PageSize(w.toFloat(), h.toFloat()), aspect)
-    val left = r.left.roundToInt()
-    val top = r.top.roundToInt()
-    val right = (r.left + r.width).roundToInt()
-    val bottom = (r.top + r.height).roundToInt()
-    fun cut(x: Int, y: Int) = mask[x, y] && (x < left || y < top || x >= right || y >= bottom)
+    fun cut(x: Int, y: Int) =
+        mask[x, y] && (x < cells.left || y < cells.top || x >= cells.right || y >= cells.bottom)
 
     val seen = BooleanArray(w * h)
     val boxes = mutableListOf<CutInk>()

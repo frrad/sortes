@@ -34,6 +34,10 @@ class FakePages(
     @Volatile
     var maskGate: CompletableDeferred<Unit>? = null
 
+    /** While set, rendering pages waits for it to complete. */
+    @Volatile
+    var renderGate: CompletableDeferred<Unit>? = null
+
     override val pageCount: Int get() = masks.size
 
     override suspend fun pageSize(index: Int): PageSize {
@@ -53,6 +57,7 @@ class FakePages(
     }
 
     override suspend fun renderRegion(index: Int, region: Region, width: Int, height: Int): Bitmap {
+        renderGate?.await()
         if (index in broken) throw IOException("Can't render page $index")
         rendered += index to region
         renders += Render(index, region, width, height)

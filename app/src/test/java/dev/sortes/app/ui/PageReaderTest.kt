@@ -277,8 +277,8 @@ class PageReaderTest {
     @Test
     fun openPanelShowsTheWholePageWithTheCropFramed() {
         showZoomed()
-        val reading = readerRenders()
-        val crop = reading.last().second
+        val before = pages.renders.toList()
+        val crop = before.last().region
 
         openPanel()
         awaitPreview()
@@ -287,13 +287,12 @@ class PageReaderTest {
         val preview = composeRule.onNodeWithTag("cropPreview").fetchSemanticsNode().boundsInWindow
         val panel = composeRule.onNodeWithTag("zoomPanel").fetchSemanticsNode().boundsInWindow
         assertTrue("preview $preview overlaps panel $panel", preview.bottom <= panel.top)
-        // The page is rendered whole for the preview, at the preview's size...
-        val whole = pages.renders.last()
+        // Opening renders one thing: the whole page, at the preview's size. The crop being read
+        // isn't changed or re-rendered, and the analysis isn't redone.
+        val whole = pages.renders.toList().drop(before.size).single()
         assertEquals(0, whole.index)
         assertTrue("${whole.region}", whole.region.contains(0f, 0f, 600f, 800f))
         assertEquals(preview.width.roundToInt() to preview.height.roundToInt(), whole.width to whole.height)
-        // ...the crop being read isn't changed or re-rendered, and the analysis isn't redone...
-        assertEquals(reading, readerRenders())
         // ...and the frame is that crop, mapped onto the whole page.
         assertRect(crop.within(whole.region, preview), "cropFrame")
         // The page number below the text is cut off, and boxed (to the analysis' resolution).
@@ -309,7 +308,57 @@ class PageReaderTest {
         composeRule.onNodeWithTag("cropPreview").assertDoesNotExist()
         val screen = composeRule.onRoot().fetchSemanticsNode().boundsInWindow
         assertEquals(screen, composeRule.onNodeWithTag("page").fetchSemanticsNode().boundsInWindow)
-        assertEquals(reading, readerRenders())
+        // Closing renders nothing: the crop is still the one rendered before opening.
+        assertEquals(before + whole, pages.renders.toList())
+    }
+
+    // Regression: the preview blanked and re-rendered whenever the panel changed height.
+    @Test
+    fun previewStaysUpWhileItRerendersForANewSize() {
+        showZoomed()
+        openPanel()
+        awaitPreview()
+        val before = composeRule.onNodeWithTag("cropPreview").fetchSemanticsNode().boundsInWindow
+        val gate = CompletableDeferred<Unit>()
+        pages.renderGate = gate
+
+        // A taller gesture strip makes the panel taller and the space above it shorter.
+        setBottomGestureStrip(60)
+        idle()
+
+        // The old render stays, scaled to the new size, while the new one renders...
+        val scaled = composeRule.onNodeWithTag("cropPreview").fetchSemanticsNode().boundsInWindow
+        assertTrue("$scaled vs $before", scaled.height < before.height)
+        composeRule.onNodeWithContentDescription("Page 1, whole").assertExists()
+
+        gate.complete(Unit)
+        idle()
+
+        // ...and is then replaced by one at that size.
+        val last = pages.renders.last()
+        assertEquals(scaled.width.roundToInt() to scaled.height.roundToInt(), last.width to last.height)
+    }
+
+    @Test
+    fun previewWaitsForTheAnalysisOfANewScreenShape() {
+        showZoomed()
+        openPanel()
+        awaitPreview()
+        val gate = CompletableDeferred<Unit>()
+        pages.maskGate = gate
+
+        readerSize = 360.dp to 400.dp
+        idle()
+
+        composeRule.onNodeWithTag("cropPreview").assertDoesNotExist()
+
+        gate.complete(Unit)
+        awaitRendered { (_, region) -> abs(region.width / region.height - 0.9f) < 0.01f && region.isZoomed() }
+        awaitPreview()
+        val preview = composeRule.onNodeWithTag("cropPreview").fetchSemanticsNode().boundsInWindow
+        val whole = pages.renders.last()
+        assertEquals(0.9f, preview.width / preview.height, 0.02f)
+        assertRect(lastRendered().second.within(whole.region, preview), "cropFrame")
     }
 
     @Test
@@ -340,6 +389,19 @@ class PageReaderTest {
         assertEquals(1, pages.renders.last().index)
         composeRule.onNodeWithContentDescription("Page 2, whole").assertExists()
         composeRule.onNodeWithText("2 / 3").assertExists()
+    }
+
+    /** Gives the window a bottom system-gesture strip [height] pixels tall, as the Boox has. */
+    private fun setBottomGestureStrip(height: Int) {
+        val view = composeRule.activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        composeRule.runOnUiThread {
+            ViewCompat.dispatchApplyWindowInsets(
+                view,
+                WindowInsetsCompat.Builder()
+                    .setInsets(WindowInsetsCompat.Type.mandatorySystemGestures(), Insets.of(0, 0, 0, height))
+                    .build(),
+            )
+        }
     }
 
     /** Waits for the open zoom panel's whole-page preview of the page being read. */
@@ -425,15 +487,7 @@ class PageReaderTest {
         showZoomed()
         openPanel()
         val strip = 60
-        val view = composeRule.activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
-        composeRule.runOnUiThread {
-            ViewCompat.dispatchApplyWindowInsets(
-                view,
-                WindowInsetsCompat.Builder()
-                    .setInsets(WindowInsetsCompat.Type.mandatorySystemGestures(), Insets.of(0, 0, 0, strip))
-                    .build(),
-            )
-        }
+        setBottomGestureStrip(strip)
         idle()
 
         val screenBottom = composeRule.onRoot().fetchSemanticsNode().boundsInWindow.bottom
