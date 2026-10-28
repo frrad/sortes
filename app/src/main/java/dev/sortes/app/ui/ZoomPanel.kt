@@ -7,10 +7,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -75,6 +80,10 @@ fun ZoomPanel(
             .border(1.dp, ink)
             // Swallow taps so they don't turn the page underneath.
             .pointerInput(Unit) { detectTapGestures { } }
+            // Keep the controls above the bottom system-gesture strip: there the system
+            // (SystemUI's swipe-up monitor on Boox) takes over finger drags, so the slider
+            // would take taps but not drags.
+            .windowInsetsPadding(WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom))
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .testTag("zoomPanel"),
     ) {
