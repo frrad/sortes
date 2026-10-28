@@ -1,6 +1,11 @@
 package dev.sortes.app.zoom
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,10 +14,22 @@ import kotlin.random.Random
 class CropAnalysisTest {
 
     private val aspect = 0.75f
+    private lateinit var masks: List<InkMask>
+
+    private fun analyze(masks: List<InkMask>, aspect: Float = this.aspect): CropAnalysis {
+        this.masks = masks
+        return runBlocking { CropAnalysis.of(masks, aspect) }
+    }
+
+    /** Places windows on every page of the last [analyze], as the reader does page by page. */
+    private fun CropAnalysis.placements(scale: Float): List<CropWindow> = runBlocking {
+        val anchor = anchor(scale)
+        masks.map { placeWindow(it, aspect, scale, anchor) }
+    }
 
     @Test
     fun nothingIsLostUntilTheWindowIsSmallerThanTheText() {
-        val a = CropAnalysis(listOf(textPage().mask()), aspect)
+        val a = analyze(listOf(textPage().mask()))
 
         // The 40x60 block fits a 3:4 window down to scale 60/80 = 0.75.
         for (i in a.scales.indices) {
@@ -34,7 +51,7 @@ class CropAnalysisTest {
             }
             page.mask()
         }
-        val a = CropAnalysis(masks, aspect)
+        val a = analyze(masks)
 
         for (i in 1 until a.scales.size) {
             assertTrue("scale ${a.scales[i]}", a.lostInk[i] >= a.lostInk[i - 1])
@@ -45,7 +62,7 @@ class CropAnalysisTest {
 
     @Test
     fun lostFractionIsRelativeToAllInkInThePaper() {
-        val a = CropAnalysis(listOf(textPage().mask(), textPage().mask()), aspect)
+        val a = analyze(listOf(textPage().mask(), textPage().mask()))
 
         assertEquals(2L * 40 * 60, a.totalInk)
         val i = a.scales.indices.first { a.lostInk[it] > 0 }
@@ -55,7 +72,7 @@ class CropAnalysisTest {
 
     @Test
     fun autoZoomFitsTheTextBlockSnugly() {
-        val a = CropAnalysis(List(3) { textPage().mask() }, aspect)
+        val a = analyze(List(3) { textPage().mask() })
 
         assertTrue("auto ${a.autoScale}", a.autoScale in 0.75f..0.80f)
         for (window in a.placements(a.autoScale)) {
@@ -68,7 +85,7 @@ class CropAnalysisTest {
         // A page number well below the text: keeping it would need scale (78 - 10) / 80 = 0.85.
         val pages = List(10) { textPage().rect(29, 76, 31, 78).mask() }
 
-        val a = CropAnalysis(pages, aspect)
+        val a = analyze(pages)
 
         assertTrue("auto ${a.autoScale}", a.autoScale < 0.8f)
         for (window in a.placements(a.autoScale)) {
@@ -84,14 +101,14 @@ class CropAnalysisTest {
             TestPage(60, 80).rect(4, 3, 56, 77).mask(),
         )
 
-        val a = CropAnalysis(pages, aspect)
+        val a = analyze(pages)
 
         assertTrue("auto ${a.autoScale}", a.autoScale >= 76f / 80)
     }
 
     @Test
     fun blankPaperIsNotZoomed() {
-        val a = CropAnalysis(List(3) { TestPage(60, 80).mask() }, aspect)
+        val a = analyze(List(3) { TestPage(60, 80).mask() })
 
         assertEquals(0L, a.totalInk)
         assertEquals(0f, a.lostFraction(a.scales.lastIndex))
@@ -106,7 +123,7 @@ class CropAnalysisTest {
             TestPage(60, 80).rect(57, 77, 60, 80).mask(),
             TestPage(80, 60).rect(0, 0, 80, 60).mask(),
         )
-        val a = CropAnalysis(pages, aspect)
+        val a = analyze(pages)
 
         for (s in floatArrayOf(1f, 0.9f, 0.5f, 0.3f)) {
             for (w in a.placements(s)) {
@@ -120,7 +137,7 @@ class CropAnalysisTest {
     @Test
     fun windowsFollowTheInkWhenTheyMustCrop() {
         // Ink only in the bottom-right corner: a small window should move there.
-        val a = CropAnalysis(listOf(TestPage(60, 80).rect(40, 60, 60, 80).mask()), aspect)
+        val a = analyze(listOf(TestPage(60, 80).rect(40, 60, 60, 80).mask()))
 
         val window = a.placements(0.3f).single()
 
@@ -132,7 +149,7 @@ class CropAnalysisTest {
     fun shortPagesLineUpWithFullOnes() {
         // The last page of a paper: text fills only the top third of the block.
         val pages = List(4) { textPage().mask() } + TestPage(60, 80).rect(10, 10, 50, 30).mask()
-        val a = CropAnalysis(pages, aspect)
+        val a = analyze(pages)
 
         val windows = a.placements(a.autoScale)
 
@@ -146,7 +163,7 @@ class CropAnalysisTest {
     @Test
     fun blankPagesLineUpWithTheRest() {
         val pages = listOf(textPage().mask(), TestPage(60, 80).mask(), textPage().mask())
-        val a = CropAnalysis(pages, aspect)
+        val a = analyze(pages)
 
         val (first, blank, _) = a.placements(a.autoScale)
 
@@ -158,7 +175,7 @@ class CropAnalysisTest {
     fun landscapePagesArePaddedAboveAndBelow() {
         // An 80x60 page on a 3:4 screen pads to 80 x 106.7, with the page in the middle.
         val page = TestPage(80, 60).rect(20, 10, 60, 50)
-        val a = CropAnalysis(listOf(page.mask()), aspect)
+        val a = analyze(listOf(page.mask()))
 
         val window = a.placements(a.autoScale).single()
 
@@ -171,7 +188,7 @@ class CropAnalysisTest {
     fun pagesNarrowerThanTheScreenArePaddedAtTheSides() {
         // 40x80 is narrower than 3:4, so it pads to 60x80; the text block is the full height.
         val page = TestPage(40, 80).rect(0, 4, 40, 76)
-        val a = CropAnalysis(listOf(page.mask()), aspect)
+        val a = analyze(listOf(page.mask()))
 
         assertTrue("auto ${a.autoScale}", a.autoScale in 0.9f..0.95f)
         assertTrue(a.placements(a.autoScale).single().covers(40, 80, aspect, 0, 4, 40, 76))
@@ -179,7 +196,7 @@ class CropAnalysisTest {
 
     @Test
     fun nearestIndexSnapsToTheClosestScale() {
-        val a = CropAnalysis(listOf(textPage().mask()), aspect)
+        val a = analyze(listOf(textPage().mask()))
 
         assertEquals(0, a.nearestIndex(1.2f))
         assertEquals(a.scales.lastIndex, a.nearestIndex(0f))
@@ -187,10 +204,36 @@ class CropAnalysisTest {
     }
 
     @Test
+    fun blankPagesSitAtTheAnchor() {
+        val blank = TestPage(60, 80).mask()
+
+        val window = placeWindow(blank, aspect, 0.5f, Anchor(u = 0f, v = 1f))
+
+        assertEquals(CropWindow(left = 0f, top = 0.5f, scale = 0.5f), window)
+    }
+
+    @Test
+    fun analysisCanBeCancelledBetweenPages() {
+        var finished = false
+        runBlocking {
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                cancel()
+                // Nothing in here suspends, so only an explicit check can stop it.
+                CropAnalysis.of(List(5) { textPage().mask() }, aspect)
+                finished = true
+            }
+        }
+        assertFalse(finished)
+    }
+
+    @Test
     fun rejectsEmptyInput() {
-        assertThrows(IllegalArgumentException::class.java) { CropAnalysis(emptyList(), aspect) }
+        assertThrows(IllegalArgumentException::class.java) { analyze(emptyList()) }
         assertThrows(IllegalArgumentException::class.java) {
-            CropAnalysis(listOf(textPage().mask()), 0f)
+            analyze(listOf(textPage().mask()), 0f)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            analyze(listOf(textPage().mask()), Float.NaN)
         }
     }
 }

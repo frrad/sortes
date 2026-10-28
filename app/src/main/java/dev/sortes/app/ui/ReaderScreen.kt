@@ -38,8 +38,9 @@ import dev.sortes.app.data.ZoomStore
 import dev.sortes.app.pdf.PageSource
 import dev.sortes.app.pdf.PdfPages
 import dev.sortes.app.pdf.PdfSource
-import dev.sortes.app.zoom.CropAnalysis
+import dev.sortes.app.zoom.Anchor
 import dev.sortes.app.zoom.FullPage
+import dev.sortes.app.zoom.PaperAnalysis
 import dev.sortes.app.zoom.analyzePaper
 import dev.sortes.app.zoom.regionOn
 import kotlinx.coroutines.Dispatchers
@@ -134,7 +135,7 @@ private suspend fun load(source: PdfSource, paper: Paper): ReaderState {
 
 /**
  * One page at a time, zoomed to the paper's crop: tap the left half to go back, the right half
- * to go forward, and the bottom middle (where the page counter is) for zoom controls.
+ * to go forward, and the bottom middle for zoom controls and the page number.
  */
 @SuppressLint("ProduceStateDoesNotAssignValue") // Same false positive as above.
 @Composable
@@ -147,47 +148,57 @@ internal fun PageReader(
     var index by rememberSaveable { mutableIntStateOf(0) }
     var panelOpen by rememberSaveable { mutableStateOf(false) }
 
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(pages) {
-                detectTapGestures { offset ->
-                    when (tapZone(offset.x, offset.y, size.width, size.height)) {
-                        TapZone.Back -> index = (index - 1).coerceAtLeast(0)
-                        TapZone.Forward -> index = (index + 1).coerceAtMost(pages.pageCount - 1)
-                        TapZone.ZoomControls -> panelOpen = !panelOpen
-                    }
-                }
-            },
-    ) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val width = constraints.maxWidth
         val height = constraints.maxHeight
+        // Nothing to render or analyze for until there's a real size to fill.
+        if (width <= 0 || height <= 0) return@BoxWithConstraints
         val aspect = width.toFloat() / height
-        val analysis by produceState<Result<CropAnalysis>?>(null, pages, aspect) {
-            value = try {
-                Result.success(analyzePaper(pages, aspect))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                Result.failure(e)
+
+        // Pages render whole until this finishes, so long papers are readable straight away.
+        val analysis by produceState<Result<PaperAnalysis>?>(null, pages, aspect) {
+            value = null // Don't keep using an analysis for a different screen shape.
+            value = catching { analyzePaper(pages, aspect) }
+        }
+        val paper = analysis?.getOrNull()?.takeIf { it.aspect == aspect }
+        val crop = paper?.crop
+        val scale = savedScale ?: crop?.autoScale ?: 1f
+        val anchor by produceState<Anchor?>(null, crop, scale) {
+            value = null
+            value = crop?.let { withContext(Dispatchers.Default) { it.anchor(scale) } }
+        }
+
+        val currentAnchor = anchor
+        // Keeps showing the previous page until the next one has rendered.
+        val page by produceState<Result<Bitmap>?>(
+            null, pages, index, width, height, paper, scale, currentAnchor,
+        ) {
+            // The zoom is about to change: wait for it rather than render the page twice.
+            if (paper != null && currentAnchor == null) return@produceState
+            value = catching {
+                val window = if (paper != null && currentAnchor != null) {
+                    paper.window(pages, index, scale, currentAnchor)
+                } else {
+                    FullPage
+                }
+                pages.renderRegion(index, window.regionOn(pages.pageSize(index), aspect), width, height)
             }
         }
-        val crop = analysis?.getOrNull()
-        val scale = savedScale ?: crop?.autoScale ?: 1f
-        val windows = remember(crop, scale) { crop?.placements(scale) }
 
-        if (analysis != null) {
-            val region = (windows?.get(index) ?: FullPage).regionOn(pages.pageSize(index), aspect)
-            // Keeps showing the previous page until the next one has rendered.
-            val page by produceState<Result<Bitmap>?>(null, pages, index, width, height, region) {
-                value = try {
-                    Result.success(pages.renderRegion(index, region, width, height))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    Result.failure(e)
-                }
-            }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(pages) {
+                    detectTapGestures { offset ->
+                        when (tapZone(offset.x, offset.y, size.width, size.height)) {
+                            TapZone.Back -> index = (index - 1).coerceAtLeast(0)
+                            TapZone.Forward -> index = (index + 1).coerceAtMost(pages.pageCount - 1)
+                            // Nothing to show until the analysis is done.
+                            TapZone.ZoomControls -> if (analysis != null) panelOpen = !panelOpen
+                        }
+                    }
+                },
+        ) {
             page?.onSuccess {
                 Image(
                     bitmap = it.asImageBitmap(),
@@ -197,38 +208,45 @@ internal fun PageReader(
             }?.onFailure {
                 Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
             }
-        }
-        Text(
-            text = "${index + 1} / ${pages.pageCount}",
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(4.dp),
-        )
-        if (panelOpen && analysis != null) {
-            val panelModifier = Modifier.align(Alignment.BottomCenter)
-            if (crop != null) {
-                ZoomPanel(
-                    analysis = crop,
-                    scale = scale,
-                    isAuto = savedScale == null,
-                    onScaleChange = onSaveScale,
-                    onAuto = { onSaveScale(null) },
-                    onClose = { panelOpen = false },
-                    modifier = panelModifier,
-                )
-            } else {
-                val error = analysis?.exceptionOrNull()
-                Text(
-                    text = "Couldn't analyze this paper for zoom: ${error?.message ?: error}",
-                    modifier = panelModifier
-                        .fillMaxWidth()
-                        .background(ReaderPaper)
-                        .padding(16.dp),
-                )
+            val result = analysis
+            if (panelOpen && result != null) {
+                val panelModifier = Modifier.align(Alignment.BottomCenter)
+                val pageLabel = "${index + 1} / ${pages.pageCount}"
+                if (paper != null) {
+                    ZoomPanel(
+                        pageLabel = pageLabel,
+                        analysis = paper.crop,
+                        sampled = paper.crop.pagesAnalyzed < paper.pageCount,
+                        scale = scale,
+                        isAuto = savedScale == null,
+                        onScaleChange = onSaveScale,
+                        onAuto = { onSaveScale(null) },
+                        onClose = { panelOpen = false },
+                        modifier = panelModifier,
+                    )
+                } else {
+                    val error = result.exceptionOrNull()
+                    Text(
+                        text = "$pageLabel · Couldn't analyze this paper for zoom: " +
+                            (error?.message ?: error),
+                        modifier = panelModifier
+                            .fillMaxWidth()
+                            .background(ReaderPaper)
+                            .padding(16.dp),
+                    )
+                }
             }
         }
     }
+}
+
+/** Runs [block], turning failures other than cancellation into a failed [Result]. */
+private suspend fun <T> catching(block: suspend () -> T): Result<T> = try {
+    Result.success(block())
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Throwable) {
+    Result.failure(e)
 }
 
 internal enum class TapZone { Back, Forward, ZoomControls }

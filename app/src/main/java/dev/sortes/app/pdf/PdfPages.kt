@@ -21,47 +21,58 @@ import java.io.File
  * Renders pages of a PDF to bitmaps. Pages are vector data, so each call renders
  * fresh at the requested size; callers should ask for the size they will display.
  */
-class PdfPages private constructor(
-    private val renderer: PdfRenderer,
-    private val pageSizes: List<PageSize>,
-) : PageSource, Closeable {
+class PdfPages private constructor(private val renderer: PdfRenderer) : PageSource, Closeable {
 
     // PdfRenderer allows only one open page at a time and isn't thread-safe.
     private val mutex = Mutex()
     private var closed = false
 
-    override val pageCount: Int get() = pageSizes.size
+    override val pageCount: Int = renderer.pageCount
 
-    override fun pageSize(index: Int): PageSize = pageSizes[index]
+    // Read as pages are first used, so one unreadable page doesn't stop the others opening.
+    private val pageSizes = arrayOfNulls<PageSize>(pageCount)
+
+    override suspend fun pageSize(index: Int): PageSize =
+        pageSizes[index] ?: withPage(index) { it.size() }
 
     override suspend fun renderMask(index: Int, width: Int, height: Int): InkMask {
-        val matrix = Matrix().apply {
-            val size = pageSizes[index]
-            setScale(width / size.width, height / size.height)
+        val bitmap = render(index, width, height) { size ->
+            Matrix().apply { setScale(width / size.width, height / size.height) }
         }
-        val bitmap = render(index, width, height, matrix)
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        bitmap.recycle()
-        return InkMask.fromArgb(pixels, width, height)
+        return withContext(Dispatchers.Default) {
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+            bitmap.recycle()
+            InkMask.fromArgb(pixels, width, height)
+        }
     }
 
     override suspend fun renderRegion(index: Int, region: Region, width: Int, height: Int): Bitmap =
-        render(index, width, height, regionTransform(region, width, height))
+        render(index, width, height) { regionTransform(region, width, height) }
 
-    private suspend fun render(index: Int, width: Int, height: Int, transform: Matrix): Bitmap =
+    private suspend fun render(
+        index: Int,
+        width: Int,
+        height: Int,
+        transform: (PageSize) -> Matrix,
+    ): Bitmap = withPage(index) { page ->
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        // Pages render onto a transparent bitmap; give them a paper background.
+        bitmap.eraseColor(Color.WHITE)
+        page.render(bitmap, null, transform(page.size()), PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        bitmap
+    }
+
+    private suspend fun <T> withPage(index: Int, block: (PdfRenderer.Page) -> T): T =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 check(!closed) { "PdfPages is closed" }
-                renderer.openPage(index).use { page ->
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    // Pages render onto a transparent bitmap; give them a paper background.
-                    bitmap.eraseColor(Color.WHITE)
-                    page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    bitmap
-                }
+                renderer.openPage(index).use(block)
             }
         }
+
+    private fun PdfRenderer.Page.size(): PageSize =
+        PageSize(width.toFloat(), height.toFloat()).also { pageSizes[index] = it }
 
     /** Closes once any in-flight render finishes, so it's safe to call from the UI thread. */
     override fun close() {
@@ -85,16 +96,11 @@ class PdfPages private constructor(
                 fd.close()
                 throw e
             }
-            val sizes = try {
-                if (renderer.pageCount == 0) throw java.io.IOException("PDF has no pages")
-                List(renderer.pageCount) { i ->
-                    renderer.openPage(i).use { PageSize(it.width.toFloat(), it.height.toFloat()) }
-                }
-            } catch (e: Exception) {
+            if (renderer.pageCount == 0) {
                 renderer.close()
-                throw e
+                throw java.io.IOException("PDF has no pages")
             }
-            return PdfPages(renderer, sizes)
+            return PdfPages(renderer)
         }
     }
 }

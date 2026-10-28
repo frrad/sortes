@@ -9,7 +9,7 @@ import dev.sortes.app.zoom.Region
 interface PageSource {
     val pageCount: Int
 
-    fun pageSize(index: Int): PageSize
+    suspend fun pageSize(index: Int): PageSize
 
     /** Renders page [index] squashed into [width] x [height] pixels and marks where its ink is. */
     suspend fun renderMask(index: Int, width: Int, height: Int): InkMask

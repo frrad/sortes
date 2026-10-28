@@ -38,6 +38,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.sortes.app.zoom.CropAnalysis
+import java.util.Locale
 import kotlin.math.log10
 import kotlin.math.roundToInt
 
@@ -47,7 +48,11 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun ZoomPanel(
+    /** Which page is showing, e.g. "3 / 15"; the reader has no other page counter. */
+    pageLabel: String,
     analysis: CropAnalysis,
+    /** Whether the curve comes from a sample of the paper's pages. */
+    sampled: Boolean,
     scale: Float,
     isAuto: Boolean,
     onScaleChange: (Float) -> Unit,
@@ -75,7 +80,12 @@ fun ZoomPanel(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = zoomSummary(analysis, index),
+                text = pageLabel,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(end = 16.dp),
+            )
+            Text(
+                text = zoomSummary(analysis, index, sampled),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -121,21 +131,19 @@ fun ZoomPanel(
     }
 }
 
-private fun zoomSummary(analysis: CropAnalysis, index: Int): String {
-    val zoom = "%.2f×".format(1f / analysis.scales[index])
+internal fun zoomSummary(analysis: CropAnalysis, index: Int, sampled: Boolean): String {
+    val zoom = String.format(Locale.ROOT, "%.2f×", 1f / analysis.scales[index])
     val lost = analysis.lostFraction(index)
     if (lost == 0f) return "Zoom $zoom · nothing cut off"
     val pages = analysis.pagesCropped(index)
-    return "Zoom $zoom · cuts %s of ink on $pages page%s".format(
-        percent(lost),
-        if (pages == 1) "" else "s",
-    )
+    val of = analysis.pagesAnalyzed
+    return "Zoom $zoom · cuts ${percent(lost)} of ink on $pages of $of${if (sampled) " sampled" else ""} pages"
 }
 
 private fun percent(fraction: Float): String = when {
     fraction < 0.001f -> "<0.1%"
-    fraction < 0.1f -> "%.1f%%".format(fraction * 100)
-    else -> "%.0f%%".format(fraction * 100)
+    fraction < 0.1f -> String.format(Locale.ROOT, "%.1f%%", fraction * 100)
+    else -> String.format(Locale.ROOT, "%.0f%%", fraction * 100)
 }
 
 /** Lowest lost-ink fraction the curve distinguishes from zero; the y axis is logarithmic. */
