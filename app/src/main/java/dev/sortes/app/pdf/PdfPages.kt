@@ -52,16 +52,29 @@ class PdfPages private constructor(private val renderer: PdfRenderer) : Closeabl
     override fun close() {
         CoroutineScope(Dispatchers.IO).launch {
             mutex.withLock {
-                closed = true
-                renderer.close()
+                if (!closed) {
+                    closed = true
+                    renderer.close()
+                }
             }
         }
     }
 
     companion object {
-        suspend fun open(file: File): PdfPages = withContext(Dispatchers.IO) {
+        /** Opens [file] for rendering. Blocking; call off the main thread. */
+        fun open(file: File): PdfPages {
             val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-            PdfPages(PdfRenderer(fd))
+            val renderer = try {
+                PdfRenderer(fd)
+            } catch (e: Exception) {
+                fd.close()
+                throw e
+            }
+            if (renderer.pageCount == 0) {
+                renderer.close()
+                throw java.io.IOException("PDF has no pages")
+            }
+            return PdfPages(renderer)
         }
     }
 }

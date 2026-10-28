@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -27,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import dev.sortes.app.data.Paper
 import dev.sortes.app.pdf.PdfPages
 import dev.sortes.app.pdf.PdfSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
 private sealed interface ReaderState {
@@ -39,23 +40,34 @@ private sealed interface ReaderState {
 fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val state by produceState<ReaderState>(ReaderState.Loading, paper.id) {
-        value = try {
-            val file = PdfSource(context).fetch(paper)
-            ReaderState.Ready(PdfPages.open(file))
+        // This coroutine owns the PdfPages: it lives until the screen leaves composition.
+        val source = PdfSource(context)
+        var pages: PdfPages? = null
+        try {
+            val file = source.fetch(paper)
+            withContext(Dispatchers.IO) {
+                pages = try {
+                    PdfPages.open(file)
+                } catch (e: Exception) {
+                    source.evict(paper)
+                    throw e
+                }
+            }
+            value = ReaderState.Ready(pages!!)
+            awaitDispose {}
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ReaderState.Failed(e.message ?: e.toString())
+            value = ReaderState.Failed(e.message ?: e.toString())
+        } finally {
+            pages?.close()
         }
     }
 
     when (val s = state) {
         ReaderState.Loading -> Message("Loading…", modifier)
         is ReaderState.Failed -> Message("Couldn't open PDF: ${s.message}", modifier)
-        is ReaderState.Ready -> {
-            DisposableEffect(s.pages) { onDispose { s.pages.close() } }
-            PageReader(s.pages, modifier)
-        }
+        is ReaderState.Ready -> PageReader(s.pages, modifier)
     }
 }
 
@@ -81,15 +93,23 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         // Keeps showing the previous page until the next one has rendered.
-        val bitmap by produceState<Bitmap?>(null, pages, index, width, height) {
-            value = pages.render(index, width, height)
+        val page by produceState<Result<Bitmap>?>(null, pages, index, width, height) {
+            value = try {
+                Result.success(pages.render(index, width, height))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Result.failure(e)
+            }
         }
-        bitmap?.let {
+        page?.onSuccess {
             Image(
                 bitmap = it.asImageBitmap(),
                 contentDescription = "Page ${index + 1}",
                 modifier = Modifier.align(Alignment.Center),
             )
+        }?.onFailure {
+            Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
         }
         Text(
             text = "${index + 1} / ${pages.pageCount}",
