@@ -2,17 +2,21 @@ package dev.sortes.app.ui
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.ObserverHandle
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -31,14 +35,18 @@ import dev.sortes.app.ui.theme.SortesTheme
 import dev.sortes.app.zoom.Region
 import dev.sortes.app.zoom.TestPage
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.StandardTestDispatcher
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.util.Collections
 import kotlin.math.abs
 
 @RunWith(RobolectricTestRunner::class)
@@ -46,8 +54,34 @@ import kotlin.math.abs
 @Config(qualifiers = "w360dp-h480dp")
 class PageReaderTest {
 
+    // By default Compose tests run effects on an unconfined dispatcher, so after the reader's
+    // withContext(Dispatchers.Default) its produceState writes would happen on the worker thread.
+    // A standard test dispatcher queues them to run on the main thread instead, as in the app;
+    // [idle] runs the queue.
+    private val effects = StandardTestDispatcher()
+
+    @OptIn(ExperimentalTestApi::class)
     @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    val composeRule = createAndroidComposeRule<ComponentActivity>(effects)
+
+    private val offMainWrites: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private lateinit var writeObserver: ObserverHandle
+
+    @Before
+    fun watchForOffMainWrites() {
+        writeObserver = Snapshot.registerGlobalWriteObserver {
+            if (Looper.myLooper() != Looper.getMainLooper()) offMainWrites += Thread.currentThread().name
+        }
+    }
+
+    // Regression: state written from a worker thread wakes Compose's global snapshot flusher
+    // from that thread; if the test ends just then, Robolectric's looper reset drops the wake-up
+    // and every later Compose test in the JVM hangs waiting for idle.
+    @After
+    fun noOffMainWrites() {
+        writeObserver.dispose()
+        assertEquals("Compose state written off the main thread", emptyList<String>(), offMainWrites.toList())
+    }
 
     // Text block at (100, 100)-(500, 700) points on a 600x800 page, page number below it.
     private val pages = FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
@@ -71,6 +105,14 @@ class PageReaderTest {
         }
     }
 
+    /** Runs queued effects and waits for Compose to settle. */
+    private fun idle() {
+        repeat(2) {
+            effects.scheduler.advanceUntilIdle()
+            composeRule.waitForIdle()
+        }
+    }
+
     /** Shows the reader and waits for the zoomed first page. */
     private fun showZoomed(savedScale: Float? = null, darkTheme: Boolean = false) {
         show(savedScale, darkTheme)
@@ -81,13 +123,13 @@ class PageReaderTest {
     private fun awaitRendered(done: (Pair<Int, Region>) -> Boolean) {
         val deadline = System.currentTimeMillis() + 5_000
         while (true) {
-            composeRule.waitForIdle()
+            idle()
             val last = pages.rendered.lastOrNull()
             if (last != null && done(last)) break
             check(System.currentTimeMillis() < deadline) { "Rendered only ${pages.rendered}" }
             Thread.sleep(10)
         }
-        composeRule.waitForIdle()
+        idle()
     }
 
     private fun lastRendered(): Pair<Int, Region> = pages.rendered.last()
@@ -112,7 +154,7 @@ class PageReaderTest {
         val deadline = System.currentTimeMillis() + 5_000
         while (true) {
             tapZoomZone()
-            composeRule.waitForIdle()
+            idle()
             if (composeRule.onAllNodesWithTag("zoomPanel").fetchSemanticsNodes().isNotEmpty()) break
             check(System.currentTimeMillis() < deadline) { "Zoom panel never opened" }
             Thread.sleep(10)
@@ -221,7 +263,7 @@ class PageReaderTest {
 
         composeRule.onNodeWithTag("lostInkCurve").performTouchInput { click(centerRight) }
         composeRule.onNodeWithTag("lostInkCurve").performTouchInput { click(centerLeft) }
-        composeRule.waitForIdle()
+        idle()
 
         composeRule.onNodeWithText("1 / 3").assertExists()
         assertEquals(renders, pages.rendered.size)
@@ -279,9 +321,9 @@ class PageReaderTest {
     fun zeroSizeLayoutRendersNothing() {
         readerSize = 0.dp to 0.dp
         show()
-        composeRule.waitForIdle()
+        idle()
         Thread.sleep(100)
-        composeRule.waitForIdle()
+        idle()
 
         assertEquals(emptyList<Int>(), pages.masked.toList())
         assertEquals(emptyList<Pair<Int, Region>>(), pages.rendered.toList())
@@ -293,7 +335,7 @@ class PageReaderTest {
         val renders = pages.rendered.size
 
         composeRule.onNodeWithContentDescription("Back to papers").performClick()
-        composeRule.waitForIdle()
+        idle()
 
         assertEquals(1, closes)
         assertEquals(renders, pages.rendered.size)
