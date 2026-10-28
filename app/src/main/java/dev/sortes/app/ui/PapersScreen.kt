@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -49,12 +50,14 @@ import dev.sortes.app.ui.theme.SortesTheme
 @Composable
 fun PapersScreen(
     onPaperClick: (Paper) -> Unit,
-    onOpenSources: () -> Unit,
+    onOpenFolderSources: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PapersViewModel = viewModel(),
 ) {
     val papers by viewModel.papers.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
+    val hasFolders by viewModel.hasFolders.collectAsStateWithLifecycle()
+    val syncingFolders by viewModel.syncingFolders.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importPdf(uri)
@@ -64,7 +67,9 @@ fun PapersScreen(
         PapersList(
             papers = papers,
             onPaperClick = onPaperClick,
-            onOpenSources = onOpenSources,
+            onOpenFolderSources = onOpenFolderSources,
+            onSyncAllFolders = if (hasFolders) viewModel::syncAllFolders else null,
+            syncingFolders = syncingFolders,
             importStatus = importStatus,
             onDismissImportStatus = viewModel::dismissImportStatus,
         )
@@ -132,49 +137,69 @@ internal fun AddPaperDialog(
     )
 }
 
+/**
+ * The paper list under a title bar whose ⋮ menu opens folder sources and, if there are any
+ * folders ([onSyncAllFolders] isn't null), syncs them all.
+ */
 @Composable
 internal fun PapersList(
     papers: List<Paper>,
     modifier: Modifier = Modifier,
     onPaperClick: (Paper) -> Unit = {},
-    onOpenSources: () -> Unit = {},
+    onOpenFolderSources: () -> Unit = {},
+    onSyncAllFolders: (() -> Unit)? = null,
+    syncingFolders: Boolean = false,
     importStatus: ImportStatus? = null,
     onDismissImportStatus: () -> Unit = {},
 ) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        // Bottom padding keeps the last card clear of the add button.
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 4.dp),
-            ) {
-                Text(
-                    text = "Papers",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.weight(1f),
+    Column(modifier = modifier.fillMaxSize()) {
+        InkTopBar(title = "Papers") {
+            OverflowMenu { close ->
+                DropdownMenuItem(
+                    text = { Text("Folder sources…") },
+                    onClick = {
+                        close()
+                        onOpenFolderSources()
+                    },
                 )
-                TextButton(onClick = onOpenSources) { Text("Sources") }
+                if (onSyncAllFolders != null) {
+                    DropdownMenuItem(
+                        text = { Text("Sync all folders") },
+                        onClick = {
+                            close()
+                            onSyncAllFolders()
+                        },
+                    )
+                }
             }
         }
-        if (importStatus != null) {
-            item(key = "import-status") {
-                ImportStatusLine(importStatus, onDismiss = onDismissImportStatus)
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            // Bottom padding keeps the last card clear of the add button.
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (syncingFolders) {
+                item(key = "folder-sync") {
+                    Text(text = "Syncing folders…", style = MaterialTheme.typography.bodyMedium)
+                }
             }
-        }
-        if (papers.isEmpty()) {
-            item {
-                Text(
-                    text = "No papers yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            if (importStatus != null) {
+                item(key = "import-status") {
+                    ImportStatusLine(importStatus, onDismiss = onDismissImportStatus)
+                }
             }
-        }
-        items(papers, key = { it.id }) { paper ->
-            PaperCard(paper, onClick = { onPaperClick(paper) })
+            if (papers.isEmpty()) {
+                item {
+                    Text(
+                        text = "No papers yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            items(papers, key = { it.id }) { paper ->
+                PaperCard(paper, onClick = { onPaperClick(paper) })
+            }
         }
     }
 }

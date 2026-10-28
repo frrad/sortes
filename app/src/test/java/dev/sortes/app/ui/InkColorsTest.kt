@@ -7,8 +7,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -19,6 +21,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.window.Dialog
@@ -99,10 +104,51 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
     fun sourceCardIsBlackOnWhite() {
         show { SourcesList(sources = listOf(SOURCE), syncing = emptySet(), error = "Couldn't sync") }
 
-        for (text in listOf("Sources", "Couldn't sync", "Sortes", "Never synced", "Sync", "Remove", "Back")) {
+        for (text in listOf("Folder sources", "Couldn't sync", "Sortes", "Never synced", "Sync", "Remove")) {
             assertEquals(text, Color.Black, composeRule.onNodeWithText(text, useUnmergedTree = true).textColor())
         }
         assertOutlinedInkCard(SOURCE_CARD_TAG)
+        assertInkIcon("Back")
+    }
+
+    @Test
+    fun topBarIsBlackOnWhite() {
+        show { PapersList(papers = emptyList()) }
+
+        assertEquals(Color.Black, composeRule.onNodeWithText("Papers", useUnmergedTree = true).textColor())
+        assertInkIcon("More options")
+        // The rule under the bar is solid black, not a grey or tinted divider.
+        val bar = composeRule.onNodeWithText("Papers").fetchSemanticsNode().boundsInWindow
+        val window = drawWindow()
+        val x = window.width / 2
+        val rule = (bar.bottom.toInt()..bar.bottom.toInt() + 48).map { Color(window.getPixel(x, it)) }
+        assertTrue("no black rule under the top bar: $rule", rule.any { it == Color.Black })
+        assertTrue("coloured rule under the top bar: $rule", rule.all { it.red == it.green && it.green == it.blue })
+    }
+
+    @Test
+    fun overflowMenuIsOutlinedInkOnWhite() {
+        var menuView: android.view.View? = null
+        show {
+            OverflowMenu {
+                menuView = LocalView.current
+                DropdownMenuItem(text = { Text("Folder sources…") }, onClick = {})
+                DropdownMenuItem(text = { Text("Sync all folders") }, onClick = {})
+            }
+        }
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.waitForIdle()
+
+        for (text in listOf("Folder sources…", "Sync all folders")) {
+            assertEquals(text, Color.Black, composeRule.onNodeWithText(text, useUnmergedTree = true).textColor())
+        }
+        // The menu is its own window: draw that, not the activity's.
+        val popup = menuView!!.rootView
+        val bitmap = Bitmap.createBitmap(popup.width, popup.height, Bitmap.Config.ARGB_8888)
+            .also { popup.draw(Canvas(it)) }
+        composeRule.onNodeWithTag(OVERFLOW_MENU_TAG).assertExists()
+        // The window is just the menu.
+        assertOutlinedInk(bitmap, Rect(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()))
     }
 
     @Test
@@ -130,7 +176,11 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
     /** The card is white inside, outlined in black, and has no colour or grey fill anywhere. */
     private fun assertOutlinedInkCard(tag: String) {
         val bounds = composeRule.onAllNodesWithTag(tag)[0].fetchSemanticsNode().boundsInWindow
-        val window = drawWindow()
+        assertOutlinedInk(drawWindow(), bounds)
+    }
+
+    /** [bounds] of [window] are white inside, outlined in black, with no colour or grey fill. */
+    private fun assertOutlinedInk(window: Bitmap, bounds: Rect) {
         val pixels = window.pixelsIn(bounds)
 
         val notGrey = pixels.filter { it.red != it.green || it.green != it.blue }
@@ -144,6 +194,15 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
         val y = bounds.center.y.toInt()
         val edge = (bounds.left.toInt()..bounds.left.toInt() + 2).map { Color(window.getPixel(it, y)) }
         assertTrue("no black outline at the card's left edge: $edge", edge.minOf { it.luminance() } < 0.2f)
+    }
+
+    /** The icon is drawn in black ink: no colour, and its darkest pixels are black. */
+    private fun assertInkIcon(contentDescription: String) {
+        val bounds = composeRule.onNodeWithContentDescription(contentDescription).fetchSemanticsNode().boundsInWindow
+        val pixels = drawWindow().pixelsIn(bounds)
+        val notGrey = pixels.filter { it.red != it.green || it.green != it.blue }
+        assertTrue("coloured pixels in $contentDescription icon, e.g. ${notGrey.take(3)}", notGrey.isEmpty())
+        assertTrue("$contentDescription icon isn't black", pixels.any { it == Color.Black })
     }
 
     // captureToImage() times out under Robolectric, so draw the window ourselves.

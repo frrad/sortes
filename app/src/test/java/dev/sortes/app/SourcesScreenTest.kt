@@ -3,6 +3,7 @@ package dev.sortes.app
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -143,12 +144,13 @@ class SourcesScreenTest {
     }
 
     @Test
-    fun backButton() {
+    fun backArrow() {
         var back = false
         composeRule.setContent {
             SortesTheme { SourcesList(sources = emptyList(), syncing = emptySet(), onBack = { back = true }) }
         }
-        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithText("Folder sources").assertExists()
+        composeRule.onNodeWithContentDescription("Back").performClick()
         assertTrue(back)
     }
 
