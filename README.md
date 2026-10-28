@@ -31,3 +31,18 @@ This project is set up to be developed primarily in Claude Code on the web.
 
 Requires JDK 17+ and an Android SDK (`ANDROID_HOME`) with platform 35 and
 build-tools 35.0.0.
+
+### Deploying to a device over network ADB
+
+`scripts/deploy.sh` builds the debug APK, installs it, and launches the app.
+
+1. On the phone: Developer options → **Wireless debugging** → on. Tap
+   **Pair device with pairing code** and run, once per host:
+   `adb pair <ip>:<pairing-port> <code>`
+2. Deploy using the IP:port shown on the Wireless debugging screen (it's
+   not the pairing port, and it changes whenever wireless debugging is toggled):
+   `scripts/deploy.sh <ip>:<port>`. With no argument the script uses the
+   device that's already connected.
+
+Debug builds are signed with the committed `app/debug.keystore`, so CI branch
+APKs and local builds can be installed over each other.
