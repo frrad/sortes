@@ -91,10 +91,10 @@ class PageReaderTest {
     private var readerSize by mutableStateOf<Pair<Dp, Dp>?>(null)
 
     /** Shows the reader as the app does: inside [ReaderFrame], with its back arrow. */
-    private fun show(savedScale: Float? = null, darkTheme: Boolean = false) {
+    private fun show(savedScale: Float? = null) {
         saved = savedScale
         composeRule.setContent {
-            SortesTheme(darkTheme = darkTheme, dynamicColor = false) {
+            SortesTheme {
                 ReaderFrame(onClose = { closes++ }) {
                     val size = readerSize
                     Box(if (size == null) Modifier else Modifier.size(size.first, size.second)) {
@@ -114,8 +114,8 @@ class PageReaderTest {
     }
 
     /** Shows the reader and waits for the zoomed first page. */
-    private fun showZoomed(savedScale: Float? = null, darkTheme: Boolean = false) {
-        show(savedScale, darkTheme)
+    private fun showZoomed(savedScale: Float? = null) {
+        show(savedScale)
         awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
     }
 
@@ -352,8 +352,9 @@ class PageReaderTest {
     }
 
     @Test
+    @Config(qualifiers = "+night")
     fun panelIsBlackOnWhiteInDarkTheme() {
-        showZoomed(darkTheme = true)
+        showZoomed()
         openPanel()
 
         val window = drawWindow()

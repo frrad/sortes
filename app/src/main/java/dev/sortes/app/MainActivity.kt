@@ -1,8 +1,10 @@
 package dev.sortes.app
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -38,7 +40,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is black on white whatever the system theme, so the bars always get dark icons.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.WHITE, Color.BLACK),
+            navigationBarStyle = SystemBarStyle.light(Color.WHITE, Color.BLACK),
+        )
         handleShare(intent, restored = savedInstanceState != null)
         setContent {
             SortesTheme {

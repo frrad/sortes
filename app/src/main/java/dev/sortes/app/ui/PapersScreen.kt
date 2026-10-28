@@ -2,6 +2,7 @@ package dev.sortes.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,10 +19,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,6 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -39,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.sortes.app.data.Paper
 import dev.sortes.app.importing.ImportStatus
+import dev.sortes.app.ui.theme.InkBorder
 import dev.sortes.app.ui.theme.SortesTheme
 
 @Composable
@@ -63,11 +68,14 @@ fun PapersScreen(
             importStatus = importStatus,
             onDismissImportStatus = viewModel::dismissImportStatus,
         )
+        // Outlined and flat rather than shadowed: a shadow is a grey smear on e-ink.
         FloatingActionButton(
             onClick = { showAddDialog = true },
+            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp),
+                .padding(16.dp)
+                .border(InkBorder, FloatingActionButtonDefaults.shape),
         ) {
             Icon(Icons.Filled.Add, contentDescription = "Add paper")
         }
@@ -97,8 +105,10 @@ internal fun AddPaperDialog(
     var text by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.border(InkBorder, AlertDialogDefaults.shape),
         title = { Text("Add paper") },
         text = {
+            NoDialogDim()
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
@@ -171,18 +181,17 @@ internal fun PapersList(
 
 @Composable
 private fun ImportStatusLine(status: ImportStatus, onDismiss: () -> Unit) {
-    val (text, color) = when (status) {
+    val text = when (status) {
         is ImportStatus.Running -> {
             val count = if (status.count > 1) " (${status.count})" else ""
-            "Importing…$count" to MaterialTheme.colorScheme.onSurfaceVariant
+            "Importing…$count"
         }
-        is ImportStatus.Done -> "Added: ${status.title}" to MaterialTheme.colorScheme.primary
-        is ImportStatus.Failed -> "Import failed: ${status.message}" to MaterialTheme.colorScheme.error
+        is ImportStatus.Done -> "Added: ${status.title}"
+        is ImportStatus.Failed -> "Import failed: ${status.message}"
     }
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = color,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = status !is ImportStatus.Running, onClick = onDismiss)
@@ -190,9 +199,17 @@ private fun ImportStatusLine(status: ImportStatus, onDismiss: () -> Unit) {
     )
 }
 
+internal const val PAPER_CARD_TAG = "paperCard"
+
 @Composable
 private fun PaperCard(paper: Paper, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(
+        onClick = onClick,
+        border = InkBorder,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(PAPER_CARD_TAG),
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -204,7 +221,6 @@ private fun PaperCard(paper: Paper, onClick: () -> Unit) {
             Text(
                 text = paper.authors.joinToString(", "),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
             )
             val meta = listOfNotNull(paper.venue, paper.year?.toString())
                 .joinToString(" · ")
@@ -212,7 +228,6 @@ private fun PaperCard(paper: Paper, onClick: () -> Unit) {
                 Text(
                     text = meta,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Text(
