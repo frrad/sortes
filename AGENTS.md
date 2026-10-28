@@ -28,3 +28,16 @@ alike, so it must work on a monochrome screen.
 - Keep contrast high: don't convey state by colour or by faded text alone.
 - Test on the device. Robolectric screenshots don't show how a screen looks on
   e-ink.
+
+## The PDF page is canonical
+
+The reader renders each PDF page one canonical way, exactly as the PDF draws it.
+Our job is only to choose the best crop (and to draw UI overlays on top).
+
+- Never change how page content is rendered: no reflowing, no re-typesetting, no
+  changing font sizes or weights, and no cutting the page into strips to squeeze
+  out white space between paragraphs.
+- The crop window has one size for the whole paper. Don't zoom individual pages
+  differently.
+- Prefer a crop that stays put from page to page over one that shifts slightly to
+  balance each page's white space.
