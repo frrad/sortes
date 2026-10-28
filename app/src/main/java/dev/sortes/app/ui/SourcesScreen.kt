@@ -18,8 +18,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ fun SourcesScreen(
         onSyncAll = viewModel::syncAll,
         onRemove = viewModel::remove,
         onBack = onBack,
+        onFailuresSeen = viewModel::markFailuresSeen,
         modifier = modifier,
     )
 }
@@ -70,53 +73,54 @@ internal fun SourcesList(
     onSyncAll: () -> Unit = {},
     onRemove: (Long) -> Unit = {},
     onBack: () -> Unit = {},
+    onFailuresSeen: () -> Unit = {},
 ) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Back") }
-                Text(
-                    text = "Sources",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onSyncAll, enabled = sources.any { it.id !in syncing }) {
-                    Text("Sync all")
+    // Failures show here, so the paper list needn't point to them: neither those already
+    // reported when this screen opens nor those that happen while it's open.
+    val currentOnFailuresSeen by rememberUpdatedState(onFailuresSeen)
+    DisposableEffect(Unit) {
+        currentOnFailuresSeen()
+        onDispose { currentOnFailuresSeen() }
+    }
+    Column(modifier = modifier.fillMaxSize()) {
+        InkTopBar(title = "Folder sources", navigationIcon = { BackArrow(onBack) }) {
+            TextButton(onClick = onSyncAll, enabled = sources.any { it.id !in syncing }) {
+                Text("Sync all")
+            }
+        }
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { AddSourceField(onAdd) }
+            if (error != null) {
+                item(key = "error") {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onDismissError)
+                            .padding(vertical = 4.dp),
+                    )
                 }
             }
-        }
-        item { AddSourceField(onAdd) }
-        if (error != null) {
-            item(key = "error") {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onDismissError)
-                        .padding(vertical = 4.dp),
+            if (sources.isEmpty()) {
+                item {
+                    Text(
+                        text = "No sources yet. Paste an alphaXiv shared-folder link to add one.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            items(sources, key = { it.id }) { source ->
+                SourceCard(
+                    source = source,
+                    isSyncing = source.id in syncing,
+                    onSync = { onSync(source.id) },
+                    onRemove = { onRemove(source.id) },
                 )
             }
-        }
-        if (sources.isEmpty()) {
-            item {
-                Text(
-                    text = "No sources yet. Paste an alphaXiv shared-folder link to add one.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-        items(sources, key = { it.id }) { source ->
-            SourceCard(
-                source = source,
-                isSyncing = source.id in syncing,
-                onSync = { onSync(source.id) },
-                onRemove = { onRemove(source.id) },
-            )
         }
     }
 }

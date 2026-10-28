@@ -38,4 +38,6 @@ class SourcesViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun dismissError() = folders.dismissError()
+
+    fun markFailuresSeen() = folders.markFailuresSeen()
 }

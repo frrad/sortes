@@ -69,9 +69,13 @@ class FolderSourcesTest {
     private val importsStarted = Channel<String>(Channel.UNLIMITED)
     private val imported = CopyOnWriteArrayList<String>()
 
+    /** arXiv IDs whose import fails. */
+    private val failingImports = ConcurrentHashMap.newKeySet<String>()
+
     private val syncer = FolderSyncer(client) { arxivId ->
         importsStarted.trySend(arxivId.id)
         importGate?.await()
+        if (arxivId.id in failingImports) throw java.io.IOException("HTTP 503")
         val paper = Paper(title = arxivId.id, authors = emptyList(), abstract = "", year = null, venue = null,
             pdfUrl = arxivId.pdfUrl)
         val id = paperDao.insert(paper)
@@ -322,6 +326,56 @@ class FolderSourcesTest {
         sources.dismissError()
         assertNull(sources.error.value)
         assertFalse(sourceDao.sources.value.isEmpty())
+    }
+
+    // --- failures the paper list should point to ---
+
+    @Test
+    fun successfulSyncsLeaveNoUnseenFailure() = runBlocking {
+        sources.addAndSync(folderA).join()
+        sources.syncAll().join()
+
+        assertFalse(sources.unseenFailure.value)
+    }
+
+    @Test
+    fun failedSyncIsUnseenUntilMarkedSeen() = runBlocking {
+        val id = sourceDao.insert(FolderSource(folderId = folderA))
+        folders.remove(folderA)
+
+        sources.syncAll().join()
+
+        assertTrue(sources.unseenFailure.value)
+        sources.markFailuresSeen()
+        assertFalse(sources.unseenFailure.value)
+        // A later success doesn't bring it back; a later failure does.
+        folders[folderA] = AlphaxivFolder("Sortes", listOf("2311.08105"))
+        sources.sync(id)!!.join()
+        assertFalse(sources.unseenFailure.value)
+        folders.remove(folderA)
+        sources.sync(id)!!.join()
+        assertTrue(sources.unseenFailure.value)
+    }
+
+    @Test
+    fun paperThatFailsToImportIsAnUnseenFailure() = runBlocking {
+        failingImports += "2609.20807"
+
+        sources.addAndSync(folderA).join()
+
+        assertEquals("1 added, 1 failed (HTTP 503)", source(folderA).lastResult)
+        assertTrue(sources.unseenFailure.value)
+    }
+
+    @Test
+    fun reportedErrorIsAnUnseenFailure() = runBlocking {
+        sourceDao.insert(FolderSource(folderId = folderA))
+        sourceDao.failing += "getAll"
+
+        sources.syncAll().join()
+
+        assertEquals("Couldn't load sources: disk I/O error", sources.error.value)
+        assertTrue(sources.unseenFailure.value)
     }
 
     private fun CoroutineScope.isActiveScope() = coroutineContext[kotlinx.coroutines.Job]!!.isActive

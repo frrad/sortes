@@ -8,8 +8,10 @@ import dev.sortes.app.data.Paper
 import dev.sortes.app.data.PaperRepository
 import dev.sortes.app.importing.ImportStatus
 import dev.sortes.app.importing.PaperImports
+import dev.sortes.app.sources.FolderSyncs
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -25,6 +27,18 @@ class PapersViewModel(application: Application) : AndroidViewModel(application) 
 
     val importStatus: StateFlow<ImportStatus?> = imports.status
 
+    private val folders = FolderSyncs.get(application)
+
+    /** Whether there are any folder sources, so "Sync all folders" has something to do. */
+    val hasFolders: StateFlow<Boolean> = folders.sources.map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    val syncingFolders: StateFlow<Boolean> = folders.syncing.map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** A folder sync failed and the folder sources screen hasn't been opened since. */
+    val folderSyncFailed: StateFlow<Boolean> = folders.unseenFailure
+
     init {
         viewModelScope.launch { repository.seedIfEmpty() }
     }
@@ -34,4 +48,8 @@ class PapersViewModel(application: Application) : AndroidViewModel(application) 
     fun importPdf(uri: Uri) = imports.importPdf(uri)
 
     fun dismissImportStatus() = imports.dismissStatus()
+
+    fun syncAllFolders() {
+        folders.syncAll()
+    }
 }

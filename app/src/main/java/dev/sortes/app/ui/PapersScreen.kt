@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -49,12 +50,15 @@ import dev.sortes.app.ui.theme.SortesTheme
 @Composable
 fun PapersScreen(
     onPaperClick: (Paper) -> Unit,
-    onOpenSources: () -> Unit,
+    onOpenFolderSources: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PapersViewModel = viewModel(),
 ) {
     val papers by viewModel.papers.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
+    val hasFolders by viewModel.hasFolders.collectAsStateWithLifecycle()
+    val syncingFolders by viewModel.syncingFolders.collectAsStateWithLifecycle()
+    val folderSyncFailed by viewModel.folderSyncFailed.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importPdf(uri)
@@ -64,7 +68,10 @@ fun PapersScreen(
         PapersList(
             papers = papers,
             onPaperClick = onPaperClick,
-            onOpenSources = onOpenSources,
+            onOpenFolderSources = onOpenFolderSources,
+            onSyncAllFolders = if (hasFolders) viewModel::syncAllFolders else null,
+            syncingFolders = syncingFolders,
+            folderSyncFailed = folderSyncFailed,
             importStatus = importStatus,
             onDismissImportStatus = viewModel::dismissImportStatus,
         )
@@ -132,49 +139,104 @@ internal fun AddPaperDialog(
     )
 }
 
+/**
+ * The paper list under a title bar whose ⋮ menu opens folder sources and, if there are any
+ * folders ([onSyncAllFolders] isn't null), syncs them all. [folderSyncFailed] shows a line that
+ * leads to folder sources, where the failure is detailed.
+ */
 @Composable
 internal fun PapersList(
     papers: List<Paper>,
     modifier: Modifier = Modifier,
     onPaperClick: (Paper) -> Unit = {},
-    onOpenSources: () -> Unit = {},
+    onOpenFolderSources: () -> Unit = {},
+    onSyncAllFolders: (() -> Unit)? = null,
+    syncingFolders: Boolean = false,
+    folderSyncFailed: Boolean = false,
     importStatus: ImportStatus? = null,
     onDismissImportStatus: () -> Unit = {},
 ) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        // Bottom padding keeps the last card clear of the add button.
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 4.dp),
-            ) {
-                Text(
-                    text = "Papers",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.weight(1f),
+    Column(modifier = modifier.fillMaxSize()) {
+        InkTopBar(title = "Papers") {
+            OverflowMenu { close ->
+                DropdownMenuItem(
+                    text = { Text("Folder sources…") },
+                    onClick = {
+                        close()
+                        onOpenFolderSources()
+                    },
                 )
-                TextButton(onClick = onOpenSources) { Text("Sources") }
+                if (onSyncAllFolders != null) {
+                    DropdownMenuItem(
+                        text = { Text("Sync all folders") },
+                        onClick = {
+                            close()
+                            onSyncAllFolders()
+                        },
+                    )
+                }
             }
+        }
+        // Status lines sit outside the list, so they never scroll out of view. Inserted as list
+        // items above the papers, they'd land just above the viewport: the list keeps the first
+        // visible paper where it was.
+        StatusLines(
+            syncingFolders = syncingFolders,
+            folderSyncFailed = folderSyncFailed,
+            onOpenFolderSources = onOpenFolderSources,
+            importStatus = importStatus,
+            onDismissImportStatus = onDismissImportStatus,
+        )
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            // Bottom padding keeps the last card clear of the add button.
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (papers.isEmpty()) {
+                item {
+                    Text(
+                        text = "No papers yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            items(papers, key = { it.id }) { paper ->
+                PaperCard(paper, onClick = { onPaperClick(paper) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusLines(
+    syncingFolders: Boolean,
+    folderSyncFailed: Boolean,
+    onOpenFolderSources: () -> Unit,
+    importStatus: ImportStatus?,
+    onDismissImportStatus: () -> Unit,
+) {
+    if (!syncingFolders && !folderSyncFailed && importStatus == null) return
+    Column(modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)) {
+        if (syncingFolders) {
+            Text(
+                text = "Syncing folders…",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
+        if (folderSyncFailed) {
+            Text(
+                text = "Folder sync failed — see Folder sources",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenFolderSources)
+                    .padding(vertical = 4.dp),
+            )
         }
         if (importStatus != null) {
-            item(key = "import-status") {
-                ImportStatusLine(importStatus, onDismiss = onDismissImportStatus)
-            }
-        }
-        if (papers.isEmpty()) {
-            item {
-                Text(
-                    text = "No papers yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-        items(papers, key = { it.id }) { paper ->
-            PaperCard(paper, onClick = { onPaperClick(paper) })
+            ImportStatusLine(importStatus, onDismiss = onDismissImportStatus)
         }
     }
 }
