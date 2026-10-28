@@ -12,8 +12,10 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Hides the system navigation bar while this is in composition and shows it again
- * when it leaves. A swipe from the screen edge brings the bar back temporarily, so
- * Back stays reachable.
+ * when it leaves. On stock Android a swipe from the screen edge brings the bar back
+ * temporarily, but that's best-effort: on Boox firmware the swipe also runs a Boox
+ * gesture (Home, Recents, ...) and leaves the app. Callers must provide their own way
+ * out, as [ReaderFrame] does.
  */
 @Composable
 fun HideNavigationBar() {

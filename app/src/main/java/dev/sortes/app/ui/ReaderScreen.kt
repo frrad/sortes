@@ -13,9 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -66,21 +68,23 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
     }
 }
 
-/** Draws [content] full size with a back button over its top-left corner. */
+/**
+ * Draws [content] full size with a back button over its top-left corner. The reader
+ * is black on white whatever the app theme, so the button and messages are visible
+ * in every state.
+ */
 @Composable
 internal fun ReaderFrame(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Box(modifier.fillMaxSize()) {
-        content()
-        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopStart)) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back to papers",
-                tint = Color.Black,
-            )
+    CompositionLocalProvider(LocalContentColor provides Color.Black) {
+        Box(modifier.fillMaxSize().background(Color.White)) {
+            content()
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopStart)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to papers")
+            }
         }
     }
 }
@@ -114,7 +118,6 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
             .pointerInput(pages) {
                 detectTapGestures { offset ->
                     index = if (offset.x < size.width / 2) {
@@ -149,7 +152,6 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
         Text(
             text = "${index + 1} / ${pages.pageCount}",
             style = MaterialTheme.typography.labelSmall,
-            color = Color.Black,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(4.dp),
@@ -158,7 +160,7 @@ private fun PageReader(pages: PdfPages, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Message(text: String, modifier: Modifier = Modifier) {
+internal fun Message(text: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
