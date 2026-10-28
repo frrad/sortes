@@ -22,7 +22,7 @@ class PdfSource(context: Context) {
         if (!file.exists()) {
             cacheDir.mkdirs()
             // Unique temp file so overlapping downloads of the same paper can't clobber each other.
-            val tmp = File.createTempFile("${paper.id}-", ".part", cacheDir)
+            val tmp = File.createTempFile("pdf-${paper.id}-", ".part", cacheDir)
             try {
                 download(url, tmp)
                 if (!tmp.renameTo(file) && !file.exists()) throw IOException("Could not save PDF")
