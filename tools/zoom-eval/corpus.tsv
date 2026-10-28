@@ -1,0 +1,21 @@
+# id	file (in the PDF cache dir)	category	title
+1706.03762	1706.03762.pdf	single-column	Attention Is All You Need
+1810.04805	1810.04805.pdf	two-column (A4)	BERT
+1512.03385	1512.03385.pdf	two-column	ResNet (Deep Residual Learning)
+2311.08105	2311.08105.pdf	single-column, appendix (A4)	DiLoCo
+1502.03167	1502.03167.pdf	two-column, running head	Batch Normalization
+1506.02640	1506.02640.pdf	two-column	YOLO
+1412.6980	1412.6980.pdf	single-column, running head (A4)	Adam
+2010.11929	2010.11929.pdf	single-column, figure- and appendix-heavy	ViT
+2003.08934	2003.08934.pdf	LNCS small page, figure-heavy	NeRF
+2006.11239	2006.11239.pdf	figure-heavy appendix	DDPM
+2112.10752	2112.10752.pdf	figure-heavy, long	Latent Diffusion
+2001.08361	2001.08361.pdf	single-column, appendix-heavy	Scaling Laws for Neural LMs
+2106.09685	2106.09685.pdf	single-column, appendix	LoRA
+2203.15556	2203.15556.pdf	single-column, appendix-heavy	Chinchilla
+1503.02531	1503.02531.pdf	short	Distilling the Knowledge in a NN
+1606.08415	1606.08415.pdf	short	GELU
+1607.06450	1607.06450.pdf	short	Layer Normalization
+1406.2661	1406.2661.pdf	short	GAN
+2106.10165-p20-49	2106.10165-p20-49.pdf	two-sided book (A4), pp. 20-49	Principles of Deep Learning Theory
+2104.13478-p20-49	2104.13478-p20-49.pdf	two-sided book, margin notes, pp. 20-49	Geometric Deep Learning
