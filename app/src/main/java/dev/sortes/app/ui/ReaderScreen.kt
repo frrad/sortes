@@ -1,5 +1,6 @@
 package dev.sortes.app.ui
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,41 +37,43 @@ private sealed interface ReaderState {
     data class Failed(val message: String) : ReaderState
 }
 
+// Lint false positive: it flags even a trivial `produceState { value = x }` here.
+@SuppressLint("ProduceStateDoesNotAssignValue")
 @Composable
 fun ReaderScreen(paper: Paper, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val state by produceState<ReaderState>(ReaderState.Loading, paper.id) {
         // This coroutine owns the PdfPages: it lives until the screen leaves composition.
-        val source = PdfSource(context)
-        var pages: PdfPages? = null
-        value = try {
-            val file = source.fetch(paper)
-            withContext(Dispatchers.IO) {
-                pages = try {
-                    PdfPages.open(file)
-                } catch (e: Exception) {
-                    source.evict(paper)
-                    throw e
-                }
-            }
-            ReaderState.Ready(pages!!)
-        } catch (e: CancellationException) {
-            pages?.close()
-            throw e
-        } catch (e: Exception) {
-            ReaderState.Failed(e.message ?: e.toString())
-        }
-        try {
-            awaitDispose {}
-        } finally {
-            pages?.close()
-        }
+        val loaded = load(PdfSource(context), paper)
+        value = loaded
+        awaitDispose { (loaded as? ReaderState.Ready)?.pages?.close() }
     }
 
     when (val s = state) {
         ReaderState.Loading -> Message("Loading…", modifier)
         is ReaderState.Failed -> Message("Couldn't open PDF: ${s.message}", modifier)
         is ReaderState.Ready -> PageReader(s.pages, modifier)
+    }
+}
+
+private suspend fun load(source: PdfSource, paper: Paper): ReaderState {
+    var pages: PdfPages? = null
+    return try {
+        val file = source.fetch(paper)
+        withContext(Dispatchers.IO) {
+            pages = try {
+                PdfPages.open(file)
+            } catch (e: Exception) {
+                source.evict(paper)
+                throw e
+            }
+        }
+        ReaderState.Ready(pages!!)
+    } catch (e: CancellationException) {
+        pages?.close()
+        throw e
+    } catch (e: Exception) {
+        ReaderState.Failed(e.message ?: e.toString())
     }
 }
 
