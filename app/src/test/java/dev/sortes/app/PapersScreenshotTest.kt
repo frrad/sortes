@@ -3,6 +3,7 @@ package dev.sortes.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -190,19 +191,65 @@ class PapersScreenshotTest {
     }
 
     @Test
-    fun folderSyncShowsOnTheList() {
-        var syncing by mutableStateOf(true)
+    fun statusLinesThatAppearLaterAreOnScreen() {
+        // A list already showing papers: a line added above them must not land above the viewport.
+        var syncing by mutableStateOf(false)
+        var status by mutableStateOf<ImportStatus?>(null)
         composeRule.setContent {
-            SortesTheme { PapersList(papers = SAMPLE, syncingFolders = syncing) }
+            SortesTheme { PapersList(papers = MANY, syncingFolders = syncing, importStatus = status) }
         }
-        composeRule.onNodeWithText("Syncing folders…").assertExists()
+        composeRule.onNodeWithText(MANY.first().title).assertIsDisplayed()
+
+        syncing = true
+        status = ImportStatus.Running(1)
+
+        composeRule.onNodeWithText("Syncing folders…").assertIsDisplayed()
+        composeRule.onNodeWithText("Importing…").assertIsDisplayed()
+
+        status = ImportStatus.Failed("No network")
+        composeRule.onNodeWithText("Import failed: No network").assertIsDisplayed()
 
         syncing = false
-
         composeRule.onNodeWithText("Syncing folders…").assertDoesNotExist()
     }
 
+    @Test
+    fun folderSyncFailureShowsAndLeadsToFolderSources() {
+        var failed by mutableStateOf(false)
+        var opened = false
+        composeRule.setContent {
+            SortesTheme {
+                PapersList(papers = MANY, folderSyncFailed = failed, onOpenFolderSources = { opened = true })
+            }
+        }
+        composeRule.onNodeWithText("Folder sync failed", substring = true).assertDoesNotExist()
+
+        failed = true
+
+        composeRule.onNodeWithText("Folder sync failed — see Folder sources").assertIsDisplayed().performClick()
+        assertTrue(opened)
+    }
+
+    @Test
+    fun statusLinesScreenshot() {
+        composeRule.setContent {
+            SortesTheme {
+                PapersList(
+                    papers = SAMPLE,
+                    syncingFolders = true,
+                    folderSyncFailed = true,
+                    importStatus = ImportStatus.Running(1),
+                )
+            }
+        }
+        composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list_status_lines.png")
+    }
+
     private companion object {
+        val MANY = (1L..8L).map {
+            Paper(id = it, title = "Paper $it", authors = listOf("Author $it"), abstract = "Abstract $it.", year = 2020, venue = null)
+        }
+
         val SAMPLE = listOf(
             Paper(
                 id = 1,

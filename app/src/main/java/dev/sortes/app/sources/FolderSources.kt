@@ -40,6 +40,15 @@ class FolderSources(
     /** The last failure that couldn't be recorded on a source (e.g. a database error). */
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _unseenFailure = MutableStateFlow(false)
+
+    /**
+     * Whether something has failed since [markFailuresSeen]: a sync that failed outright or
+     * for some of its papers, or anything reported through [error]. Lets the paper list point
+     * to the folder sources screen, where the failure shows.
+     */
+    val unseenFailure: StateFlow<Boolean> = _unseenFailure.asStateFlow()
+
     private val syncLock = Mutex()
     private val jobs = ConcurrentHashMap<Long, Job>()
 
@@ -90,13 +99,21 @@ class FolderSources(
         _error.value = null
     }
 
+    /** Called when folder sources, and so any failures, are on screen. */
+    fun markFailuresSeen() {
+        _unseenFailure.value = false
+    }
+
     private suspend fun syncNow(id: Long) {
         val source = reporting("Couldn't load source") { dao.findById(id) } ?: return // removed while queued
         val (name, summary) = try {
-            syncer.sync(source.folderId).let { it.folderName to it.summary() }
+            val result = syncer.sync(source.folderId)
+            if (result.failures.isNotEmpty()) _unseenFailure.value = true
+            result.folderName to result.summary()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            _unseenFailure.value = true
             null to "Sync failed: ${e.message ?: e}"
         }
         reporting("Couldn't save sync result") { dao.recordSync(id, name, clock(), summary) }
@@ -109,6 +126,7 @@ class FolderSources(
         throw e
     } catch (e: Exception) {
         _error.value = "$what: ${e.message ?: e}"
+        _unseenFailure.value = true
         null
     }
 }

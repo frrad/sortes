@@ -1,5 +1,8 @@
 package dev.sortes.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -152,6 +155,25 @@ class SourcesScreenTest {
         composeRule.onNodeWithText("Folder sources").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertTrue(back)
+    }
+
+    @Test
+    fun failuresAreMarkedSeenWhenShownAndWhenLeft() {
+        var seen = 0
+        var shown by mutableStateOf(true)
+        composeRule.setContent {
+            SortesTheme {
+                if (shown) SourcesList(sources = SAMPLE, syncing = emptySet(), onFailuresSeen = { seen++ })
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(1, seen)
+
+        shown = false
+        composeRule.waitForIdle()
+
+        // Again on leaving, for failures that happened while the screen was open.
+        assertEquals(2, seen)
     }
 
     private companion object {

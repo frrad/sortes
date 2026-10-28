@@ -36,6 +36,9 @@ class PapersViewModel(application: Application) : AndroidViewModel(application) 
     val syncingFolders: StateFlow<Boolean> = folders.syncing.map { it.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /** A folder sync failed and the folder sources screen hasn't been opened since. */
+    val folderSyncFailed: StateFlow<Boolean> = folders.unseenFailure
+
     init {
         viewModelScope.launch { repository.seedIfEmpty() }
     }

@@ -53,8 +53,14 @@ class BelowAnchorEndTest {
     }
 
     @Test
-    fun staysInTheWindowWhenThereIsRoomNeitherAboveNorBelow() {
-        assertEquals(IntOffset(500, 0), position(IntRect(700, 900, 800, 1000), IntSize(300, 2500)))
+    fun tallPopupKeepsTheMarginAtTheTop() {
+        // Too tall to fit above or below: it still stays off the top edge (and the status bar).
+        assertEquals(IntOffset(500, 10), position(IntRect(700, 900, 800, 1000), IntSize(300, 2500)))
+    }
+
+    @Test
+    fun tallPopupThatFitsWithinTheMarginsIsMovedUpToFit() {
+        assertEquals(IntOffset(500, 10), position(IntRect(700, 50, 800, 150), IntSize(300, 1980)))
     }
 
     @Test

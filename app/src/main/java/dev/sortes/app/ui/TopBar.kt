@@ -128,8 +128,8 @@ internal fun OverflowMenu(items: @Composable ColumnScope.(close: () -> Unit) -> 
 
 /**
  * Puts a popup under its anchor with their end edges lined up, kept [margin] pixels inside the
- * window, so its outline doesn't run into the screen edge: it shifts sideways rather than run off
- * an edge, and goes above the anchor if there's no room below.
+ * window, so its outline doesn't run into the screen edge or under the status bar: it shifts
+ * rather than run off an edge, and goes above the anchor if there's no room below.
  */
 internal class BelowAnchorEnd(private val margin: Int) : PopupPositionProvider {
     override fun calculatePosition(
@@ -148,7 +148,7 @@ internal class BelowAnchorEnd(private val margin: Int) : PopupPositionProvider {
         }
         return IntOffset(
             x.coerceIn(margin, (windowSize.width - width - margin).coerceAtLeast(margin)),
-            y.coerceIn(0, (windowSize.height - height - margin).coerceAtLeast(0)),
+            y.coerceIn(margin, (windowSize.height - height - margin).coerceAtLeast(margin)),
         )
     }
 }
