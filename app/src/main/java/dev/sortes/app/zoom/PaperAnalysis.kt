@@ -18,7 +18,7 @@ class PaperAnalysis(
     /** Places a window of [scale] on page [index] of [source], near [anchor]. */
     suspend fun window(source: PageSource, index: Int, scale: Float, anchor: Anchor): CropWindow {
         val (width, height) = maskSize(source.pageSize(index), density)
-        val mask = source.renderMask(index, width, height)
+        val mask = source.renderMask(index, width, height).withoutIgnorableInk()
         return withContext(Dispatchers.Default) { placeWindow(mask, aspect, scale, anchor) }
     }
 }
@@ -42,7 +42,7 @@ suspend fun analyzePaper(
     val density = analysisDensity(readable.values.map { it!! }, aspect)
     val masks = readable.mapNotNull { (index, size) ->
         val (width, height) = maskSize(size!!, density)
-        orNull { source.renderMask(index, width, height) }
+        orNull { source.renderMask(index, width, height).withoutIgnorableInk() }
     }
     if (masks.isEmpty()) throw java.io.IOException("No pages could be rendered")
     PaperAnalysis(CropAnalysis.of(masks, aspect), density, source.pageCount)
