@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.sortes.app.data.Paper
+import dev.sortes.app.importing.ImportStatus
 import dev.sortes.app.ui.theme.SortesTheme
 
 @Composable
@@ -162,7 +163,10 @@ internal fun PapersList(
 @Composable
 private fun ImportStatusLine(status: ImportStatus, onDismiss: () -> Unit) {
     val (text, color) = when (status) {
-        ImportStatus.Running -> "Importing…" to MaterialTheme.colorScheme.onSurfaceVariant
+        is ImportStatus.Running -> {
+            val count = if (status.count > 1) " (${status.count})" else ""
+            "Importing…$count" to MaterialTheme.colorScheme.onSurfaceVariant
+        }
         is ImportStatus.Done -> "Added: ${status.title}" to MaterialTheme.colorScheme.primary
         is ImportStatus.Failed -> "Import failed: ${status.message}" to MaterialTheme.colorScheme.error
     }
@@ -172,7 +176,7 @@ private fun ImportStatusLine(status: ImportStatus, onDismiss: () -> Unit) {
         color = color,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = status != ImportStatus.Running, onClick = onDismiss)
+            .clickable(enabled = status !is ImportStatus.Running, onClick = onDismiss)
             .padding(vertical = 4.dp),
     )
 }

@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.StringReader
@@ -52,12 +54,23 @@ class HttpArxivClient(
 object ArxivAtom {
     private const val ATOM = "http://www.w3.org/2005/Atom"
 
+    /** Responses are a few KB; anything far bigger isn't a single-entry feed. */
+    private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
     fun parse(input: InputStream, id: String): ArxivEntry {
+        val bytes = readLimited(input)
+        // The API never sends a DTD. Refusing one up front is the XXE defence that works on
+        // Android too, where the parser silently ignores the hardening features below.
+        // NUL bytes mean UTF-16/32, which would hide a DOCTYPE from the UTF-8 check.
+        if (bytes.contains(0)) throw IOException("Unexpected encoding in arXiv response")
+        if (String(bytes, Charsets.UTF_8).contains("<!DOCTYPE", ignoreCase = true)) {
+            throw IOException("Unexpected DOCTYPE in arXiv response")
+        }
         val document = try {
             newDocumentBuilderFactory().newDocumentBuilder().apply {
                 // Never fetch external DTDs or entities, even where the features above are unsupported.
                 setEntityResolver { _, _ -> InputSource(StringReader("")) }
-            }.parse(input)
+            }.parse(ByteArrayInputStream(bytes))
         } catch (e: Exception) {
             throw IOException("Couldn't read arXiv response", e)
         }
@@ -81,6 +94,17 @@ object ArxivAtom {
             abstract = entry.text("summary"),
             year = entry.text("published").take(4).toIntOrNull(),
         )
+    }
+
+    private fun readLimited(input: InputStream): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) return out.toByteArray()
+            if (out.size() + n > MAX_RESPONSE_BYTES) throw IOException("arXiv response too large")
+            out.write(buffer, 0, n)
+        }
     }
 
     private fun newDocumentBuilderFactory(): DocumentBuilderFactory =

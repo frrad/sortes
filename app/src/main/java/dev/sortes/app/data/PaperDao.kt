@@ -2,6 +2,7 @@ package dev.sortes.app.data
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -16,7 +17,8 @@ interface PaperDao {
     @Insert
     suspend fun insertAll(papers: List<Paper>)
 
-    @Insert
+    /** Returns the new row id, or -1 if a paper with the same pdfUrl already exists. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(paper: Paper): Long
 
     @Query("SELECT * FROM papers WHERE pdfUrl = :url LIMIT 1")

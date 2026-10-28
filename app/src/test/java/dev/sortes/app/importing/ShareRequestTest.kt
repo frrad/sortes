@@ -37,6 +37,21 @@ class ShareRequestTest {
     }
 
     @Test
+    fun onlyContentUrisAreAcceptedForPdfs() {
+        assertEquals(
+            ShareRequest.Pdf("CONTENT://com.example/doc/1"),
+            ShareRequest.from(send, "application/pdf", null, "CONTENT://com.example/doc/1"),
+        )
+        listOf(
+            "file:///data/data/dev.sortes.app/databases/papers.db",
+            "file:///sdcard/Download/x.pdf",
+            "https://example.com/x.pdf",
+            "/sdcard/x.pdf",
+            "",
+        ).forEach { assertNull(it, ShareRequest.from(send, "application/pdf", null, it)) }
+    }
+
+    @Test
     fun launchIntentIsIgnoredWhenActivityIsRestored() {
         assertNull(ShareRequest.from(send, "application/pdf", null, pdfUri, restored = true))
         assertNull(ShareRequest.from(send, "text/plain", "1706.03762", null, restored = true))

@@ -12,7 +12,7 @@ import androidx.compose.ui.test.performTextInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sortes.app.data.Paper
 import dev.sortes.app.ui.AddPaperDialog
-import dev.sortes.app.ui.ImportStatus
+import dev.sortes.app.importing.ImportStatus
 import dev.sortes.app.ui.PapersList
 import dev.sortes.app.ui.theme.SortesTheme
 import org.junit.Assert.assertEquals
@@ -49,6 +49,16 @@ class PapersScreenshotTest {
         }
         composeRule.onNodeWithText("Import failed: Not an arXiv ID or URL").assertExists()
         composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list_import_failed.png")
+    }
+
+    @Test
+    fun overlappingImportsShowCount() {
+        composeRule.setContent {
+            SortesTheme {
+                PapersList(papers = SAMPLE, importStatus = ImportStatus.Running(2))
+            }
+        }
+        composeRule.onNodeWithText("Importing… (2)").assertExists()
     }
 
     @Test

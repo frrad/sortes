@@ -6,20 +6,25 @@ import dev.sortes.app.arxiv.ArxivId
 import dev.sortes.app.data.Paper
 import dev.sortes.app.data.PaperDao
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 
 /** Adds papers to the library from arXiv or from PDF files. Failures throw [IOException]. */
 class PaperImporter(
     private val dao: PaperDao,
     private val arxiv: ArxivClient,
     private val libraryDir: File,
+    private val maxPdfBytes: Long = MAX_PDF_BYTES,
 ) {
-    // Serializes arXiv imports so the duplicate check can't race with a concurrent insert.
+    // Avoids needless duplicate fetches; the unique index on pdfUrl is what guarantees no duplicates.
     private val arxivLock = Mutex()
 
     /** Imports the paper named by an arXiv ID or URL in [text], or returns it if already present. */
@@ -36,7 +41,13 @@ class PaperImporter(
                 venue = "arXiv",
                 pdfUrl = arxivId.pdfUrl,
             )
-            paper.copy(id = dao.insert(paper))
+            val id = dao.insert(paper)
+            // -1: another importer (e.g. another activity instance) added it first.
+            if (id == -1L) {
+                dao.findByPdfUrl(arxivId.pdfUrl) ?: throw IOException("Couldn't save paper")
+            } else {
+                paper.copy(id = id)
+            }
         }
     }
 
@@ -46,27 +57,53 @@ class PaperImporter(
      */
     suspend fun importPdf(displayName: String?, open: () -> InputStream?): Paper =
         withContext(Dispatchers.IO) {
-            libraryDir.mkdirs()
-            // Prefix must be at least 3 characters for createTempFile.
-            val file = File.createTempFile("paper-", ".pdf", libraryDir)
-            try {
-                val input = open() ?: throw IOException("Couldn't open file")
-                input.use { src -> file.outputStream().use { src.copyTo(it) } }
-                if (!isPdf(file)) throw IOException("Not a PDF file")
-                val paper = Paper(
-                    title = titleFrom(displayName),
-                    authors = emptyList(),
-                    abstract = "",
-                    year = null,
-                    venue = null,
-                    localFile = file.name,
-                )
-                paper.copy(id = dao.insert(paper))
-            } catch (e: Throwable) {
-                file.delete()
-                throw e
+            val input = open() ?: throw IOException("Couldn't open file")
+            input.use { src ->
+                // Check the header before anything touches the disk.
+                val header = ByteArray(PDF_MAGIC.size)
+                if (src.readFully(header) < header.size || !header.contentEquals(PDF_MAGIC)) {
+                    throw IOException("Not a PDF file")
+                }
+                libraryDir.mkdirs()
+                // Prefix must be at least 3 characters for createTempFile.
+                val file = File.createTempFile("paper-", ".pdf", libraryDir)
+                var inserted = false
+                try {
+                    file.outputStream().use { out ->
+                        out.write(header)
+                        copyLimited(src, out, maxPdfBytes - header.size)
+                    }
+                    val paper = Paper(
+                        title = titleFrom(displayName),
+                        authors = emptyList(),
+                        abstract = "",
+                        year = null,
+                        venue = null,
+                        localFile = file.name,
+                    )
+                    // Once Room commits, the row must keep its file even if we're cancelled now.
+                    val id = withContext(NonCancellable) { dao.insert(paper) }
+                    if (id == -1L) throw IOException("Couldn't save paper")
+                    inserted = true
+                    paper.copy(id = id)
+                } finally {
+                    if (!inserted) file.delete()
+                }
             }
         }
+
+    private suspend fun copyLimited(src: InputStream, out: OutputStream, limit: Long) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val n = src.read(buffer)
+            if (n < 0) return
+            total += n
+            if (total > limit) throw IOException("PDF is too large")
+            out.write(buffer, 0, n)
+        }
+    }
 
     companion object {
         fun libraryDir(context: Context): File = File(context.filesDir, "papers")
@@ -78,10 +115,19 @@ class PaperImporter(
                 ?.ifEmpty { null }
                 ?: "Untitled PDF"
 
-        private fun isPdf(file: File): Boolean {
-            val magic = ByteArray(4)
-            val n = file.inputStream().use { it.read(magic) }
-            return n == 4 && magic.contentEquals("%PDF".toByteArray())
+        const val MAX_PDF_BYTES = 200L * 1024 * 1024
+
+        private val PDF_MAGIC = "%PDF".toByteArray()
+
+        /** Reads until [buffer] is full or the stream ends; returns the bytes read. */
+        private fun InputStream.readFully(buffer: ByteArray): Int {
+            var off = 0
+            while (off < buffer.size) {
+                val n = read(buffer, off, buffer.size - off)
+                if (n < 0) break
+                off += n
+            }
+            return off
         }
     }
 }

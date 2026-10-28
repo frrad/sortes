@@ -83,9 +83,35 @@ class ArxivAtomTest {
 
         val result = runCatching { parse(xml) }
 
-        // Either refused outright or parsed without the file contents.
-        result.onSuccess { assertFalse(it.title.contains("TOP-SECRET")) }
-        result.onFailure { assertTrue(it is IOException) }
+        assertTrue(result.exceptionOrNull() is IOException)
+        assertEquals("Unexpected DOCTYPE in arXiv response", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun rejectsAnyDoctypeBeforeParsing() {
+        // Even a harmless DTD is refused: on Android the parser can't be told to ignore one.
+        val xml = """<?xml version="1.0"?><!doctype feed><feed xmlns="http://www.w3.org/2005/Atom"/>"""
+
+        val e = assertThrows(IOException::class.java) { parse(xml) }
+        assertEquals("Unexpected DOCTYPE in arXiv response", e.message)
+    }
+
+    @Test
+    fun rejectsDoctypeHiddenInUtf16() {
+        val xml = """<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE feed><feed/>"""
+
+        val e = assertThrows(IOException::class.java) {
+            ArxivAtom.parse(xml.toByteArray(Charsets.UTF_16).inputStream(), "1706.03762")
+        }
+        assertEquals("Unexpected encoding in arXiv response", e.message)
+    }
+
+    @Test
+    fun rejectsOversizedResponse() {
+        val huge = feed("<!-- " + "x".repeat(3 * 1024 * 1024) + " -->")
+
+        val e = assertThrows(IOException::class.java) { parse(huge) }
+        assertEquals("arXiv response too large", e.message)
     }
 
     companion object {

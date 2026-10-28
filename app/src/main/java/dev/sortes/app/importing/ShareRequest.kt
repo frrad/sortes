@@ -27,10 +27,13 @@ sealed interface ShareRequest {
             if (restored || flags and FLAG_LAUNCHED_FROM_HISTORY != 0) return null
             if (action != ACTION_SEND) return null
             return when {
-                type == "application/pdf" && stream != null -> Pdf(stream)
+                type == "application/pdf" && stream != null && isContentUri(stream) -> Pdf(stream)
                 type == "text/plain" && !text.isNullOrBlank() -> Arxiv(text)
                 else -> null
             }
         }
+
+        // Only content URIs carry a grant; file:// and friends would read with our permissions.
+        private fun isContentUri(uri: String) = uri.startsWith("content://", ignoreCase = true)
     }
 }

@@ -1,7 +1,6 @@
 package dev.sortes.app
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -18,9 +17,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.sortes.app.importing.ShareRequest
+import dev.sortes.app.importing.PaperImports
+import dev.sortes.app.importing.toShareRequest
 import dev.sortes.app.ui.PapersScreen
 import dev.sortes.app.ui.PapersViewModel
 import dev.sortes.app.ui.ReaderScreen
@@ -73,16 +72,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleShare(intent: Intent, restored: Boolean) {
-        val request = ShareRequest.from(
-            action = intent.action,
-            type = intent.type,
-            text = intent.getStringExtra(Intent.EXTRA_TEXT),
-            stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                ?.toString(),
-            flags = intent.flags,
-            restored = restored,
-        ) ?: return
-        viewModel.import(request)
+        val request = intent.toShareRequest(restored) ?: return
+        PaperImports.get(this).import(request)
         shareCount++
     }
 }
