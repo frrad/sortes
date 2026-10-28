@@ -2,6 +2,7 @@ package dev.sortes.app.importing
 
 import dev.sortes.app.data.Paper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,10 +13,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import kotlin.coroutines.CoroutineContext
 
 class ImportTrackerTest {
 
@@ -103,15 +106,71 @@ class ImportTrackerTest {
     }
 
     @Test
-    fun cancelledImportIsUncountedAndShowsPreviousResult() = runBlocking {
+    fun importCancelledWhileRunningIsUncountedAndShowsPreviousResult() = runBlocking {
         tracker.launch { paper("Earlier") }.join()
-        val job = tracker.launch { awaitCancellation() }
+        val started = CompletableDeferred<Unit>()
+        val job = tracker.launch {
+            started.complete(Unit)
+            awaitCancellation()
+        }
+        started.await()
         assertEquals(ImportStatus.Running(1), tracker.status.value)
 
         job.cancel()
         job.join()
 
         assertEquals(ImportStatus.Done("Earlier"), tracker.status.value)
+    }
+
+    // Regression: the counter was decremented in the body's finally, which never runs for a job
+    // cancelled before it is dispatched, so the status stayed at "Importing…" forever.
+    @Test
+    fun importCancelledBeforeItStartsIsUncounted() {
+        val dispatcher = QueueDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tracker = ImportTracker(scope)
+        tracker.launch { paper("Earlier") }
+        dispatcher.runAll()
+        assertEquals(ImportStatus.Done("Earlier"), tracker.status.value)
+
+        var ran = false
+        val job = tracker.launch {
+            ran = true
+            paper("Never")
+        }
+        assertEquals(ImportStatus.Running(1), tracker.status.value)
+        job.cancel() // still queued: its body hasn't started
+        dispatcher.runAll()
+
+        assertFalse(ran)
+        assertTrue(job.isCancelled && job.isCompleted)
+        assertEquals(ImportStatus.Done("Earlier"), tracker.status.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun importLaunchedIntoCancelledScopeIsUncounted() {
+        val dispatcher = QueueDispatcher()
+        val tracker = ImportTracker(CoroutineScope(Job().apply { cancel() } + dispatcher))
+
+        val job = tracker.launch { paper("Never") }
+        dispatcher.runAll()
+
+        assertTrue(job.isCompleted)
+        assertNull(tracker.status.value)
+    }
+
+    /** Runs dispatched coroutines only when told to, so tests control exactly when bodies start. */
+    private class QueueDispatcher : CoroutineDispatcher() {
+        private val tasks = ArrayDeque<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            tasks.addLast(block)
+        }
+
+        fun runAll() {
+            while (tasks.isNotEmpty()) tasks.removeFirst().run()
+        }
     }
 
     @Test
