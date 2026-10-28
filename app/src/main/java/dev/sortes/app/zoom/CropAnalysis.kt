@@ -79,7 +79,7 @@ class CropAnalysis private constructor(
     suspend fun anchor(scale: Float): Anchor {
         val centroids = masks.filter { it.inkCount > 0 }.map { mask ->
             currentCoroutineContext().ensureActive()
-            PaddedPage(mask, aspect).fit(scale).centroid()
+            Fit(PaddedPage(mask, aspect), scale).centroid()
         }
         return Anchor(
             u = centroids.map { it.u }.median() ?: 0.5f,
@@ -144,116 +144,49 @@ data class PlacedWindow(val window: CropWindow, val cells: CellRect)
  * can be off by a cell where the padding is an odd number of cells.
  */
 fun placeWindowCells(mask: InkMask, aspect: Float, scale: Float, anchor: Anchor): PlacedWindow =
-    PaddedPage(mask, aspect).fit(scale).window(anchor, scale)
+    Fit(PaddedPage(mask, aspect), scale).window(anchor, scale)
 
 private fun List<Float>.median(): Float? =
     if (isEmpty()) null else sorted().let { (it[(it.size - 1) / 2] + it[it.size / 2]) / 2 }
 
-/** A page's ink mask centered in a frame with the screen's aspect ratio, plus a summed-area table. */
-private class PaddedPage(mask: InkMask, aspect: Float) {
-    val width: Int
-    val height: Int
-    val inkCount = mask.inkCount
+/** The positions for one window size that leave out the least ink. */
+private class Fit(private val page: PaddedPage, scale: Float) {
+    private val w = page.windowWidth(scale)
+    private val h = page.windowHeight(scale)
+    private val rangeX = page.width - w
+    private val rangeY = page.height - h
+    private val columns = rangeX + 1
 
-    /** Where the mask sits in the frame: the padding left of and above it, in cells. */
-    val offX: Int
-    val offY: Int
+    // Positions packed as y * columns + x. A blank page has no preference: left empty.
+    private val good: IntArray = if (page.inkCount == 0) IntArray(0) else {
+        val values = IntArray(columns * (rangeY + 1))
+        for (y in 0..rangeY) for (x in 0..rangeX) values[y * columns + x] = page.inside(x, y, w, h)
+        val best = values.max()
+        values.indices.filter { values[it] == best }.toIntArray()
+    }
 
-    // sums[y * (width + 1) + x] = ink in the frame above and left of (x, y).
-    private val sums: IntArray
+    private fun norm(pos: Double, range: Int) = if (range == 0) 0.5f else (pos / range).toFloat()
 
-    init {
-        if (mask.width.toFloat() / mask.height < aspect) {
-            width = (mask.height * aspect).roundToInt().coerceAtLeast(mask.width)
-            height = mask.height
+    /** The middle of the good positions. */
+    fun centroid() = Anchor(
+        u = norm(good.sumOf { (it % columns).toLong() }.toDouble() / good.size, rangeX),
+        v = norm(good.sumOf { (it / columns).toLong() }.toDouble() / good.size, rangeY),
+    )
+
+    /** The good position nearest [anchor], as a window on the padded frame. */
+    fun window(anchor: Anchor, scale: Float): PlacedWindow {
+        val refX = anchor.u * rangeX
+        val refY = anchor.v * rangeY
+        val (x, y) = if (good.isEmpty()) {
+            refX.roundToInt() to refY.roundToInt()
         } else {
-            width = mask.width
-            height = (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
-        }
-        offX = (width - mask.width) / 2
-        offY = (height - mask.height) / 2
-        val stride = width + 1
-        sums = IntArray(stride * (height + 1))
-        for (y in 0 until height) {
-            var row = 0
-            for (x in 0 until width) {
-                val mx = x - offX
-                val my = y - offY
-                if (mx in 0 until mask.width && my in 0 until mask.height && mask[mx, my]) row++
-                sums[(y + 1) * stride + x + 1] = sums[y * stride + x + 1] + row
+            val pos = good.minBy {
+                val dx = it % columns - refX
+                val dy = it / columns - refY
+                dx * dx + dy * dy
             }
+            pos % columns to pos / columns
         }
-    }
-
-    fun windowWidth(scale: Float) = (scale * width).roundToInt().coerceIn(1, width)
-    fun windowHeight(scale: Float) = (scale * height).roundToInt().coerceIn(1, height)
-
-    fun inside(x: Int, y: Int, w: Int, h: Int): Int {
-        val stride = width + 1
-        return sums[(y + h) * stride + x + w] - sums[y * stride + x + w] -
-            sums[(y + h) * stride + x] + sums[y * stride + x]
-    }
-
-    fun maxInside(scale: Float): Int {
-        if (inkCount == 0) return 0
-        val w = windowWidth(scale)
-        val h = windowHeight(scale)
-        var best = 0
-        for (y in 0..height - h) for (x in 0..width - w) {
-            val v = inside(x, y, w, h)
-            if (v > best) best = v
-        }
-        return best
-    }
-
-    fun fit(scale: Float) = Fit(this, windowWidth(scale), windowHeight(scale))
-
-    /** The positions for one window size that leave out the least ink. */
-    class Fit(private val page: PaddedPage, private val w: Int, private val h: Int) {
-        private val rangeX = page.width - w
-        private val rangeY = page.height - h
-        private val columns = rangeX + 1
-
-        // Positions packed as y * columns + x. A blank page has no preference: left empty.
-        private val good: IntArray = if (page.inkCount == 0) IntArray(0) else {
-            val values = IntArray(columns * (rangeY + 1))
-            for (y in 0..rangeY) for (x in 0..rangeX) values[y * columns + x] = page.inside(x, y, w, h)
-            val best = values.max()
-            values.indices.filter { values[it] == best }.toIntArray()
-        }
-
-        private fun norm(pos: Double, range: Int) = if (range == 0) 0.5f else (pos / range).toFloat()
-
-        /** The middle of the good positions. */
-        fun centroid() = Anchor(
-            u = norm(good.sumOf { (it % columns).toLong() }.toDouble() / good.size, rangeX),
-            v = norm(good.sumOf { (it / columns).toLong() }.toDouble() / good.size, rangeY),
-        )
-
-        /** The good position nearest [anchor], as a window on the padded frame. */
-        fun window(anchor: Anchor, scale: Float): PlacedWindow {
-            val refX = anchor.u * rangeX
-            val refY = anchor.v * rangeY
-            val (x, y) = if (good.isEmpty()) {
-                refX.roundToInt() to refY.roundToInt()
-            } else {
-                val pos = good.minBy {
-                    val dx = it % columns - refX
-                    val dy = it / columns - refY
-                    dx * dx + dy * dy
-                }
-                pos % columns to pos / columns
-            }
-            // Center the exact-scale window on the cell window, which rounding made slightly off.
-            val left = (x + w / 2f) / page.width - scale / 2
-            val top = (y + h / 2f) / page.height - scale / 2
-            val window = CropWindow(
-                left = left.coerceIn(0f, 1f - scale),
-                top = top.coerceIn(0f, 1f - scale),
-                scale = scale,
-            )
-            val cells = CellRect(x - page.offX, y - page.offY, x - page.offX + w, y - page.offY + h)
-            return PlacedWindow(window, cells)
-        }
+        return PlacedWindow(page.windowAt(x, y, scale), page.cellsAt(x, y, scale))
     }
 }
