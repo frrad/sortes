@@ -79,7 +79,7 @@ class PaperAnalysis(
         if (analysed >= 0) {
             val crop = crops.pages[analysed]
             return withContext(Dispatchers.Default) {
-                Placement(crops.windows[crop.window], cutInk(masks[analysed], page, crop.cells))
+                Placement(crop.window, cutInk(masks[analysed], page, crop.cells))
             }
         }
         val (width, height) = maskSize(page, density)
@@ -88,7 +88,7 @@ class PaperAnalysis(
             // The same stripped mask for both, so ignored ink is never shown as cut off.
             val mask = rendered.withoutIgnorableInk()
             val crop = model.assign(mask, crops, referenceInk, preferred = preferredWindow(index, crops))
-            Placement(crops.windows[crop.window], cutInk(mask, page, crop.cells))
+            Placement(crop.window, cutInk(mask, page, crop.cells))
         }
     }
 
@@ -96,7 +96,7 @@ class PaperAnalysis(
     private fun preferredWindow(index: Int, crops: ModelCrops): Int {
         val sameSide = sample.indices.filter { sample[it] % 2 == index % 2 }.ifEmpty { sample.indices.toList() }
         val nearest = sameSide.minBy { kotlin.math.abs(sample[it] - index) }
-        return crops.pages[nearest].window
+        return crops.pages[nearest].windowIndex
     }
 
     companion object {

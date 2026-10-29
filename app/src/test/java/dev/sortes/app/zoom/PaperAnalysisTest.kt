@@ -82,6 +82,7 @@ class PaperAnalysisTest {
             val placement = runBlocking { paper.place(pages, index, crops) }
 
             assertEquals(crops.windows.single(), placement.window)
+            assertEquals(1, crops.k)
             assertTrue("$placement", placement.window.covers(60, 80, aspect, 10, 10, 50, 70))
             val boxes = placement.cut.map { it.region }
             assertEquals("$boxes", 2, boxes.size)

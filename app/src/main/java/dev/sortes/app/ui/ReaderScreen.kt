@@ -2,6 +2,8 @@ package dev.sortes.app.ui
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -161,7 +163,13 @@ internal fun PageReader(
         // Pages render whole until this finishes, so long papers are readable straight away.
         val analysis by produceState<Result<PaperAnalysis>?>(null, pages, aspect) {
             value = null // Don't keep using an analysis for a different screen shape.
-            value = catching { analyzePaper(pages, aspect) }
+            value = catching {
+                val started = SystemClock.elapsedRealtime()
+                analyzePaper(pages, aspect).also {
+                    Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages, " +
+                        "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms")
+                }
+            }
         }
         val paper = analysis?.getOrNull()?.takeIf { it.aspect == aspect }
         // The model's crops: at its automatic scale, or re-solved at the saved one.
@@ -301,3 +309,5 @@ internal fun Message(text: String, modifier: Modifier = Modifier) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
+
+private const val TAG = "Sortes"
