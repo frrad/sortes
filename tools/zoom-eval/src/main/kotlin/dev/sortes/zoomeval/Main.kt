@@ -41,11 +41,20 @@ class ColumnResult(
     val raw: List<InkMask>,
     /** Time to choose the crops from the masks (analysis and solving, not rendering). */
     val millis: Long,
-)
+) {
+    /** Where each page's window edges slice through ink, by [edgeSlices]. */
+    val slices: List<EdgeSlices> = crops.pages.mapIndexed { p, c -> edgeSlices(masks[p], c.cells) }
+
+    /** Pages whose top or bottom edge slices through a line. */
+    val slicedLinePages: Int get() = slices.count { it.slicesLine() }
+
+    /** Pages whose left or right edge slices through ink. */
+    val slicedSidePages: Int get() = slices.count { it.slicesSide() }
+}
 
 private val USAGE = """
     Usage: zoom-eval [--corpus=corpus.tsv] [--columns=columns.tsv] [--pdfs=DIR] [--out=DIR]
-                     [--aspect=W/H] [--weights=FILE] [--<weight>=value ...] [--only=id,id]
+                     [--aspect=W/H] [--scale=S] [--weights=FILE] [--<weight>=value ...] [--only=id,id]
     Weights: ${WEIGHT_NAMES.joinToString(", ")}
 """.trimIndent()
 
@@ -54,15 +63,17 @@ fun main(args: Array<String>) {
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg\n$USAGE" }
         arg.removePrefix("--").substringBefore('=') to arg.substringAfter('=')
     }
-    val known = WEIGHT_NAMES + setOf("corpus", "columns", "pdfs", "out", "aspect", "weights", "only")
+    val known = WEIGHT_NAMES + setOf("corpus", "columns", "pdfs", "out", "aspect", "scale", "weights", "only")
     opts.keys.firstOrNull { it !in known }?.let { throw IllegalArgumentException("Unknown option --$it\n$USAGE") }
     val home = System.getProperty("user.home")
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv"))
     val columns = readColumns(File(opts["columns"] ?: "columns.tsv"))
     val pdfs = File(opts["pdfs"] ?: "$home/.cache/sortes-zoom-eval/pdf")
     val out = File(opts["out"] ?: "$home/sortes-review/model").apply { mkdirs() }
-    // The reader's view on the Boox Note Air5 C: 1860 x 2418 px below the status bar.
-    val aspect = (opts["aspect"] ?: "0.7692").toFloat()
+    // The reader's view on the Boox Note Air5 C: the whole 1860 x 2480 px screen, bars hidden.
+    val aspect = (opts["aspect"] ?: "0.75").toFloat()
+    // A fixed zoom for every paper, as a manual zoom in the reader; by default each column's own.
+    val scale = opts["scale"]?.toFloat()?.also { require(it > 0f && it <= 1f) { "Bad scale: $it" } }
     val weights = readWeights(File(opts["weights"] ?: "weights.properties"), opts.filterKeys { it in WEIGHT_NAMES })
     val only = opts["only"]?.split(',')?.toSet()
 
@@ -76,15 +87,21 @@ fun main(args: Array<String>) {
         }
         val started = System.currentTimeMillis()
         val pdf = MutoolPdf(file)
-        val results = runBlocking { evaluate(pdf, columns, aspect, weights) }
+        val results = runBlocking { evaluate(pdf, columns, aspect, weights, scale) }
         report.add(paper, pdf, results)
         report.write()
-        println("${paper.id}: ${results.joinToString("  ") { "${it.column.label} K=${it.crops.k} %.3f (${it.millis} ms)".format(it.crops.total) }} (${System.currentTimeMillis() - started} ms)")
+        println("${paper.id}: ${results.joinToString("  ") { "${it.column.label} K=${it.crops.k} %.3f sliced ${it.slicedLinePages}/${it.crops.pages.size} (${it.millis} ms)".format(it.crops.total) }} (${System.currentTimeMillis() - started} ms)")
     }
     println("Wrote ${File(out, "index.html")}")
 }
 
-private suspend fun evaluate(pdf: MutoolPdf, columns: List<Column>, aspect: Float, weights: CropModelWeights): List<ColumnResult> {
+private suspend fun evaluate(
+    pdf: MutoolPdf,
+    columns: List<Column>,
+    aspect: Float,
+    weights: CropModelWeights,
+    scale: Float?,
+): List<ColumnResult> {
     // As the reader does: one density for the paper, from its page sizes.
     val density = analysisDensity(pdf.pageSizes, aspect)
     val rendered = HashMap<Int?, List<InkMask>>()
@@ -98,7 +115,7 @@ private suspend fun evaluate(pdf: MutoolPdf, columns: List<Column>, aspect: Floa
         val masks = raw.map { it.withoutIgnorableInk() }
         val w = weights.with(column.overrides)
         val started = System.nanoTime()
-        val crops = cropsFor(column.algorithm, masks, CropModel(aspect, w))
+        val crops = cropsFor(column.algorithm, masks, CropModel(aspect, w), scale)
         ColumnResult(column, w, crops, masks, raw, (System.nanoTime() - started) / 1_000_000)
     }
 }
@@ -124,13 +141,14 @@ class Report(private val out: File, private val aspect: Float, private val weigh
 
     /** Every page's window and terms under every column. */
     private fun pageTsv(results: List<ColumnResult>) = buildString {
-        appendLine("page\tcolumn\twindow\tleft\ttop\tcutCells\tcutPagesOfInk\tpageCut\toffCentre\tignoredCells")
+        appendLine("page\tcolumn\twindow\tleft\ttop\tcutCells\tcutPagesOfInk\tpageCut\toffCentre\tignoredCells\tsliceTop\tsliceBottom\tsliceLeft\tsliceRight")
         for (m in results) m.crops.pages.forEachIndexed { p, t ->
             val w = t.window
             appendLine(
                 listOf(p + 1, m.column.label, t.windowIndex + 1, "%.4f".format(w.left), "%.4f".format(w.top), t.cutCells,
                     "%.4f".format(t.cut), "%.4f".format(t.pageCut), "%.4f".format(t.offCentre),
-                    m.raw[p].inkCount - m.masks[p].inkCount).joinToString("\t"),
+                    m.raw[p].inkCount - m.masks[p].inkCount, m.slices[p].top, m.slices[p].bottom, m.slices[p].left,
+                    m.slices[p].right).joinToString("\t"),
             )
         }
     }
@@ -141,7 +159,7 @@ class Report(private val out: File, private val aspect: Float, private val weigh
     private fun maxPageCut(c: ModelCrops) = c.pages.maxOfOrNull { it.pageCut } ?: 0.0
 
     private fun tsv() = buildString {
-        appendLine("paper\tcategory\tpages\tcolumn\tscale\tK\tswitches\tbreaks\tcutPercent\tmaxPageCutPercent\tcutTerm\toffTerm\tpageCutTerm\twindowTerm\tswitchTerm\ttotal\tmillis\tassignment")
+        appendLine("paper\tcategory\tpages\tcolumn\tscale\tK\tswitches\tbreaks\tcutPercent\tmaxPageCutPercent\tcutTerm\toffTerm\tpageCutTerm\twindowTerm\tswitchTerm\ttotal\tmillis\tassignment\tslicedLinePages\tslicedSidePages")
         for (r in rows) for (m in r.results) {
             val c = m.crops
             appendLine(
@@ -149,7 +167,8 @@ class Report(private val out: File, private val aspect: Float, private val weigh
                     r.paper.id, r.paper.category, r.pages, m.column.label, "%.3f".format(c.scale), c.k, c.switches, c.breaks,
                     "%.4f".format(c.cutFraction * 100), "%.3f".format(maxPageCut(c) * 100), "%.4f".format(c.cutTerm),
                     "%.4f".format(c.offTerm), "%.4f".format(c.pageCutTerm), "%.4f".format(c.windowTerm),
-                    "%.4f".format(c.switchTerm), "%.4f".format(c.total), m.millis, assignment(c),
+                    "%.4f".format(c.switchTerm), "%.4f".format(c.total), m.millis, assignment(c), m.slicedLinePages,
+                    m.slicedSidePages,
                 ).joinToString("\t"),
             )
         }
