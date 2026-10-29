@@ -76,3 +76,23 @@ fun CropWindow.clipped(mask: InkMask, aspect: Float): Clipped {
     }
     return Clipped(l, t, rt, b, total)
 }
+
+/**
+ * A greyscale page saved as text (`scripts/render-ink-mask.py --gray`): one row per line, each
+ * pixel two hex digits of luminance. Returns opaque ARGB pixels, as `Bitmap.getPixels` would.
+ */
+fun grayFixture(name: String): Triple<IntArray, Int, Int> {
+    val text = requireNotNull(TestPage::class.java.getResource("/zoom/$name")) { "missing fixture $name" }
+        .readText()
+    val rows = text.lines().filter { it.isNotEmpty() }
+    val width = rows[0].length / 2
+    val pixels = IntArray(rows.size * width)
+    rows.forEachIndexed { y, row ->
+        require(row.length == width * 2) { "Ragged row $y in $name" }
+        for (x in 0 until width) {
+            val l = row.substring(2 * x, 2 * x + 2).toInt(16)
+            pixels[y * width + x] = (0xFF shl 24) or (l shl 16) or (l shl 8) or l
+        }
+    }
+    return Triple(pixels, width, rows.size)
+}

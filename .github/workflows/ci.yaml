@@ -33,6 +33,10 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
 
+      # The offline zoom harness compiles the app's zoom code; its tests need no mutool.
+      - name: zoom-eval tests
+        run: ./gradlew :zoom-eval:test
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
