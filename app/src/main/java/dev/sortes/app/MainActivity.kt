@@ -58,9 +58,8 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         folderSources = { onBack -> SourcesScreen(onBack = onBack, modifier = contentModifier) },
-                        reader = { paper, onClose ->
-                            ReaderScreen(paper = paper, onClose = onClose, modifier = contentModifier)
-                        },
+                        // The reader hides the system bars and keeps clear of any that show itself.
+                        reader = { paper, onClose -> ReaderScreen(paper = paper, onClose = onClose) },
                     )
                 }
             }

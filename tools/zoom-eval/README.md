@@ -26,7 +26,8 @@ Options:
 | `--columns=` | `columns.tsv` |
 | `--pdfs=` | `~/.cache/sortes-zoom-eval/pdf` |
 | `--out=` | `~/sortes-review/model` |
-| `--aspect=` | 0.7692: the Boox view, 1860 × 2418 |
+| `--aspect=` | 0.75: the Boox reader, the whole 1860 × 2480 screen |
+| `--scale=` | each column's automatic zoom; or one fixed scale for every paper, as a manual zoom |
 | `--weights=` | `weights.properties` |
 | `--only=` | every paper; or a comma-separated list of ids |
 
@@ -71,8 +72,11 @@ tune:
   - cut ink in red: ink outside the cells the window covers, exactly as the cost counts it;
   - ink ignored by the ignorable-ink rules in blue.
 - `<id>.pages.tsv`: every page's window, position, cut, page cut and off-centredness under every
-  column.
-- `summary.tsv`: one row per paper and column, with the cost features (for fitting weights).
+  column, and its edge slices: for each edge, the inked cells on the window's edge row or column
+  with ink directly beyond them (`EdgeSlices.kt`; a measure only, the model doesn't use it).
+- `summary.tsv`: one row per paper and column, with the cost features (for fitting weights), and
+  the pages whose top or bottom edge slices a line (`slicedLinePages`: at least 3 cells) or whose
+  side edges slice ink (`slicedSidePages`).
 
 ## Corpus
 

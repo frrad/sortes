@@ -11,23 +11,23 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * Hides the system navigation bar while this is in composition and shows it again
- * when it leaves. On stock Android a swipe from the screen edge brings the bar back
- * temporarily, but that's best-effort: on Boox firmware the swipe also runs a Boox
- * gesture (Home, Recents, ...) and leaves the app. Callers must provide their own way
+ * Hides the status and navigation bars while this is in composition and shows them again
+ * when it leaves. On stock Android a swipe from the screen edge brings the bars back
+ * temporarily, over the content, but that's best-effort: on Boox firmware the swipe also runs
+ * a Boox gesture (Home, Recents, ...) and leaves the app. Callers must provide their own way
  * out, as [ReaderFrame] does.
  */
 @Composable
-fun HideNavigationBar() {
+fun HideSystemBars() {
     val view = LocalView.current
     DisposableEffect(view) {
         val window = view.context.findActivity()?.window ?: return@DisposableEffect onDispose {}
         val controller = WindowCompat.getInsetsController(window, view)
         val previousBehavior = controller.systemBarsBehavior
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.navigationBars())
+        controller.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
-            controller.show(WindowInsetsCompat.Type.navigationBars())
+            controller.show(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = previousBehavior
         }
     }

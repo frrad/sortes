@@ -84,22 +84,23 @@ val WEIGHT_NAMES = setOf("alpha", "beta", "epsilon", "allowance", "gamma", "delt
 /**
  * A column's crops for a paper whose pages (already stripped of ignorable ink) are [masks],
  * scored with [model]'s cost. Anchor placement is scored with the model's cost too, so the
- * columns compare on one scale.
+ * columns compare on one scale. At [scale] if given, as a manual zoom; else each algorithm's own
+ * automatic scale.
  */
-suspend fun cropsFor(algorithm: Algorithm, masks: List<InkMask>, model: CropModel): ModelCrops =
+suspend fun cropsFor(algorithm: Algorithm, masks: List<InkMask>, model: CropModel, scale: Float? = null): ModelCrops =
     when (algorithm) {
         Algorithm.ANCHOR -> {
             // As the reader did: one analysis, its auto scale, and the anchor for that scale.
             val analysis = CropAnalysis.of(masks, model.aspect)
-            val scale = analysis.autoScale
-            val anchor = analysis.anchor(scale)
-            model.score(masks, masks.map { placeWindow(it, model.aspect, scale, anchor) })
+            val at = scale ?: analysis.autoScale
+            val anchor = analysis.anchor(at)
+            model.score(masks, masks.map { placeWindow(it, model.aspect, at, anchor) })
         }
-        Algorithm.MODEL -> model.auto(masks)
+        Algorithm.MODEL -> if (scale != null) model.solve(masks, scale) else model.auto(masks)
         Algorithm.READER -> {
             val sample = samplePages(masks.size, MAX_ANALYZED_PAGES)
             val paper = SampledPaper(model, sample.map { masks[it] }, sample)
-            val crops = paper.auto()
+            val crops = if (scale != null) paper.solve(scale) else paper.auto()
             // Every page's crop, with any page's own window added as a window of its own.
             val windows = crops.windows.toMutableList()
             val pages = masks.indices.map { i ->

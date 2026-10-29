@@ -10,9 +10,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -62,10 +65,10 @@ private sealed interface ReaderState {
 @SuppressLint("ProduceStateDoesNotAssignValue")
 @Composable
 fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifier) {
-    // The navigation bar is hidden to give the page more room, and on Boox firmware
+    // The system bars are hidden to give the page the whole screen, and on Boox firmware
     // edge swipes run Boox gestures rather than revealing Back, so the reader
     // provides its own way out.
-    HideNavigationBar()
+    HideSystemBars()
     val context = LocalContext.current
     val zoomStore = remember(context) { ZoomStore(context) }
     var savedScale by remember(paper.id) { mutableStateOf(zoomStore.get(paper.id)) }
@@ -96,6 +99,10 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
  * Draws [content] full size with a back button over its top-left corner. The reader
  * is black on white whatever the app theme, so the button and messages are visible
  * in every state.
+ *
+ * Takes the whole window and keeps [content] out of whatever the system draws over: system
+ * bars that are showing, and a display cutout. With the bars hidden that is the whole window,
+ * so the page's crop is analysed and drawn for exactly the area you see.
  */
 @Composable
 internal fun ReaderFrame(
@@ -104,7 +111,7 @@ internal fun ReaderFrame(
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides ReaderInk) {
-        Box(modifier.fillMaxSize().background(ReaderPaper)) {
+        Box(modifier.fillMaxSize().background(ReaderPaper).windowInsetsPadding(WindowInsets.safeDrawing)) {
             content()
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopStart)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to papers")
