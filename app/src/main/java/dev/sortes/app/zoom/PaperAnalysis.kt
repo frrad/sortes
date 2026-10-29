@@ -27,6 +27,8 @@ class PaperAnalysis(
     val pageCount: Int,
     /** The crops at the automatic scale. */
     val auto: ModelCrops,
+    /** Time spent finding [auto] once the pages were rendered, for diagnostics. */
+    val solveMillis: Long = 0,
 ) {
     init {
         require(masks.size == sample.size && masks.size == auto.pages.size) { "One mask and crop per sampled page" }
@@ -133,9 +135,12 @@ suspend fun analyzePaper(
     }
     if (rendered.isEmpty()) throw java.io.IOException("No pages could be rendered")
     val masks = rendered.map { it.second }
+    val started = System.nanoTime()
     val crop = CropAnalysis.of(masks, aspect)
     val model = CropModel(aspect, weights)
-    PaperAnalysis(crop, model, masks, rendered.map { it.first }, density, source.pageCount, model.auto(masks, crop))
+    val auto = model.auto(masks, crop)
+    val solveMillis = (System.nanoTime() - started) / 1_000_000
+    PaperAnalysis(crop, model, masks, rendered.map { it.first }, density, source.pageCount, auto, solveMillis)
 }
 
 /** Up to [max] page indices spread evenly over [count] pages, including the first and last. */

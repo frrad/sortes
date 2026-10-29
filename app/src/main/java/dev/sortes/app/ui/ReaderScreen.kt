@@ -167,7 +167,8 @@ internal fun PageReader(
                 val started = SystemClock.elapsedRealtime()
                 analyzePaper(pages, aspect).also {
                     Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages, " +
-                        "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms")
+                        "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
+                        "(${it.solveMillis} ms solving)")
                 }
             }
         }
