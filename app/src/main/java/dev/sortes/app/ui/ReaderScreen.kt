@@ -2,6 +2,8 @@ package dev.sortes.app.ui
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -40,8 +42,8 @@ import dev.sortes.app.data.ZoomStore
 import dev.sortes.app.pdf.PageSource
 import dev.sortes.app.pdf.PdfPages
 import dev.sortes.app.pdf.PdfSource
-import dev.sortes.app.zoom.Anchor
 import dev.sortes.app.zoom.FullPage
+import dev.sortes.app.zoom.ZoomCurve
 import dev.sortes.app.zoom.PaperAnalysis
 import dev.sortes.app.zoom.Placement
 import dev.sortes.app.zoom.analyzePaper
@@ -161,26 +163,44 @@ internal fun PageReader(
         // Pages render whole until this finishes, so long papers are readable straight away.
         val analysis by produceState<Result<PaperAnalysis>?>(null, pages, aspect) {
             value = null // Don't keep using an analysis for a different screen shape.
-            value = catching { analyzePaper(pages, aspect) }
+            value = catching {
+                val started = SystemClock.elapsedRealtime()
+                analyzePaper(pages, aspect).also {
+                    Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages, " +
+                        "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
+                        "(${it.solveMillis} ms solving)")
+                }
+            }
         }
         val paper = analysis?.getOrNull()?.takeIf { it.aspect == aspect }
-        val crop = paper?.crop
-        val scale = savedScale ?: crop?.autoScale ?: 1f
-        val anchor by produceState<Anchor?>(null, crop, scale) {
-            value = null
-            value = crop?.let { withContext(Dispatchers.Default) { it.anchor(scale) } }
+        // The model's crops: at its automatic scale, or re-solved at the saved one. Solving can
+        // fail (a saved scale that's out of range): the reader then shows whole pages.
+        val cropsResult by produceState(
+            paper?.auto?.takeIf { savedScale == null }?.let { Result.success(it) }, paper, savedScale,
+        ) {
+            value = when {
+                paper == null -> null
+                savedScale == null -> Result.success(paper.auto)
+                else -> {
+                    value = null
+                    catching { paper.cropsAt(savedScale) }
+                }
+            }
         }
+        val crops = cropsResult?.getOrNull()
+        val scale = crops?.scale ?: savedScale ?: paper?.auto?.scale ?: 1f
 
-        val currentAnchor = anchor
+        val currentCrops = crops
+        val currentCropsResult = cropsResult
         // Keeps showing the previous page until the next one has rendered.
         val page by produceState<Result<ShownPage>?>(
-            null, pages, index, width, height, paper, scale, currentAnchor,
+            null, pages, index, width, height, paper, currentCropsResult,
         ) {
             // The zoom is about to change: wait for it rather than render the page twice.
-            if (paper != null && currentAnchor == null) return@produceState
+            if (paper != null && currentCropsResult == null) return@produceState
             value = catching {
-                val placement = if (paper != null && currentAnchor != null) {
-                    paper.place(pages, index, scale, currentAnchor)
+                val placement = if (paper != null && currentCrops != null) {
+                    paper.place(pages, index, currentCrops)
                 } else {
                     null
                 }
@@ -188,6 +208,11 @@ internal fun PageReader(
                 val bitmap = pages.renderRegion(index, window.regionOn(pages.pageSize(index), aspect), width, height)
                 ShownPage(index, bitmap, aspect, placement)
             }
+        }
+        // The model's lost-ink curve, solved point by point while the zoom panel is open.
+        val curve by produceState<ZoomCurve?>(null, paper, panelOpen) {
+            value = null // Not the last paper's or screen shape's curve, even for a frame.
+            if (paper != null && panelOpen) paper.curve().collect { value = it }
         }
 
         Box(
@@ -227,11 +252,25 @@ internal fun PageReader(
                         Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
                     }
                 }
+                val zoomError = cropsResult?.exceptionOrNull()
+                if (panelOpen && paper != null && zoomError != null) {
+                    // The panel stays below, so another zoom or Auto can put it right.
+                    Text(
+                        text = "$pageLabel · Couldn't zoom this paper to ${savedScale ?: scale}: " +
+                            (zoomError.message ?: zoomError),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ReaderPaper)
+                            .padding(16.dp)
+                            .testTag("zoomError"),
+                    )
+                }
                 if (panelOpen && paper != null) {
                     ZoomPanel(
                         pageLabel = pageLabel,
-                        analysis = paper.crop,
-                        sampled = paper.crop.pagesAnalyzed < paper.pageCount,
+                        curve = curve ?: ZoomCurve(paper.scales, emptyMap(), paper.pagesAnalyzed, paper.auto.scale),
+                        crops = crops,
+                        sampled = paper.pagesAnalyzed < paper.pageCount,
                         scale = scale,
                         isAuto = savedScale == null,
                         onScaleChange = onSaveScale,
@@ -290,3 +329,5 @@ internal fun Message(text: String, modifier: Modifier = Modifier) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
+
+private const val TAG = "Sortes"

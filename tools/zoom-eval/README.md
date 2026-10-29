@@ -38,7 +38,7 @@ Any weight can be set directly: `--alpha= --beta= --epsilon= --allowance= --gamm
 `columns.tsv` lists the sheets' columns. Each row has:
 - a label;
 - an algorithm: `model` (`CropModel`, what the reader uses) or `anchor` (the reader's previous
-  per-page placement);
+  per-page anchored placement, kept for comparison);
 - an ink threshold: `default` (the reader's) or a fixed luminance, e.g. `224` (the old one);
 - weight overrides for that column.
 

@@ -94,6 +94,32 @@ Because the model keeps windows put, it can cut more than per-page optima, so it
 never tighter than the per-page anchor placement's. Across the corpus it came out equal, or 0.005 looser on a few
 papers.
 
+## In the reader
+
+`analyzePaper` renders a sample of at most 60 pages and strips their ignorable ink. The sample
+is evenly spaced pairs of facing pages (`samplePages`): even, odd, even, odd, so both sides of a
+two-sided layout are seen equally. Plain even spacing put every sampled page of a 119-page
+paper on one side. It then solves the model at its automatic scale (`SampledPaper`, shared with
+the harness). The resulting `PaperAnalysis` holds:
+- `auto`: the crops at the automatic scale;
+- `cropsAt(scale)`: a manual zoom re-solves the model at exactly that scale (cached), so a
+  saved per-paper zoom still gets the model's windows and assignment;
+- `place(page)`: an analysed page gets its assigned window and the cells the model counted.
+  An unanalysed page (in papers over 60 pages) gets the window that costs it least, with ties
+  going to the window of the nearest analysed page on the same side (odd or even). If even that
+  window cuts more than the allowance a of its own ink (a landscape table or offset figure the
+  sample didn't see), it gets its own best window at the same scale. The cut-ink boxes in the
+  frame preview come from those same cells (`cutInk`);
+- `curve()`: the zoom panel's lost-ink curve. It is the model's own cut ink at every 4th scale
+  (0.02 of zoom) plus the automatic one, solved in the background while the panel is open and
+  drawn as it fills in. It stops after the first point cutting more than 20%: the tighter ones
+  are the slowest and nobody reads at them. The padded pages and the solver's buffer are kept
+  between solves. The summary for the selected zoom is exact once its crops are solved,
+  and "about" the nearest computed point before that.
+
+The previous per-page anchored placement (`CropAnalysis.anchor`, `placeWindow`) is no longer
+used by the reader. It remains for the harness's comparison column.
+
 ## Solver
 
 At a fixed scale, positions are integer cells on a reference page: the paper's most common
@@ -119,23 +145,32 @@ reader renders.
 
 **Complexity.** Let P be pages, G grid positions per page (≈ (0.17·W)·(0.17·H) ≈ 33 × 43 ≈
 1,400 at scale 0.83; ≈ 4,000 at 0.7) and K ≤ 3.
-- Precompute: O(P·G·log 256), into one flat buffer reused across the scale search.
+- Precompute: O(P·G), into one flat buffer reused across the scale search. Off-centredness for
+  all positions comes from tables of the next and previous inked row and column
+  (`PaddedPage.offCentres`).
 - Each Lloyd round: O(P·G) for the window updates, and O(P·K³) for the pair-Viterbi
   assignment (K² states, K predecessors each).
 - Per scale: a few tens of millions of operations.
 
-**Scale search.** The search starts at the per-page bound and gallops looser (1, 2, 4, …
+**Scale search.** The bound (the tightest scale at which each page's own best window is within
+budget) is found by bisecting on per-page best fits, so the reader no longer computes
+`CropAnalysis`'s whole curve. The search starts at that bound and gallops looser (1, 2, 4, …
 steps) until the model's crops are within budget. It then bisects back between the last miss
 and the first fit, treating the model's cut as rising with zoom. That is a handful of solves
 even when the bound is far off.
 
-Measured on this host (`summary.tsv`'s `millis`: the analysis plus the automatic solve, not
-rendering):
-- Attention (15 pages): about 100 ms;
-- Latent Diffusion (45 pages): about 0.3 s;
-- GPT-3 (75 pages, more than the reader's 60-page sample): about 0.45 s.
+Measured times for the analysis plus the automatic solve, not counting rendering:
 
-The tablet is several times slower; the reader PR measures it there.
+| paper | host (`summary.tsv`'s `millis`) | Boox Note Air5 C (log line, solving only) |
+| --- | --- | --- |
+| Attention, 15 pages | 54 ms | 248 ms |
+| Latent Diffusion, 45 pages | 68 ms | — |
+| GPT-3, 75 pages | 67 ms | — |
+| PDLT, 60 of 471 pages sampled | — | 386 ms |
+
+With rendering, the whole analysis on the tablet takes 0.6 s (Attention) and 0.83 s (PDLT).
+Before these optimisations it took 1.1 s and 11.2 s. The zoom panel's curve, about 36 solves,
+fills in within about 10 s on PDLT.
 
 ## Default weights (`CropModelWeights`)
 

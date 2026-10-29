@@ -91,6 +91,57 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         return abs(left - right) / (2.0 * w) + abs(top - bottom) / (2.0 * h)
     }
 
+    /**
+     * [offCentre] for every position of a [w] x [h] window at once, into [out] at
+     * `y * (width - w + 1) + x`. Linear in the frame's size rather than a search per position:
+     * for each window column it finds the next and previous inked row, and for each window row
+     * the next and previous inked column.
+     */
+    fun offCentres(w: Int, h: Int, out: DoubleArray) {
+        val cols = width - w + 1
+        val rows = height - h + 1
+        // Vertical: for each window column x, the rows with ink across [x, x + w).
+        val next = IntArray(maxOf(width, height) + 1)
+        val prev = IntArray(maxOf(width, height))
+        for (x in 0 until cols) {
+            next[height] = height
+            for (r in height - 1 downTo 0) next[r] = if (inside(x, r, w, 1) > 0) r else next[r + 1]
+            var last = -1
+            for (r in 0 until height) {
+                if (inside(x, r, w, 1) > 0) last = r
+                prev[r] = last
+            }
+            for (y in 0 until rows) {
+                val top = next[y]
+                out[y * cols + x] = if (top >= y + h) Double.NaN else {
+                    val bottom = prev[y + h - 1]
+                    abs((top - y) - (y + h - 1 - bottom)) / (2.0 * h)
+                }
+            }
+        }
+        // Horizontal: for each window row y, the columns with ink across [y, y + h).
+        for (y in 0 until rows) {
+            next[width] = width
+            for (c in width - 1 downTo 0) next[c] = if (inside(c, y, 1, h) > 0) c else next[c + 1]
+            var last = -1
+            for (c in 0 until width) {
+                if (inside(c, y, 1, h) > 0) last = c
+                prev[c] = last
+            }
+            for (x in 0 until cols) {
+                val i = y * cols + x
+                // Nothing kept: no content to centre.
+                if (out[i].isNaN()) {
+                    out[i] = 0.0
+                    continue
+                }
+                val left = next[x]
+                val right = prev[x + w - 1]
+                out[i] += abs((left - x) - (x + w - 1 - right)) / (2.0 * w)
+            }
+        }
+    }
+
     // The frame as a multiple of the page: what regionOn pads to, measured in page widths and
     // heights rather than in whole cells, so it doesn't inherit the cells' rounding.
     private val frameWidth = if (maskWidth.toFloat() / maskHeight < aspect) aspect * maskHeight / maskWidth else 1f

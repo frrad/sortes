@@ -153,7 +153,7 @@ class CropModelTest {
     @Test
     fun autoKeepsTheModelsCutWithinTheReadersBudget() = runBlocking {
         val masks = List(5) { page(body, pageNumber) } + page(rect(10, 30, 50, 60), pageNumber)
-        val crops = CropModel(aspect).auto(masks, CropAnalysis.of(masks, aspect))
+        val crops = CropModel(aspect).auto(masks)
         assertTrue(crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST)
         // Tight enough to cut the page numbers (0.3% of the ink), so tighter than the whole page.
         assertTrue(crops.scale < 0.9f)
@@ -162,7 +162,7 @@ class CropModelTest {
     @Test
     fun aBlankPaperStaysWhole() = runBlocking {
         val masks = listOf(page(), page())
-        val crops = CropModel(aspect).auto(masks, CropAnalysis.of(masks, aspect))
+        val crops = CropModel(aspect).auto(masks)
         assertEquals(1f, crops.scale)
         assertEquals(0.0, crops.total, 1e-9)
     }
@@ -286,5 +286,59 @@ class CropModelTest {
         assertEquals(1, crops.k)
         assertEquals(0.25f, crops.windows[0].left, 0.01f)
         assertEquals(0.25f, crops.windows[0].top, 0.01f)
+    }
+
+    @Test
+    fun offCentresForAllPositionsMatchTheSearchPerPosition() {
+        val random = Random(23)
+        repeat(20) {
+            val mask = randomPaper(random, pages = 1).single()
+            val page = PaddedPage(mask, aspect)
+            val scale = 0.4f + random.nextFloat() * 0.6f
+            val w = page.windowWidth(scale)
+            val h = page.windowHeight(scale)
+            val cols = page.width - w + 1
+            val out = DoubleArray(cols * (page.height - h + 1))
+            page.offCentres(w, h, out)
+            for (y in 0..page.height - h) for (x in 0 until cols) {
+                assertEquals("($x, $y) at $scale", page.offCentre(x, y, w, h), out[y * cols + x], 1e-12)
+            }
+        }
+    }
+
+    @Test
+    fun theBisectedBoundIsTheFullAnalysisBound() = runBlocking {
+        // The bound auto starts from must be exactly the tightest scale at which CropAnalysis'
+        // whole curve is within budget.
+        val random = Random(29)
+        repeat(25) {
+            val masks = randomPaper(random)
+            val analysis = CropAnalysis.of(masks, aspect)
+            val expected = if (analysis.totalInk == 0L) 0 else
+                analysis.scales.indices.last { analysis.lostFraction(it) <= CropAnalysis.AUTO_MAX_LOST }
+            assertEquals(expected, CropModel(aspect).prepare(masks).bound(analysis.scales))
+        }
+    }
+
+    @Test
+    fun autoIsWithinBudgetAndNoTighterThanTheBound() = runBlocking {
+        val random = Random(31)
+        repeat(10) {
+            val masks = randomPaper(random)
+            val prepared = CropModel(aspect).prepare(masks)
+            val scales = CropAnalysis.defaultScales()
+            val crops = prepared.auto(scales)
+            assertTrue(crops.scale >= scales[prepared.bound(scales)] - 1e-6f)
+            assertTrue(crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST + 1e-9)
+        }
+    }
+
+    @Test
+    fun aPagesOwnCropIsItsBestPositionAtTheSameScale() {
+        val offset = page(rect(26, 10, 58, 70))
+        val own = CropModel(aspect).ownCrop(offset, 0.75f, 2000.0)
+        assertEquals(CropModel.OWN_WINDOW, own.windowIndex)
+        assertEquals(0, own.cutCells)
+        assertEquals(0.75f, own.window.scale)
     }
 }

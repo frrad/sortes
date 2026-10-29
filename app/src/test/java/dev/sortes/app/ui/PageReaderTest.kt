@@ -257,6 +257,46 @@ class PageReaderTest {
     }
 
     @Test
+    fun aSavedZoomThatCantBeSolvedShowsWholePagesAndTheError() {
+        // A saved scale out of range (from a damaged store, say) fails to solve: no crash, whole
+        // pages, the error in the panel, and Auto puts it right.
+        show(savedScale = 1.5f)
+        awaitRendered { it.first == 0 }
+        assertTrue("${lastRendered()}", lastRendered().second.contains(0f, 0f, 600f, 800f))
+
+        openPanel()
+        composeRule.onNodeWithTag("zoomError").assertExists()
+
+        composeRule.onNodeWithText("Auto").performClick()
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        assertEquals(listOf<Float?>(null), saves)
+        composeRule.onNodeWithTag("zoomError").assertDoesNotExist()
+    }
+
+    @Test
+    fun twoSidedPapersAlternateBetweenTwoWindows() {
+        // Text blocks alternate left (20-380 points) and right (220-580) of the page: the crop
+        // model gives each side its own window, so both keep their text at the same zoom.
+        val left = TestPage(60, 80).rect(2, 10, 38, 70).mask()
+        val right = TestPage(60, 80).rect(22, 10, 58, 70).mask()
+        pages = FakePages(List(4) { if (it % 2 == 0) left else right })
+        show(savedScale = 0.75f)
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        val first = lastRendered().second
+
+        tapForward()
+        awaitRendered { it.first == 1 }
+        val second = lastRendered().second
+        tapForward()
+        awaitRendered { it.first == 2 }
+
+        assertTrue("$first", first.contains(20f, 100f, 380f, 700f))
+        assertTrue("$second", second.contains(220f, 100f, 580f, 700f))
+        assertEquals(first.width, second.width, 0.01f)
+        assertEquals(2 to first, lastRendered())
+    }
+
+    @Test
     fun bottomMiddleOpensAndClosesTheZoomPanel() {
         showZoomed()
         val renders = readerRenders().size

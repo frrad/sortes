@@ -4,6 +4,9 @@ import dev.sortes.app.zoom.CropAnalysis
 import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.CropModelWeights
 import dev.sortes.app.zoom.InkMask
+import dev.sortes.app.zoom.MAX_ANALYZED_PAGES
+import dev.sortes.app.zoom.SampledPaper
+import dev.sortes.app.zoom.samplePages
 import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.placeWindow
 import java.io.File
@@ -13,8 +16,15 @@ enum class Algorithm {
     /** The reader before the crop model: CropAnalysis's auto scale and anchored placement. */
     ANCHOR,
 
-    /** The crop model (CropModel) at its automatic scale. */
+    /** The crop model (CropModel) at its automatic scale, solved on every page. */
     MODEL,
+
+    /**
+     * As the reader does it: the model solved on [samplePages]' sample (at most
+     * [MAX_ANALYZED_PAGES]), other pages placed by [SampledPaper.cropFor]. The same as [MODEL]
+     * for papers of up to 60 pages.
+     */
+    READER,
 }
 
 /**
@@ -76,15 +86,29 @@ val WEIGHT_NAMES = setOf("alpha", "beta", "epsilon", "allowance", "gamma", "delt
  * scored with [model]'s cost. Anchor placement is scored with the model's cost too, so the
  * columns compare on one scale.
  */
-suspend fun cropsFor(algorithm: Algorithm, masks: List<InkMask>, model: CropModel): ModelCrops {
-    val analysis = CropAnalysis.of(masks, model.aspect)
-    return when (algorithm) {
+suspend fun cropsFor(algorithm: Algorithm, masks: List<InkMask>, model: CropModel): ModelCrops =
+    when (algorithm) {
         Algorithm.ANCHOR -> {
             // As the reader did: one analysis, its auto scale, and the anchor for that scale.
+            val analysis = CropAnalysis.of(masks, model.aspect)
             val scale = analysis.autoScale
             val anchor = analysis.anchor(scale)
             model.score(masks, masks.map { placeWindow(it, model.aspect, scale, anchor) })
         }
-        Algorithm.MODEL -> model.auto(masks, analysis)
+        Algorithm.MODEL -> model.auto(masks)
+        Algorithm.READER -> {
+            val sample = samplePages(masks.size, MAX_ANALYZED_PAGES)
+            val paper = SampledPaper(model, sample.map { masks[it] }, sample)
+            val crops = paper.auto()
+            // Every page's crop, with any page's own window added as a window of its own.
+            val windows = crops.windows.toMutableList()
+            val pages = masks.indices.map { i ->
+                val crop = paper.cropFor(i, crops, masks[i].takeIf { paper.sampled(i) < 0 })
+                if (crop.windowIndex != CropModel.OWN_WINDOW) crop else {
+                    windows += crop.window
+                    crop.copy(windowIndex = windows.lastIndex)
+                }
+            }
+            ModelCrops(crops.scale, windows, pages, model.weights, masks.sumOf { it.inkCount.toLong() })
+        }
     }
-}
