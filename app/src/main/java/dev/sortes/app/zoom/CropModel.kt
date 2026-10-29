@@ -108,69 +108,89 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     }
 
     /**
-     * Crops at the automatic scale: the tightest of [scales] at which the model's own crops cut at
-     * most [CropAnalysis.AUTO_MAX_LOST] of the ink, loosened by [CropAnalysis.AUTO_MARGIN].
-     *
-     * Each page's own best window loses least, so the model can't go tighter than the tightest
-     * scale at which those best windows are within budget; that bound is found by bisection,
-     * since what they lose only grows with zoom. From there the search gallops looser (1, 2, 4...
-     * steps) until the model's crops are within budget, then bisects back, treating the model's
-     * cut as rising with zoom too.
+     * [masks] ready to solve at any scale: their padded pages and the solver's scratch space are
+     * kept, so repeated solves (a curve, manual zooms) don't rebuild them. Not thread-safe:
+     * callers serialise solves.
      */
-    suspend fun auto(masks: List<InkMask>, scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops {
-        require(masks.isNotEmpty()) { "No pages" }
-        require(scales.isNotEmpty() && scales.all { it > 0f && it <= 1f }) { "Bad scales" }
-        val pages = masks.map { PaddedPage(it, aspect) }
-        val totalInk = pages.sumOf { it.inkCount.toLong() }
-        val buffer = Buffer()
-        if (totalInk == 0L) return solve(pages, scales[0], buffer)
-        fun fits(crops: ModelCrops) = crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST
-        suspend fun fitsAt(i: Int) = fits(solve(pages, scales[i], buffer))
-        suspend fun boundFits(i: Int): Boolean {
-            var lost = 0L
-            for (page in pages) {
-                currentCoroutineContext().ensureActive()
-                lost += page.inkCount - page.maxInside(scales[i])
-            }
-            return lost.toDouble() / totalInk <= CropAnalysis.AUTO_MAX_LOST
+    inner class Prepared internal constructor(masks: List<InkMask>) {
+        init {
+            require(masks.isNotEmpty()) { "No pages" }
         }
 
-        // The bound: the tightest scale at which each page's own best window is within budget.
-        var bound = 0
-        var beyond = scales.size
-        while (beyond - bound > 1) {
-            val mid = (bound + beyond) / 2
-            if (boundFits(mid)) bound = mid else beyond = mid
-        }
-        // Index of the tightest scale known to fit (0, the whole page, always does), and of the
-        // loosest known not to, if any.
-        var fit = bound
-        var miss = -1
-        var step = 1
-        while (fit > 0 && !fitsAt(fit)) {
-            miss = fit
-            fit = (fit - step).coerceAtLeast(0)
-            step *= 2
-        }
-        if (miss >= 0) {
-            while (miss - fit > 1) {
-                val mid = (fit + miss) / 2
-                if (fitsAt(mid)) fit = mid else miss = mid
+        private val pages = masks.map { PaddedPage(it, aspect) }
+        private val totalInk = pages.sumOf { it.inkCount.toLong() }
+        private val buffer = Buffer()
+
+        /** The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
+        suspend fun solve(scale: Float): ModelCrops = solverFor(pages, scale, buffer).best()
+
+        /**
+         * The index into [scales] of the tightest scale at which each page's own best window is
+         * within [CropAnalysis.AUTO_MAX_LOST]: no crops the model chooses can do better. Found by
+         * bisection, since what those best windows lose only grows with zoom; it agrees with
+         * [CropAnalysis]' whole curve.
+         */
+        internal suspend fun bound(scales: FloatArray): Int {
+            if (totalInk == 0L) return 0
+            suspend fun fits(i: Int): Boolean {
+                var lost = 0L
+                for (page in pages) {
+                    currentCoroutineContext().ensureActive()
+                    lost += page.inkCount - page.maxInside(scales[i])
+                }
+                return lost.toDouble() / totalInk <= CropAnalysis.AUTO_MAX_LOST
             }
+            var bound = 0
+            var beyond = scales.size
+            while (beyond - bound > 1) {
+                val mid = (bound + beyond) / 2
+                if (fits(mid)) bound = mid else beyond = mid
+            }
+            return bound
         }
-        val loosened = scales[fit] + CropAnalysis.AUTO_MARGIN
-        val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f } ?: 0
-        return solve(pages, scales[chosen], buffer)
+
+        /**
+         * Crops at the automatic scale: the tightest of [scales] at which the model's own crops
+         * cut at most [CropAnalysis.AUTO_MAX_LOST] of the ink, loosened by
+         * [CropAnalysis.AUTO_MARGIN]. The search starts at the [bound], gallops looser (1, 2, 4...
+         * steps) until the model's crops are within budget, then bisects back, treating the
+         * model's cut as rising with zoom.
+         */
+        suspend fun auto(scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops {
+            require(scales.isNotEmpty() && scales.all { it > 0f && it <= 1f }) { "Bad scales" }
+            if (totalInk == 0L) return solve(scales[0])
+            suspend fun fitsAt(i: Int) = solve(scales[i]).cutFraction <= CropAnalysis.AUTO_MAX_LOST
+            // Index of the tightest scale known to fit (0, the whole page, always does), and of
+            // the loosest known not to, if any.
+            var fit = bound(scales)
+            var miss = -1
+            var step = 1
+            while (fit > 0 && !fitsAt(fit)) {
+                miss = fit
+                fit = (fit - step).coerceAtLeast(0)
+                step *= 2
+            }
+            if (miss >= 0) {
+                while (miss - fit > 1) {
+                    val mid = (fit + miss) / 2
+                    if (fitsAt(mid)) fit = mid else miss = mid
+                }
+            }
+            val loosened = scales[fit] + CropAnalysis.AUTO_MARGIN
+            val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f } ?: 0
+            return solve(scales[chosen])
+        }
     }
+
+    /** [masks] prepared for solving at several scales. */
+    fun prepare(masks: List<InkMask>): Prepared = Prepared(masks)
+
+    /** Crops at the automatic scale; see [Prepared.auto]. */
+    suspend fun auto(masks: List<InkMask>, scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops =
+        prepare(masks).auto(scales)
 
     /** The cheapest crops of [masks] at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
-    suspend fun solve(masks: List<InkMask>, scale: Float): ModelCrops {
-        require(masks.isNotEmpty()) { "No pages" }
-        return solve(masks.map { PaddedPage(it, aspect) }, scale, Buffer())
-    }
-
-    private suspend fun solve(pages: List<PaddedPage>, scale: Float, buffer: Buffer): ModelCrops =
-        solverFor(pages, scale, buffer).best()
+    suspend fun solve(masks: List<InkMask>, scale: Float): ModelCrops = prepare(masks).solve(scale)
 
     private suspend fun solverFor(pages: List<PaddedPage>, scale: Float, buffer: Buffer): Solver {
         require(scale > 0f && scale <= 1f) { "Bad scale: $scale" }
@@ -180,6 +200,32 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     /** The solver for [masks] at [scale], for tests of its steps. */
     internal suspend fun solver(masks: List<InkMask>, scale: Float): Solver =
         solverFor(masks.map { PaddedPage(it, aspect) }, scale, Buffer())
+
+    /**
+     * A page's own best crop at [scale], ignoring every other page: where a page that fits none of
+     * a paper's windows can sit. Its [PageCrop.windowIndex] is [OWN_WINDOW].
+     */
+    fun ownCrop(mask: InkMask, scale: Float, referenceInk: Double): PageCrop {
+        val page = PaddedPage(mask, aspect)
+        val w = page.windowWidth(scale)
+        val h = page.windowHeight(scale)
+        val cols = page.width - w + 1
+        val rows = page.height - h + 1
+        val offCentres = DoubleArray(cols * rows)
+        page.offCentres(w, h, offCentres)
+        var best = 0
+        var bestCost = Double.MAX_VALUE
+        for (pos in 0 until cols * rows) {
+            val cut = page.inkCount - page.inside(pos % cols, pos / cols, w, h)
+            val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] +
+                if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)
+            if (c < bestCost - EPS) {
+                bestCost = c
+                best = pos
+            }
+        }
+        return pageCrop(page, referenceInk, OWN_WINDOW, best % cols, best / cols, scale)
+    }
 
     /** Scores given per-page windows (e.g. another method's) with this model's cost. */
     fun score(masks: List<InkMask>, perPage: List<CropWindow>): ModelCrops {
@@ -482,6 +528,9 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         private const val MAX_ROUNDS = 20
         private const val MAX_SEEDS = 6
         private const val EPS = 1e-12
+
+        /** [PageCrop.windowIndex] of a page's [ownCrop], outside the paper's shared windows. */
+        const val OWN_WINDOW = -1
 
         /** The median ink per page over pages with any ink: the unit cut_p is measured in. */
         fun referenceInk(masks: List<InkMask>): Double = referenceInkOf(masks.map { it.inkCount })

@@ -1,6 +1,9 @@
-# The contact sheets' columns: label, algorithm (anchor | model), ink threshold (a luminance,
-# or "default" for the reader's), and weight overrides (name=value,... or -) on top of
-# weights.properties and the command line. All columns apply the reader's ignorable-ink rules.
+# The contact sheets' columns: label, algorithm (anchor | model | reader), ink threshold (a
+# luminance, or "default" for the reader's), and weight overrides (name=value,... or -) on top
+# of weights.properties and the command line. All columns apply the reader's ignorable-ink rules.
+# "reader" solves on the reader's 60-page sample and places the other pages as the reader does;
+# for papers of up to 60 pages it is the same as "model".
 anchor (previous reader)	anchor	default	-
 model (stay put, ε=0)	model	default	epsilon=0
-model (reader)	model	default	-
+model (all pages)	model	default	-
+reader (sampled)	reader	default	-

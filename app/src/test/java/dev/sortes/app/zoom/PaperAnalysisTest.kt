@@ -27,15 +27,32 @@ class PaperAnalysisTest {
     }
 
     @Test
-    fun samplesLongPapersEvenlyIncludingBothEnds() {
+    fun samplesLongPapersInEvenlySpacedFacingPairsIncludingBothEnds() {
         val sample = samplePages(300, 60)
 
         assertEquals(60, sample.size)
         assertEquals(0, sample.first())
         assertEquals(299, sample.last())
         assertEquals(sample.sorted().distinct(), sample)
+        // Pairs (even, odd): a gap of 1 inside each, 9 or 11 between them.
         val gaps = sample.zipWithNext { a, b -> b - a }
-        assertTrue("$gaps", gaps.all { it in 4..6 })
+        assertTrue("$gaps", gaps.filterIndexed { i, _ -> i % 2 == 0 }.all { it == 1 })
+        assertTrue("$gaps", gaps.filterIndexed { i, _ -> i % 2 == 1 }.all { it in 8..11 })
+    }
+
+    @Test
+    fun everyLongPaperIsSampledOnBothSidesAlternately() {
+        // Plain even spacing put every sampled page of a 119-, 237-, 355- or 473-page paper on
+        // the same side.
+        for (count in 61..480) {
+            val sample = samplePages(count, MAX_ANALYZED_PAGES)
+            assertTrue("$count: ${sample.size}", sample.size in MAX_ANALYZED_PAGES - 1..MAX_ANALYZED_PAGES)
+            assertEquals("$count", sample.sorted().distinct(), sample)
+            assertEquals("$count", 0, sample.first())
+            assertTrue("$count: ${sample.last()}", sample.last() >= count - 2 && sample.last() < count)
+            // Even, odd, even, odd... so the model sees each side every other sampled page.
+            assertTrue("$count: $sample", sample.withIndex().all { (i, page) -> page % 2 == i % 2 })
+        }
     }
 
     @Test
@@ -59,12 +76,12 @@ class PaperAnalysisTest {
 
     @Test
     fun windowsCanBePlacedOnPagesOutsideTheSample() {
-        // Page 1 isn't sampled (0, 3, 6, ...) but still gets a window that fits its text.
+        // Page 4 isn't sampled (0, 1, 8, 9) but still gets a window that fits its text.
         val pages = FakePages(List(10) { textPage().mask() })
         val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
-        assertTrue(1 !in pages.masked)
+        assertTrue(4 !in pages.masked)
 
-        val window = runBlocking { paper.place(pages, 1, paper.auto) }.window
+        val window = runBlocking { paper.place(pages, 4, paper.auto) }.window
 
         assertTrue("$window", window.covers(60, 80, aspect, 10, 10, 50, 70))
     }
@@ -155,8 +172,8 @@ class PaperAnalysisTest {
     fun twoSidedPapersGetAWindowPerSideIncludingUnsampledPages() {
         val pages = FakePages(List(12) { if (it % 2 == 0) leftPage else rightPage })
         val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 6) }
-        // The sample is pages 0, 2, 4, 6, 8 and 11: most right-hand pages are placed unsampled.
-        assertEquals(listOf(0, 2, 4, 6, 8, 11), paper.sample)
+        // Facing pairs: half the pages of each side are placed unsampled.
+        assertEquals(listOf(0, 1, 4, 5, 10, 11), paper.sample)
         val crops = runBlocking { paper.cropsAt(0.75f) }
         assertEquals(2, crops.k)
 
@@ -196,14 +213,56 @@ class PaperAnalysisTest {
         assertEquals(sizes.sorted(), sizes)
         val last = curves.last()
         val scales = paper.scales
-        val expected = (scales.indices.filter { it % PaperAnalysis.CURVE_STRIDE == 0 } + last.nearestIndex(paper.auto.scale)).toSet()
-        assertEquals(expected, last.points.keys)
-        // Whole page: nothing cut. At auto: within the budget. Tightest: cutting text.
+        val wanted = (scales.indices.filter { it % PaperAnalysis.CURVE_STRIDE == 0 } + last.nearestIndex(paper.auto.scale))
+            .distinct().sorted()
+        // Every wanted point, loosest first, up to the first cutting more than CURVE_LIMIT.
+        val points = last.sortedPoints
+        assertEquals(wanted.take(points.size), points.map { it.first })
+        assertTrue(points.size < wanted.size)
+        assertTrue(points.dropLast(1).all { it.second.lostFraction <= PaperAnalysis.CURVE_LIMIT })
+        assertTrue(points.last().second.lostFraction > PaperAnalysis.CURVE_LIMIT)
+        // Whole page: nothing cut. At auto: within the budget.
         assertEquals(0f, last.points.getValue(0).lostFraction)
         assertTrue(last.points.getValue(last.nearestIndex(paper.auto.scale)).lostFraction <= CropAnalysis.AUTO_MAX_LOST)
-        assertTrue(last.sortedPoints.last().second.lostFraction > 0.1f)
 
-        // A second collection starts from the kept points.
-        assertEquals(expected, runBlocking { paper.curve().first() }.points.keys)
+        // A second collection starts from the kept points and solves no more.
+        assertEquals(last.points.keys, runBlocking { paper.curve().first() }.points.keys)
+        assertEquals(last.points.keys, runBlocking { paper.curve().toList() }.last().points.keys)
+    }
+
+    @Test
+    fun anOddNumberOfAlternatingPagesKeepsBothSidesText() {
+        // 11 pages sampled 6 at a time used to sample 0, 2, 4, 6, 8, 10: left pages only, one
+        // window fitted to them, and every right page's text cut while the summary said nothing
+        // was cut.
+        val pages = FakePages(List(11) { if (it % 2 == 0) leftPage else rightPage })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 6) }
+
+        assertEquals(2, paper.auto.k)
+        assertEquals(0L, paper.auto.cutCells)
+        for (index in 0 until 11) {
+            val placement = runBlocking { paper.place(pages, index, paper.auto) }
+            assertEquals("page $index", emptyList<CutInk>(), placement.cut)
+        }
+    }
+
+    @Test
+    fun anUnsampledPageThatFitsNoWindowGetsItsOwn() {
+        // Pages 0-9 share a centred text block; page 7, unsampled, has its block near the right
+        // edge. Both windows the sample chose would cut it; sliding keeps it all.
+        val usual = TestPage(60, 80).rect(14, 10, 46, 70).mask()
+        val offset = TestPage(60, 80).rect(26, 10, 58, 70).mask()
+        val pages = FakePages(List(10) { if (it == 7) offset else usual })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        assertTrue(7 !in paper.sample)
+        val crops = runBlocking { paper.cropsAt(0.75f) }
+
+        val placement = runBlocking { paper.place(pages, 7, crops) }
+
+        assertEquals(emptyList<CutInk>(), placement.cut)
+        assertTrue("${placement.window}", placement.window.covers(60, 80, aspect, 26, 10, 58, 70))
+        // Same zoom as every other page.
+        assertEquals(crops.scale, placement.window.scale)
+        assertTrue(crops.windows.none { it == placement.window })
     }
 }

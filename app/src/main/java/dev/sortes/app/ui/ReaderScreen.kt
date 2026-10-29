@@ -173,26 +173,31 @@ internal fun PageReader(
             }
         }
         val paper = analysis?.getOrNull()?.takeIf { it.aspect == aspect }
-        // The model's crops: at its automatic scale, or re-solved at the saved one.
-        val crops by produceState(paper?.auto?.takeIf { savedScale == null }, paper, savedScale) {
+        // The model's crops: at its automatic scale, or re-solved at the saved one. Solving can
+        // fail (a saved scale that's out of range): the reader then shows whole pages.
+        val cropsResult by produceState(
+            paper?.auto?.takeIf { savedScale == null }?.let { Result.success(it) }, paper, savedScale,
+        ) {
             value = when {
                 paper == null -> null
-                savedScale == null -> paper.auto
+                savedScale == null -> Result.success(paper.auto)
                 else -> {
                     value = null
-                    paper.cropsAt(savedScale)
+                    catching { paper.cropsAt(savedScale) }
                 }
             }
         }
+        val crops = cropsResult?.getOrNull()
         val scale = crops?.scale ?: savedScale ?: paper?.auto?.scale ?: 1f
 
         val currentCrops = crops
+        val currentCropsResult = cropsResult
         // Keeps showing the previous page until the next one has rendered.
         val page by produceState<Result<ShownPage>?>(
-            null, pages, index, width, height, paper, currentCrops,
+            null, pages, index, width, height, paper, currentCropsResult,
         ) {
             // The zoom is about to change: wait for it rather than render the page twice.
-            if (paper != null && currentCrops == null) return@produceState
+            if (paper != null && currentCropsResult == null) return@produceState
             value = catching {
                 val placement = if (paper != null && currentCrops != null) {
                     paper.place(pages, index, currentCrops)
@@ -206,6 +211,7 @@ internal fun PageReader(
         }
         // The model's lost-ink curve, solved point by point while the zoom panel is open.
         val curve by produceState<ZoomCurve?>(null, paper, panelOpen) {
+            value = null // Not the last paper's or screen shape's curve, even for a frame.
             if (paper != null && panelOpen) paper.curve().collect { value = it }
         }
 
@@ -245,6 +251,19 @@ internal fun PageReader(
                     }?.onFailure {
                         Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
                     }
+                }
+                val zoomError = cropsResult?.exceptionOrNull()
+                if (panelOpen && paper != null && zoomError != null) {
+                    // The panel stays below, so another zoom or Auto can put it right.
+                    Text(
+                        text = "$pageLabel · Couldn't zoom this paper to ${savedScale ?: scale}: " +
+                            (zoomError.message ?: zoomError),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ReaderPaper)
+                            .padding(16.dp)
+                            .testTag("zoomError"),
+                    )
                 }
                 if (panelOpen && paper != null) {
                     ZoomPanel(

@@ -307,18 +307,38 @@ class CropModelTest {
     }
 
     @Test
-    fun autoStartsFromTheSameBoundAsTheFullAnalysis() = runBlocking {
-        // The bisected bound must agree with CropAnalysis' whole curve: the model's scale is
-        // never tighter than the tightest scale each page's own best window allows.
+    fun theBisectedBoundIsTheFullAnalysisBound() = runBlocking {
+        // The bound auto starts from must be exactly the tightest scale at which CropAnalysis'
+        // whole curve is within budget.
         val random = Random(29)
-        repeat(10) {
+        repeat(25) {
             val masks = randomPaper(random)
             val analysis = CropAnalysis.of(masks, aspect)
-            val crops = CropModel(aspect).auto(masks)
-            if (analysis.totalInk == 0L) return@repeat
-            val bound = analysis.scales.indices.last { analysis.lostFraction(it) <= CropAnalysis.AUTO_MAX_LOST }
-            assertTrue("${crops.scale} vs ${analysis.scales[bound]}", crops.scale >= analysis.scales[bound] - 1e-6f)
-            assertTrue(crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST + 1e-9 || crops.scale == 1f)
+            val expected = if (analysis.totalInk == 0L) 0 else
+                analysis.scales.indices.last { analysis.lostFraction(it) <= CropAnalysis.AUTO_MAX_LOST }
+            assertEquals(expected, CropModel(aspect).prepare(masks).bound(analysis.scales))
         }
+    }
+
+    @Test
+    fun autoIsWithinBudgetAndNoTighterThanTheBound() = runBlocking {
+        val random = Random(31)
+        repeat(10) {
+            val masks = randomPaper(random)
+            val prepared = CropModel(aspect).prepare(masks)
+            val scales = CropAnalysis.defaultScales()
+            val crops = prepared.auto(scales)
+            assertTrue(crops.scale >= scales[prepared.bound(scales)] - 1e-6f)
+            assertTrue(crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST + 1e-9)
+        }
+    }
+
+    @Test
+    fun aPagesOwnCropIsItsBestPositionAtTheSameScale() {
+        val offset = page(rect(26, 10, 58, 70))
+        val own = CropModel(aspect).ownCrop(offset, 0.75f, 2000.0)
+        assertEquals(CropModel.OWN_WINDOW, own.windowIndex)
+        assertEquals(0, own.cutCells)
+        assertEquals(0.75f, own.window.scale)
     }
 }

@@ -35,7 +35,7 @@ class ContactSheet(
     private val headerH = 24 + 16 * results.size + 22
 
     fun draw(): BufferedImage {
-        val n = pdf.pageCount
+        val n = minOf(pdf.pageCount, MAX_SHEET_PAGES)
         val rows = ceil(n / pagesPerRow.toDouble()).toInt()
         val width = pagesPerRow * cellW + (pagesPerRow - 1) * pageGap + 2 * pageGap
         val height = headerH + rows * (cellH + pageGap) + pageGap
@@ -46,7 +46,7 @@ class ContactSheet(
         g.fillRect(0, 0, width, height)
         g.color = Color.BLACK
         g.font = Font(Font.SANS_SERIF, Font.BOLD, 15)
-        g.drawString(title, pageGap, 20)
+        g.drawString(if (n < pdf.pageCount) "$title (sheet shows the first $n)" else title, pageGap, 20)
         g.font = Font(Font.MONOSPACED, Font.PLAIN, 12)
         results.forEachIndexed { i, r -> g.drawString(summary(r), pageGap, 40 + 16 * i) }
         g.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
@@ -149,9 +149,12 @@ class ContactSheet(
         return img
     }
 
-    private companion object {
-        val CUT = Color(0xE0, 0x10, 0x10)
-        val IGNORED = Color(0x10, 0x60, 0xF0)
-        val WINDOW_COLORS = listOf(Color(0x00, 0xA0, 0x00), Color(0x10, 0x50, 0xE0), Color(0xD0, 0x00, 0xD0))
+    companion object {
+        /** Most pages a sheet shows; the index and TSVs still cover them all. */
+        const val MAX_SHEET_PAGES = 80
+
+        private val CUT = Color(0xE0, 0x10, 0x10)
+        private val IGNORED = Color(0x10, 0x60, 0xF0)
+        private val WINDOW_COLORS = listOf(Color(0x00, 0xA0, 0x00), Color(0x10, 0x50, 0xE0), Color(0xD0, 0x00, 0xD0))
     }
 }

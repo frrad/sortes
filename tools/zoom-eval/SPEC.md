@@ -96,19 +96,25 @@ papers.
 
 ## In the reader
 
-`analyzePaper` renders at most 60 evenly spaced pages (`samplePages`) and strips their
-ignorable ink. It then runs `CropAnalysis` (each page's best window at every scale, used to
-bound the scale search) and `CropModel.auto`. The resulting `PaperAnalysis` holds:
+`analyzePaper` renders a sample of at most 60 pages and strips their ignorable ink. The sample
+is evenly spaced pairs of facing pages (`samplePages`): even, odd, even, odd, so both sides of a
+two-sided layout are seen equally. Plain even spacing put every sampled page of a 119-page
+paper on one side. It then solves the model at its automatic scale (`SampledPaper`, shared with
+the harness). The resulting `PaperAnalysis` holds:
 - `auto`: the crops at the automatic scale;
 - `cropsAt(scale)`: a manual zoom re-solves the model at exactly that scale (cached), so a
   saved per-paper zoom still gets the model's windows and assignment;
 - `place(page)`: an analysed page gets its assigned window and the cells the model counted.
   An unanalysed page (in papers over 60 pages) gets the window that costs it least, with ties
-  going to the window of the nearest analysed page on the same side (odd or even). The cut-ink
-  boxes in the frame preview come from those same cells (`cutInk`);
+  going to the window of the nearest analysed page on the same side (odd or even). If even that
+  window cuts more than the allowance a of its own ink (a landscape table or offset figure the
+  sample didn't see), it gets its own best window at the same scale. The cut-ink boxes in the
+  frame preview come from those same cells (`cutInk`);
 - `curve()`: the zoom panel's lost-ink curve. It is the model's own cut ink at every 4th scale
   (0.02 of zoom) plus the automatic one, solved in the background while the panel is open and
-  drawn as it fills in. The summary for the selected zoom is exact once its crops are solved,
+  drawn as it fills in. It stops after the first point cutting more than 20%: the tighter ones
+  are the slowest and nobody reads at them. The padded pages and the solver's buffer are kept
+  between solves. The summary for the selected zoom is exact once its crops are solved,
   and "about" the nearest computed point before that.
 
 The previous per-page anchored placement (`CropAnalysis.anchor`, `placeWindow`) is no longer

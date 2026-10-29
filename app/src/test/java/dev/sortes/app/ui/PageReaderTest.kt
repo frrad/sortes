@@ -257,6 +257,23 @@ class PageReaderTest {
     }
 
     @Test
+    fun aSavedZoomThatCantBeSolvedShowsWholePagesAndTheError() {
+        // A saved scale out of range (from a damaged store, say) fails to solve: no crash, whole
+        // pages, the error in the panel, and Auto puts it right.
+        show(savedScale = 1.5f)
+        awaitRendered { it.first == 0 }
+        assertTrue("${lastRendered()}", lastRendered().second.contains(0f, 0f, 600f, 800f))
+
+        openPanel()
+        composeRule.onNodeWithTag("zoomError").assertExists()
+
+        composeRule.onNodeWithText("Auto").performClick()
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        assertEquals(listOf<Float?>(null), saves)
+        composeRule.onNodeWithTag("zoomError").assertDoesNotExist()
+    }
+
+    @Test
     fun twoSidedPapersAlternateBetweenTwoWindows() {
         // Text blocks alternate left (20-380 points) and right (220-580) of the page: the crop
         // model gives each side its own window, so both keep their text at the same zoom.
