@@ -14,8 +14,6 @@ import kotlin.coroutines.cancellation.CancellationException
  * solve other scales and to place windows on any of the paper's pages.
  */
 class PaperAnalysis(
-    /** Each analysed page's best window at every scale: bounds the model's own search. */
-    val crop: CropAnalysis,
     val model: CropModel,
     /** The analysed pages' masks, without ignorable ink, in the order of [sample]. */
     private val masks: List<InkMask>,
@@ -35,6 +33,9 @@ class PaperAnalysis(
     }
 
     val aspect: Float get() = model.aspect
+
+    /** The scales the zoom slider offers, loosest (1) first. */
+    val scales: FloatArray = CropAnalysis.defaultScales()
 
     /** Pages the analysis rendered and solved for. */
     val pagesAnalyzed: Int get() = masks.size
@@ -56,18 +57,18 @@ class PaperAnalysis(
      * emitted as it grows; points are kept, so a second collection is quick.
      */
     fun curve(): Flow<ZoomCurve> = flow {
-        val scales = crop.scales
-        val wanted = (scales.indices.filter { it % CURVE_STRIDE == 0 } + crop.nearestIndex(auto.scale)).distinct().sorted()
-        emit(curveOf(scales))
+        val autoIndex = scales.indices.minBy { kotlin.math.abs(scales[it] - auto.scale) }
+        val wanted = (scales.indices.filter { it % CURVE_STRIDE == 0 } + autoIndex).distinct().sorted()
+        emit(curveOf())
         for (i in wanted) {
             if (i in curvePoints) continue
             val crops = cropsAt(scales[i])
             curvePoints[i] = crops
-            emit(curveOf(scales))
+            emit(curveOf())
         }
     }
 
-    private fun curveOf(scales: FloatArray) = ZoomCurve(
+    private fun curveOf() = ZoomCurve(
         scales = scales,
         points = curvePoints.mapValues { (_, c) -> ZoomCurve.Point(c.cutFraction.toFloat(), c.pagesCut) },
         pagesAnalyzed = pagesAnalyzed,
@@ -102,7 +103,7 @@ class PaperAnalysis(
     }
 
     companion object {
-        /** The curve has a point every this many of [CropAnalysis.scales]: every 0.02 of zoom. */
+        /** The curve has a point every this many of [scales]: every 0.02 of zoom. */
         const val CURVE_STRIDE = 4
     }
 }
@@ -136,11 +137,10 @@ suspend fun analyzePaper(
     if (rendered.isEmpty()) throw java.io.IOException("No pages could be rendered")
     val masks = rendered.map { it.second }
     val started = System.nanoTime()
-    val crop = CropAnalysis.of(masks, aspect)
     val model = CropModel(aspect, weights)
-    val auto = model.auto(masks, crop)
+    val auto = model.auto(masks)
     val solveMillis = (System.nanoTime() - started) / 1_000_000
-    PaperAnalysis(crop, model, masks, rendered.map { it.first }, density, source.pageCount, auto, solveMillis)
+    PaperAnalysis(model, masks, rendered.map { it.first }, density, source.pageCount, auto, solveMillis)
 }
 
 /** Up to [max] page indices spread evenly over [count] pages, including the first and last. */

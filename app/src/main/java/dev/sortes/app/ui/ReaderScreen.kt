@@ -249,7 +249,7 @@ internal fun PageReader(
                 if (panelOpen && paper != null) {
                     ZoomPanel(
                         pageLabel = pageLabel,
-                        curve = curve ?: ZoomCurve(paper.crop.scales, emptyMap(), paper.pagesAnalyzed, paper.auto.scale),
+                        curve = curve ?: ZoomCurve(paper.scales, emptyMap(), paper.pagesAnalyzed, paper.auto.scale),
                         crops = crops,
                         sampled = paper.pagesAnalyzed < paper.pageCount,
                         scale = scale,

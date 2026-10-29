@@ -76,15 +76,14 @@ val WEIGHT_NAMES = setOf("alpha", "beta", "epsilon", "allowance", "gamma", "delt
  * scored with [model]'s cost. Anchor placement is scored with the model's cost too, so the
  * columns compare on one scale.
  */
-suspend fun cropsFor(algorithm: Algorithm, masks: List<InkMask>, model: CropModel): ModelCrops {
-    val analysis = CropAnalysis.of(masks, model.aspect)
-    return when (algorithm) {
+suspend fun cropsFor(algorithm: Algorithm, masks: List<InkMask>, model: CropModel): ModelCrops =
+    when (algorithm) {
         Algorithm.ANCHOR -> {
             // As the reader did: one analysis, its auto scale, and the anchor for that scale.
+            val analysis = CropAnalysis.of(masks, model.aspect)
             val scale = analysis.autoScale
             val anchor = analysis.anchor(scale)
             model.score(masks, masks.map { placeWindow(it, model.aspect, scale, anchor) })
         }
-        Algorithm.MODEL -> model.auto(masks, analysis)
+        Algorithm.MODEL -> model.auto(masks)
     }
-}

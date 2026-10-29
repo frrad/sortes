@@ -195,7 +195,7 @@ class PaperAnalysisTest {
         val sizes = curves.map { it.points.size }
         assertEquals(sizes.sorted(), sizes)
         val last = curves.last()
-        val scales = paper.crop.scales
+        val scales = paper.scales
         val expected = (scales.indices.filter { it % PaperAnalysis.CURVE_STRIDE == 0 } + last.nearestIndex(paper.auto.scale)).toSet()
         assertEquals(expected, last.points.keys)
         // Whole page: nothing cut. At auto: within the budget. Tightest: cutting text.

@@ -108,25 +108,42 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     }
 
     /**
-     * Crops at the automatic scale: the tightest at which the model's own crops cut at most
-     * [CropAnalysis.AUTO_MAX_LOST] of the ink, loosened by [CropAnalysis.AUTO_MARGIN]. [analysis]
-     * of the same masks bounds where to look: each page's own best window loses least, so the
-     * model can't go tighter than the analysis' tightest acceptable scale. From there it gallops
-     * looser (1, 2, 4... steps) until within budget, then bisects back, treating the model's cut
-     * as rising with zoom.
+     * Crops at the automatic scale: the tightest of [scales] at which the model's own crops cut at
+     * most [CropAnalysis.AUTO_MAX_LOST] of the ink, loosened by [CropAnalysis.AUTO_MARGIN].
+     *
+     * Each page's own best window loses least, so the model can't go tighter than the tightest
+     * scale at which those best windows are within budget; that bound is found by bisection,
+     * since what they lose only grows with zoom. From there the search gallops looser (1, 2, 4...
+     * steps) until the model's crops are within budget, then bisects back, treating the model's
+     * cut as rising with zoom too.
      */
-    suspend fun auto(masks: List<InkMask>, analysis: CropAnalysis): ModelCrops {
+    suspend fun auto(masks: List<InkMask>, scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops {
         require(masks.isNotEmpty()) { "No pages" }
-        val scales = analysis.scales
-        if (analysis.totalInk == 0L) return solve(masks, scales[0])
+        require(scales.isNotEmpty() && scales.all { it > 0f && it <= 1f }) { "Bad scales" }
         val pages = masks.map { PaddedPage(it, aspect) }
+        val totalInk = pages.sumOf { it.inkCount.toLong() }
         val buffer = Buffer()
+        if (totalInk == 0L) return solve(pages, scales[0], buffer)
         fun fits(crops: ModelCrops) = crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST
         suspend fun fitsAt(i: Int) = fits(solve(pages, scales[i], buffer))
+        suspend fun boundFits(i: Int): Boolean {
+            var lost = 0L
+            for (page in pages) {
+                currentCoroutineContext().ensureActive()
+                lost += page.inkCount - page.maxInside(scales[i])
+            }
+            return lost.toDouble() / totalInk <= CropAnalysis.AUTO_MAX_LOST
+        }
 
+        // The bound: the tightest scale at which each page's own best window is within budget.
+        var bound = 0
+        var beyond = scales.size
+        while (beyond - bound > 1) {
+            val mid = (bound + beyond) / 2
+            if (boundFits(mid)) bound = mid else beyond = mid
+        }
         // Index of the tightest scale known to fit (0, the whole page, always does), and of the
         // loosest known not to, if any.
-        val bound = scales.indices.lastOrNull { analysis.lostFraction(it) <= CropAnalysis.AUTO_MAX_LOST } ?: 0
         var fit = bound
         var miss = -1
         var step = 1
@@ -237,20 +254,37 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         private val sums = DoubleArray(positions)
 
         suspend fun precompute() {
+            var offCentres = DoubleArray(0)
             for (p in pages.indices) {
                 currentCoroutineContext().ensureActive()
                 val page = pages[p]
+                val row = p * positions
+                if (page.inkCount == 0) {
+                    cost.fill(0.0, row, row + positions)
+                    continue
+                }
                 val w = page.windowWidth(scale)
                 val h = page.windowHeight(scale)
-                val row = p * positions
+                val pageCols = page.width - w + 1
+                val size = pageCols * (page.height - h + 1)
+                if (offCentres.size < size) offCentres = DoubleArray(size)
+                page.offCentres(w, h, offCentres)
+                val reference = (page.maskWidth to page.maskHeight) == refSize
                 for (pos in 0 until positions) {
-                    cost[row + pos] = if (page.inkCount == 0) 0.0 else {
-                        val (x, y) = mapped(page, pos)
-                        val cut = page.inkCount - page.inside(x, y, w, h)
-                        weights.alpha * cut / refInk +
-                            weights.beta * page.offCentre(x, y, w, h) +
-                            weights.excess(cut.toDouble() / page.inkCount)
+                    val x: Int
+                    val y: Int
+                    if (reference) {
+                        x = pos % cols
+                        y = pos / cols
+                    } else {
+                        val xy = page.positionOf(windowAt(pos))
+                        x = xy.first
+                        y = xy.second
                     }
+                    val cut = page.inkCount - page.inside(x, y, w, h)
+                    cost[row + pos] = weights.alpha * cut / refInk +
+                        weights.beta * offCentres[y * pageCols + x] +
+                        weights.excess(cut.toDouble() / page.inkCount)
                 }
             }
         }

@@ -139,23 +139,32 @@ reader renders.
 
 **Complexity.** Let P be pages, G grid positions per page (≈ (0.17·W)·(0.17·H) ≈ 33 × 43 ≈
 1,400 at scale 0.83; ≈ 4,000 at 0.7) and K ≤ 3.
-- Precompute: O(P·G·log 256), into one flat buffer reused across the scale search.
+- Precompute: O(P·G), into one flat buffer reused across the scale search. Off-centredness for
+  all positions comes from tables of the next and previous inked row and column
+  (`PaddedPage.offCentres`).
 - Each Lloyd round: O(P·G) for the window updates, and O(P·K³) for the pair-Viterbi
   assignment (K² states, K predecessors each).
 - Per scale: a few tens of millions of operations.
 
-**Scale search.** The search starts at the per-page bound and gallops looser (1, 2, 4, …
+**Scale search.** The bound (the tightest scale at which each page's own best window is within
+budget) is found by bisecting on per-page best fits, so the reader no longer computes
+`CropAnalysis`'s whole curve. The search starts at that bound and gallops looser (1, 2, 4, …
 steps) until the model's crops are within budget. It then bisects back between the last miss
 and the first fit, treating the model's cut as rising with zoom. That is a handful of solves
 even when the bound is far off.
 
-Measured on this host (`summary.tsv`'s `millis`: the analysis plus the automatic solve, not
-rendering):
-- Attention (15 pages): about 100 ms;
-- Latent Diffusion (45 pages): about 0.3 s;
-- GPT-3 (75 pages, more than the reader's 60-page sample): about 0.45 s.
+Measured times for the analysis plus the automatic solve, not counting rendering:
 
-The tablet is several times slower; the reader PR measures it there.
+| paper | host (`summary.tsv`'s `millis`) | Boox Note Air5 C (log line, solving only) |
+| --- | --- | --- |
+| Attention, 15 pages | 54 ms | 248 ms |
+| Latent Diffusion, 45 pages | 68 ms | — |
+| GPT-3, 75 pages | 67 ms | — |
+| PDLT, 60 of 471 pages sampled | — | 386 ms |
+
+With rendering, the whole analysis on the tablet takes 0.6 s (Attention) and 0.83 s (PDLT).
+Before these optimisations it took 1.1 s and 11.2 s. The zoom panel's curve, about 36 solves,
+fills in within about 10 s on PDLT.
 
 ## Default weights (`CropModelWeights`)
 
