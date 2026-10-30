@@ -187,3 +187,8 @@ or TUNED. It includes a target-cost audit, bounded exhaustive scale sweeps, a
 placement-only control, optional worst-page sensitivity and comparison images.
 See [the experiment and results](notes/content-elements/README.md) for commands,
 limitations and the cases it fixes or regresses.
+
+`text-size` measures each paper's body-text size from page images (no PDF text), and
+`zoom-experiment` tests a text-size-aware legibility cost for the automatic zoom, a
+truncated-line placement cost and worst-page emphasis. See
+[text-size notes](notes/text-size/README.md).

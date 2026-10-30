@@ -71,6 +71,8 @@ fun main(args: Array<String>) {
         "review" -> return reviewMain(args.drop(1))
         "bench" -> return benchMain(args.drop(1))
         "content-experiment" -> return dev.sortes.zoomeval.content.contentMain(args.drop(1))
+        "text-size" -> return dev.sortes.zoomeval.content.textSizeMain(args.drop(1))
+        "zoom-experiment" -> return dev.sortes.zoomeval.content.zoomExperimentMain(args.drop(1))
     }
     val opts = args.associate { arg ->
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg\n$USAGE" }
