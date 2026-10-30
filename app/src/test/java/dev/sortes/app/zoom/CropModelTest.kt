@@ -458,7 +458,7 @@ class CropModelBlocksTest {
     }
 
     @Test
-    fun solvingCandidateScalesInParallelChoosesWhatOneByOneDoes() = runBlocking {
+    fun theAutomaticZoomIsTheSameOnOneThreadAndOnFour() = runBlocking {
         val random = Random(17)
         repeat(6) {
             val masks = List(random.nextInt(3, 9)) {
@@ -474,20 +474,30 @@ class CropModelBlocksTest {
             assertEquals(a.scale, b.scale, 0f)
             assertEquals(a.windows, b.windows)
             assertEquals(a.pages, b.pages)
-            // A batch may solve a scale the one-by-one walk never reaches; never fewer.
-            assertTrue(four.solves >= one.solves)
+            assertEquals(one.solves, four.solves)
         }
     }
 
     @Test
-    fun smallPapersAreSolvedOneScaleAtATime() {
-        val weights = weights(kappa = 0.2, zeta = 0.5)
-        // Six 60 x 80 pages: far under the threshold.
-        assertEquals(1, CropModel(aspect, weights, parallelism = 4).prepare(List(6) { page(rect(10, 10, 50, 70)) }).effectiveParallelism)
-        // Forty letter-sized pages at the analysis resolution: over it.
-        val letter = TestPage(192, 256).rect(20, 20, 170, 230).mask()
-        assertEquals(4, CropModel(aspect, weights, parallelism = 4).prepare(List(40) { letter }).effectiveParallelism)
-        assertEquals(1, CropModel(aspect, weights, parallelism = 1).prepare(List(40) { letter }).effectiveParallelism)
+    fun aSolveUsesNoMoreThreadsThanPages() {
+        val model = CropModel(aspect, weights(kappa = 0.2), parallelism = 4)
+        assertEquals(1, model.threadsFor(1))
+        assertEquals(3, model.threadsFor(3))
+        assertEquals(4, model.threadsFor(60))
+        assertEquals(1, CropModel(aspect, weights(kappa = 0.2), parallelism = 1).threadsFor(60))
+    }
+
+    @Test
+    fun theCostTableIsTheSameOnOneThreadAndOnFour() = runBlocking {
+        val random = Random(23)
+        repeat(5) {
+            val masks = List(random.nextInt(2, 10)) { page(rect(random.nextInt(4, 14), random.nextInt(4, 14), random.nextInt(46, 56), random.nextInt(60, 76))) }
+            val weights = weights(kappa = 0.2)
+            val one = CropModel(aspect, weights, parallelism = 1).solve(masks, 0.75f)
+            val four = CropModel(aspect, weights, parallelism = 4).solve(masks, 0.75f)
+            assertEquals(one.pages, four.pages)
+            assertEquals(one.total, four.total, 0.0)
+        }
     }
 
     @Test
