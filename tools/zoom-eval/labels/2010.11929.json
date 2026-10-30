@@ -1,0 +1,55 @@
+{
+  "comment": "",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader+furniture+marks",
+    "aspect": 0.75,
+    "commit": "37d755c5c48c",
+    "scale": 0.81,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.019999999552965164,
+      "autoMaxLost": 0.004999999888241291,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": {
+        "x": 306,
+        "y": 407.2
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 306,
+        "y": 407.2
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 306,
+        "y": 407.2
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2010.11929",
+  "schema": 1
+}
