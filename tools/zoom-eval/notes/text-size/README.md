@@ -141,3 +141,7 @@ math papers (Witten, Green–Tao), VAE, the LIGO PRL, GAN and Scaling Laws.
   more and is not yet measured on the tablet.
 - The app's `autoByCost` search is not exhaustive; the new cost should be checked with it.
 - A fresh review round should confirm these choices before any config changes.
+
+Round 5 result (`labels/ROUND-5.md`): 57/63 pages and 5/6 zooms. The only miss is LIGO,
+where the owner would drop the PRL running header at 0.85. TUNED gives the same crops on
+these six papers, so the round doesn't separate the models.

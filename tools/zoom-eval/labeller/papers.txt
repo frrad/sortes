@@ -1,5 +1,5 @@
 # The papers in the labelling set, one corpus.tsv id per line, in the order the labeller shows them.
-# Round 5: new papers, rendered with the offline "tuned+text" model (TextModel):
+# Round 5 (labelled, see labels/ROUND-5.md): new papers, rendered with the offline "tuned+text" model (TextModel):
 #   LABELLER_DATA=~/sortes-review/labeller/round5 LABELLER_ARGS="--config=tuned+text" tools/zoom-eval/label.sh
 # Rounds 1-4 are in labels/.
 witten-9802150
