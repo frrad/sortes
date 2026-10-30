@@ -168,7 +168,7 @@ is no held-out round among them. Round 4 (six papers the owner is labelling on t
 | at the automatic zoom, `TUNED` before | 25 (Shannon 14, SuperGLUE 5, MMLU 2, Adam, Attention, GDL, NTK) |
 | at the automatic zoom, `TUNED` now | **0** |
 | at a manual zoom of 0.7, before | 491 |
-| at a manual zoom of 0.7, now | **285** |
+| at a manual zoom of 0.7, now | **279** |
 
 At 0.7 the body of a letter page doesn't fit, so some line must be sliced on most text pages;
 the block term puts the edge between paragraphs or sections where there is one to use (the
