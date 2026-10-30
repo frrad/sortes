@@ -1,0 +1,69 @@
+{
+  "comment": "",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "f80ae4ffc214",
+    "scale": 0.815,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "ideally the red text at the top and the footnote at bottom woudl both be visible. ",
+      "idealCentre": {
+        "x": 312.3,
+        "y": 410.7
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "this is good. could mb be slightly tighter, but good job cutting off that page number",
+      "idealCentre": {
+        "x": 311.2,
+        "y": 397.8
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "also good",
+      "idealCentre": {
+        "x": 309.3,
+        "y": 398.1
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "very tight on top, but a bit of gap on bottom. could move up slightly",
+      "idealCentre": {
+        "x": 308.8,
+        "y": 397.8
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "5": {
+      "comment": "up - down centering was maybe not quote perfect",
+      "idealCentre": {
+        "x": 307.5,
+        "y": 396.9
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "1706.03762",
+  "schema": 1
+}

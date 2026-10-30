@@ -7,11 +7,15 @@
 </head>
 <body>
 <header>
-  <label>Paper <select id="paper"></select></label>
-  <span id="progress"></span>
-  <span id="status" class="status">Loading…</span>
+  <nav id="papers" aria-label="Papers"></nav>
   <button id="help-button" title="Keyboard shortcuts (?)">?</button>
 </header>
+<div id="bar">
+  <span id="progress"></span>
+  <span class="hint">Label as many or as few pages as you like; unlabelled pages count as no opinion. Everything saves as you go: there's no submit.</span>
+  <span id="status" class="status">Loading…</span>
+  <button id="done" title="Done with this paper: go to the next one (N)">Done with this paper → next paper <kbd>N</kbd></button>
+</div>
 
 <section id="paper-panel">
   <div id="model-info"></div>
@@ -51,7 +55,7 @@
     </div>
     <div class="nav">
       <button id="prev" title="Previous page (K or ←)">← Prev</button>
-      <button id="next-unjudged" title="Next page without a verdict (U)">Next unjudged <kbd>U</kbd></button>
+      <button id="next-unjudged" title="Next page not reviewed yet (U)">Next unreviewed <kbd>U</kbd></button>
       <button id="next" title="Next page (J or →)">Next →</button>
     </div>
   </aside>
@@ -64,13 +68,17 @@
     <h2>Labelling crops</h2>
     <p>Each page shows the reader's crop today: the <b>solid frame</b>, labelled with its window
       (W1, W2…), with ink it cuts off <span class="swatch cut"></span> boxed. The <b>dashed frame</b>
-      is yours: drag it (or click where its centre should go) to put the window where it should be.
-      Its size is the paper's zoom, set with the slider above; one size for every page.</p>
+      is yours: drag it to where the window should be (a plain click doesn't move it). Its size is
+      the paper's zoom, set with the slider above; one size for every page.</p>
+    <p>Label as many pages as you like, in any way: a verdict, tags, a comment or a moved window.
+      Pages you leave alone count as no opinion. In the strip: ✓ good, ✗ bad, ✎ comment or tags,
+      ⤧ window moved.</p>
     <table>
       <tr><td><kbd>G</kbd> / <kbd>B</kbd></td><td>good / bad (again to clear)</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>7</kbd></td><td>toggle tags</td></tr>
       <tr><td><kbd>J</kbd> <kbd>→</kbd> / <kbd>K</kbd> <kbd>←</kbd></td><td>next / previous page</td></tr>
-      <tr><td><kbd>U</kbd></td><td>next page without a verdict</td></tr>
+      <tr><td><kbd>U</kbd></td><td>next page not reviewed yet</td></tr>
+      <tr><td><kbd>N</kbd></td><td>done with this paper: next paper</td></tr>
       <tr><td><kbd>R</kbd></td><td>your window back to the model's position</td></tr>
       <tr><td><kbd>Shift</kbd>+arrows</td><td>nudge your window (Alt: finer)</td></tr>
       <tr><td><kbd>C</kbd></td><td>comment on the page; <kbd>Esc</kbd> to leave it</td></tr>

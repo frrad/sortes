@@ -1,0 +1,7 @@
+# The papers in the labelling set, one corpus.tsv id per line, in the order the labeller shows them.
+1706.03762
+2311.08105
+1502.03167
+2006.11239
+2106.10165-p1-40
+shannon1948

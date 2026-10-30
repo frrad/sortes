@@ -25,6 +25,7 @@ const state = {
   saveTimer: null,
   saving: null,  // the in-flight save, if any
   dirty: false,
+  reviewed: {},  // paper id -> pages reviewed, for the tabs
 };
 
 // ---- Labels ----
@@ -69,7 +70,7 @@ async function save() {
   state.saving = fetch(`/api/labels/${encodeURIComponent(id)}`, { method: "PUT", body })
     .then(async (r) => {
       if (!r.ok) throw new Error(await r.text());
-      setStatus(`Saved ${new Date().toLocaleTimeString()}`);
+      setStatus(`Saved ✓ ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, false, true);
     })
     .catch((e) => {
       state.dirty = true;
@@ -84,10 +85,11 @@ async function flush() {
   if (state.dirty) await save();
 }
 
-function setStatus(text, error = false) {
+function setStatus(text, error = false, saved = false) {
   const s = $("status");
   s.textContent = text;
   s.classList.toggle("error", error);
+  s.classList.toggle("saved", saved);
 }
 
 // ---- Geometry: everything in page points; the overlay's viewBox is the padded frame. ----
@@ -148,8 +150,41 @@ function render() {
   renderPage(p);
   renderSide(p);
   renderStrip();
-  const judged = state.paper.pages.filter((q) => pageLabel(q.number).verdict).length;
-  $("progress").textContent = `${judged} of ${state.paper.pages.length} pages judged`;
+  const { reviewed, verdicts } = counts(state.labels, state.paper.pages.length);
+  $("progress").textContent =
+    `${reviewed} of ${state.paper.pages.length} pages reviewed (${verdicts} marked good/bad)`;
+  state.reviewed[state.paper.id] = reviewed;
+  renderPaperTabs();
+}
+
+/** Pages with any label at all, and pages with a verdict. */
+function counts(labels, pageCount) {
+  const pages = Object.entries(labels.pages).filter(([n, l]) => Number(n) <= pageCount && !isEmpty(l));
+  return { reviewed: pages.length, verdicts: pages.filter(([, l]) => l.verdict).length };
+}
+
+function renderPaperTabs() {
+  const nav = $("papers");
+  if (nav.children.length !== state.papers.length) {
+    nav.replaceChildren(...state.papers.map((p) => {
+      const b = document.createElement("button");
+      b.className = "paper-tab";
+      b.dataset.id = p.id;
+      b.title = `${p.title} (${p.id})`;
+      b.addEventListener("click", () => loadPaper(p.id));
+      return b;
+    }));
+  }
+  [...nav.children].forEach((b, i) => {
+    const p = state.papers[i];
+    const done = state.reviewed[p.id];
+    b.innerHTML = `${escapeHtml(shortTitle(p.title))}<small>${done == null ? "…" : done} of ${p.pageCount} reviewed</small>`;
+    b.classList.toggle("current", state.paper && p.id === state.paper.id);
+  });
+}
+
+function shortTitle(title) {
+  return title.length > 28 ? `${title.slice(0, 26)}…` : title;
 }
 
 function zoomText(scale) {
@@ -304,7 +339,8 @@ function renderStrip() {
   [...strip.children].forEach((b, i) => {
     const label = pageLabel(state.paper.pages[i].number);
     const mark = b.querySelector(".mark");
-    mark.textContent = label.verdict === "good" ? "✓" : label.verdict === "bad" ? "✗" : isEmpty(label) ? "" : "•";
+    mark.textContent = label.verdict === "good" ? "✓" : label.verdict === "bad" ? "✗"
+      : (label.comment || label.tags.length) ? "✎" : label.idealCentre ? "⤧" : "";
     mark.hidden = !mark.textContent;
     b.classList.toggle("current", i === state.page);
   });
@@ -324,11 +360,12 @@ function goTo(i) {
   render();
 }
 
+/** The next page with no label at all. */
 function nextUnjudged() {
   const pages = state.paper.pages;
   for (let k = 1; k <= pages.length; k++) {
     const i = (state.page + k) % pages.length;
-    if (!pageLabel(pages[i].number).verdict) return goTo(i);
+    if (isEmpty(pageLabel(pages[i].number))) return goTo(i);
   }
 }
 
@@ -342,13 +379,19 @@ async function loadPaper(id, pageNumber) {
   state.paper = paper;
   state.labels = labels;
   state.dirty = false;
-  $("paper").value = id;
   const index = paper.pages.findIndex((p) => p.number === pageNumber);
   const old = labels.labelledAgainst;
   setStatus(old && old.commit !== paper.labelledAgainst.commit
     ? `Labels were made against ${old.commit}; these crops are ${paper.labelledAgainst.commit}.`
-    : "Loaded");
-  goTo(index >= 0 ? index : Math.max(0, paper.pages.findIndex((p) => !pageLabel(p.number).verdict)));
+    : "All saved ✓", false, !(old && old.commit !== paper.labelledAgainst.commit));
+  goTo(index >= 0 ? index : 0);
+}
+
+/** Done with this paper: the next one's first page. */
+async function nextPaper() {
+  const i = state.papers.findIndex((p) => p.id === state.paper.id);
+  const next = state.papers[(i + 1) % state.papers.length];
+  await loadPaper(next.id, 1);
 }
 
 function hashParams() {
@@ -366,14 +409,13 @@ async function start() {
     return b;
   }));
   state.papers = await fetch("/data/papers.json").then((r) => r.json());
-  const select = $("paper");
-  select.replaceChildren(...state.papers.map((p) => {
-    const o = document.createElement("option");
-    o.value = p.id;
-    o.textContent = `${p.title} (${p.id}, ${p.pageCount} pages)`;
-    return o;
+  renderPaperTabs();
+  // Each paper's reviewed count, for the tabs.
+  await Promise.all(state.papers.map(async (p) => {
+    const labels = await fetch(`/api/labels/${encodeURIComponent(p.id)}`).then((r) => r.ok ? r.json() : emptyLabels(p.id));
+    state.reviewed[p.id] = counts(labels, p.pageCount).reviewed;
   }));
-  select.addEventListener("change", () => loadPaper(select.value));
+  renderPaperTabs();
   const params = hashParams();
   const first = state.papers.find((p) => p.id === params.paper) || state.papers[0];
   if (first) await loadPaper(first.id, Number(params.page));
@@ -399,7 +441,9 @@ function nudge(dx, dy) {
   setCentre(p, c.x + dx, c.y + dy);
 }
 
-// Dragging your window: grab it, or click anywhere to put its centre there.
+// Dragging your window: grab it and move it. Nothing changes until the pointer has moved a few
+// pixels, so a plain click (to focus the page, say) never marks a page as moved.
+const DRAG_THRESHOLD_PX = 4;
 (() => {
   let drag = null;
   const svg = $("overlay");
@@ -413,16 +457,16 @@ function nudge(dx, dy) {
     };
   };
   svg.addEventListener("pointerdown", (e) => {
-    if (!state.paper) return;
-    const p = state.paper.pages[state.page];
+    if (!state.paper || e.target.id !== "mine") return;
     const at = toPage(e);
-    const c = myWindow(p).centre;
-    drag = e.target.id === "mine" ? { dx: c.x - at.x, dy: c.y - at.y } : { dx: 0, dy: 0 };
+    const c = myWindow(state.paper.pages[state.page]).centre;
+    drag = { dx: c.x - at.x, dy: c.y - at.y, x: e.clientX, y: e.clientY, moving: false };
     svg.setPointerCapture(e.pointerId);
-    setCentre(p, at.x + drag.dx, at.y + drag.dy);
   });
   svg.addEventListener("pointermove", (e) => {
     if (!drag) return;
+    if (!drag.moving && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < DRAG_THRESHOLD_PX) return;
+    drag.moving = true;
     const at = toPage(e);
     setCentre(state.paper.pages[state.page], at.x + drag.dx, at.y + drag.dy);
   });
@@ -436,6 +480,7 @@ $("bad").addEventListener("click", () => toggleVerdict("bad"));
 $("prev").addEventListener("click", () => goTo(state.page - 1));
 $("next").addEventListener("click", () => goTo(state.page + 1));
 $("next-unjudged").addEventListener("click", nextUnjudged);
+$("done").addEventListener("click", nextPaper);
 $("reset-window").addEventListener("click", () => setPageLabel(state.paper.pages[state.page].number, { idealCentre: null }));
 $("page-comment").addEventListener("input", (e) => setPageLabel(state.paper.pages[state.page].number, { comment: e.target.value }));
 $("paper-comment").addEventListener("input", (e) => { state.labels.comment = e.target.value; changed(); });
@@ -478,6 +523,7 @@ document.addEventListener("keydown", (e) => {
   else if (key === "j" || e.key === "ArrowRight") goTo(state.page + 1);
   else if (key === "k" || e.key === "ArrowLeft") goTo(state.page - 1);
   else if (key === "u") nextUnjudged();
+  else if (key === "n") nextPaper();
   else if (key === "r") setPageLabel(state.paper.pages[state.page].number, { idealCentre: null });
   else if (key === "c") $("page-comment").focus();
   else if (e.key === "?") $("help").hidden = false;

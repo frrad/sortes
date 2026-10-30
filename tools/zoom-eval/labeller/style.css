@@ -35,10 +35,24 @@ header {
   padding: 8px 16px;
   border-bottom: 2px solid #000;
 }
-header select { border: 1.5px solid #000; border-radius: 4px; padding: 3px; max-width: 520px; }
-#progress { font-weight: 600; }
-.status { margin-left: auto; }
+#papers { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.paper-tab { text-align: left; padding: 3px 10px; line-height: 1.2; border-radius: 6px; }
+.paper-tab small { display: block; font-size: 12px; }
+.paper-tab.current { background: #000; color: #fff; }
+#help-button { margin-left: auto; }
+#bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px solid #000;
+}
+#progress { font-weight: 700; }
+.hint { font-size: 13px; }
+.status { margin-left: auto; white-space: nowrap; }
+.status.saved { font-weight: 700; }
 .status.error { font-weight: 700; text-decoration: underline; }
+#done { font-weight: 700; border-width: 2px; white-space: nowrap; }
 
 #paper-panel {
   display: grid;
@@ -71,7 +85,7 @@ main {
 }
 #page-wrap { position: relative; line-height: 0; border: 1px solid #000; }
 #page-image { display: block; max-height: calc(100vh - 225px); max-width: 100%; user-select: none; }
-#overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+#overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
 #overlay .model { fill: none; stroke: #000; stroke-width: 3; }
 #overlay .model-label { font: 600 14px system-ui, sans-serif; fill: #fff; }
 #overlay .model-label-bg { fill: #000; }
