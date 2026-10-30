@@ -5,17 +5,18 @@ import dev.sortes.app.data.FolderSourceDao
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Saved alphaXiv folders and their syncs. Syncs run in [scope], one at a time; a source that is
@@ -50,7 +51,10 @@ class FolderSources(
     val unseenFailure: StateFlow<Boolean> = _unseenFailure.asStateFlow()
 
     private val syncLock = Mutex()
-    private val jobs = ConcurrentHashMap<Long, Job>()
+
+    /** Guards [jobs] and [_syncing] together, so each id's entry in both belongs to one job. */
+    private val stateLock = Any()
+    private val jobs = HashMap<Long, Job>()
 
     /** Saves [folderId] (a no-op if it's already saved) and syncs it. */
     fun addAndSync(folderId: String): Job = scope.launch {
@@ -62,26 +66,31 @@ class FolderSources(
     }
 
     /** Returns null if [id] is already syncing or queued. */
+    @OptIn(ExperimentalCoroutinesApi::class) // CoroutineStart.ATOMIC
     fun sync(id: Long): Job? {
-        var queued = false
-        // update() may rerun the lambda, so decide afresh each time.
-        _syncing.update { current ->
-            queued = id !in current
-            if (queued) current + id else current
+        synchronized(stateLock) {
+            if (id in _syncing.value) return null
+            _syncing.value = _syncing.value + id
+            // Atomic, so the body runs even if the job is cancelled before it's dispatched, and
+            // the state is cleared in a finally block before the job completes: join() on a job
+            // that has completed returns without waiting for completion handlers, so clearing it
+            // in one let a sync just joined still show as syncing, and a resync be ignored.
+            val job = scope.launch(start = CoroutineStart.ATOMIC) {
+                try {
+                    ensureActive() // withLock doesn't check, if the lock is free
+                    syncLock.withLock { syncNow(id) }
+                } finally {
+                    // Waits for stateLock, so on another thread it runs after the job is registered.
+                    synchronized(stateLock) {
+                        jobs.remove(id, coroutineContext.job)
+                        _syncing.value = _syncing.value - id
+                    }
+                }
+            }
+            // Unless an immediate dispatcher already ran the body to the end, on this thread.
+            if (id in _syncing.value) jobs[id] = job
+            return job
         }
-        if (!queued) return null
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            syncLock.withLock { syncNow(id) }
-        }
-        // Not a finally block: a job cancelled before it is dispatched never runs its body.
-        // In this order, so a sync queued right after can't lose its job entry.
-        job.invokeOnCompletion {
-            jobs.remove(id, job)
-            _syncing.update { it - id }
-        }
-        jobs[id] = job
-        job.start()
-        return job
     }
 
     fun syncAll(): Job = scope.launch {
@@ -91,7 +100,7 @@ class FolderSources(
 
     /** Forgets the source, stopping its sync if one is running; papers it added stay. */
     fun remove(id: Long): Job = scope.launch {
-        jobs[id]?.cancelAndJoin()
+        synchronized(stateLock) { jobs[id] }?.cancelAndJoin()
         reporting("Couldn't remove source") { dao.delete(id) }
     }
 

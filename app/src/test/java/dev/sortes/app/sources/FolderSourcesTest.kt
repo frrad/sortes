@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -162,6 +163,25 @@ class FolderSourcesTest {
     }
 
     @Test
+    fun syncingIsClearedBeforeTheSyncCompletes() = runBlocking {
+        // join() returns at once on a job that has already completed, without waiting for its
+        // completion handlers; so a sync just joined must not still show as syncing.
+        val id = sourceDao.insert(FolderSource(folderId = folderA))
+        folderGate = CompletableDeferred()
+        val job = sources.sync(id)!!
+        val completedWhenCleared = CompletableDeferred<Boolean>()
+        // Unconfined, so it runs on the thread clearing the state, as it does.
+        scope.launch(Dispatchers.Unconfined) {
+            sources.syncing.first { id !in it }
+            completedWhenCleared.complete(job.isCompleted)
+        }
+
+        folderGate!!.complete(Unit)
+
+        assertFalse(withTimeout(5_000) { completedWhenCleared.await() })
+    }
+
+    @Test
     fun syncAllRunsEverySourceOneAtATime() = runBlocking {
         sourceDao.insert(FolderSource(folderId = folderA))
         sourceDao.insert(FolderSource(folderId = folderB))
@@ -243,7 +263,7 @@ class FolderSourcesTest {
     @Test
     fun syncCancelledBeforeItRunsIsNotLeftSyncing() = runBlocking {
         // A dispatcher that runs tasks only when asked, so the job is cancelled before its body
-        // starts; then the coroutine completes without ever entering it.
+        // starts.
         val queue = ArrayDeque<Runnable>()
         val manual = object : CoroutineDispatcher() {
             override fun dispatch(context: CoroutineContext, block: Runnable) {
