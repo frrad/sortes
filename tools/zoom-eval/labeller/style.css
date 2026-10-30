@@ -20,11 +20,11 @@ button {
 button:hover { background: #f0f0f0; }
 button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #000; outline-offset: 1px; }
 kbd {
+  display: inline-block;
   border: 1px solid #000;
   border-radius: 3px;
   padding: 0 4px;
-  font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font: 600 12px/1.3 system-ui, sans-serif;
 }
 textarea { width: 100%; border: 1.5px solid #000; border-radius: 4px; padding: 6px; resize: vertical; }
 
@@ -42,7 +42,7 @@ header select { border: 1.5px solid #000; border-radius: 4px; padding: 3px; max-
 
 #paper-panel {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto minmax(260px, 1fr);
   gap: 8px 24px;
   align-items: center;
   padding: 8px 16px;
@@ -53,7 +53,7 @@ header select { border: 1.5px solid #000; border-radius: 4px; padding: 3px; max-
 .zoom input { width: 260px; accent-color: #000; }
 #zoom-value { font-variant-numeric: tabular-nums; min-width: 150px; }
 .paper-comment { display: flex; gap: 8px; align-items: center; }
-.paper-comment textarea { min-height: 2.4em; }
+.paper-comment textarea { flex: 1; min-height: 2.4em; }
 
 main {
   flex: 1;
@@ -70,7 +70,7 @@ main {
   background: #fff;
 }
 #page-wrap { position: relative; line-height: 0; border: 1px solid #000; }
-#page-image { display: block; max-height: calc(100vh - 290px); max-width: 100%; user-select: none; }
+#page-image { display: block; max-height: calc(100vh - 225px); max-width: 100%; user-select: none; }
 #overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
 #overlay .model { fill: none; stroke: #000; stroke-width: 3; }
 #overlay .model-label { font: 600 14px system-ui, sans-serif; fill: #fff; }
@@ -82,18 +82,18 @@ main {
 #overlay .centre { fill: #000; pointer-events: none; }
 
 #side {
-  width: 420px;
-  padding: 10px 16px;
+  width: 400px;
+  padding: 8px 14px;
   border-left: 1px solid #000;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   overflow-y: auto;
 }
 .page-title { font-size: 18px; font-weight: 700; }
 #page-facts { font-size: 13px; font-weight: 400; }
 .preview-label { font-size: 13px; }
-#preview { border: 2px solid #000; width: 100%; image-rendering: auto; background: #fff; }
+#preview { border: 2px solid #000; display: block; margin: 0 auto; background: #fff; flex: none; }
 .verdict { display: flex; gap: 10px; }
 .verdict-button { flex: 1; font-size: 17px; padding: 8px; border-width: 2px; }
 .verdict-button.on { background: #000; color: #fff; }
@@ -103,6 +103,7 @@ main {
 .tag.on { background: #000; color: #fff; }
 .tag.on kbd { border-color: #fff; }
 .page-comment { display: flex; flex-direction: column; gap: 4px; }
+.page-comment textarea { min-height: 3.2em; }
 .window-controls { display: flex; gap: 10px; align-items: center; justify-content: space-between; font-size: 13px; }
 .nav { display: flex; gap: 8px; justify-content: space-between; }
 

@@ -212,13 +212,17 @@ function renderPage(p) {
   svg.append(shade);
   for (const c of p.cut) rect(c, "cut");
   rect(p.region, "model");
-  // The model's window label, in its top-left corner.
+  // The model's window label, just outside its top-left corner (below it if there's no room),
+  // so it doesn't cover the page.
   const label = `W${p.window} · model`;
-  const lx = p.region.left + pad.x, ly = p.region.top + pad.y;
+  const size = frame.width / 50;
+  const boxHeight = size * 1.4;
+  const lx = p.region.left + pad.x;
+  const above = p.region.top + pad.y - boxHeight;
+  const ly = above >= 0 ? above : p.region.top + pad.y + p.region.height;
   const bg = document.createElementNS(SVG, "rect");
-  const size = frame.width / 45;
   bg.setAttribute("x", lx); bg.setAttribute("y", ly);
-  bg.setAttribute("width", size * label.length * 0.62); bg.setAttribute("height", size * 1.4);
+  bg.setAttribute("width", size * label.length * 0.62); bg.setAttribute("height", boxHeight);
   bg.setAttribute("class", "model-label-bg");
   svg.append(bg);
   const text = document.createElementNS(SVG, "text");
@@ -260,11 +264,14 @@ function renderSide(p) {
 function renderPreview(p, mine) {
   const canvas = $("preview");
   const aspect = state.paper.labelledAgainst.aspect;
-  const cssWidth = canvas.clientWidth || 380;
+  // As big as fits: the side panel's width, or 36% of the window's height.
+  const cssHeight = Math.min(window.innerHeight * 0.36, ($("side").clientWidth - 32) / aspect);
+  const cssWidth = cssHeight * aspect;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(cssWidth * dpr);
-  canvas.height = Math.round((cssWidth / aspect) * dpr);
-  canvas.style.height = `${cssWidth / aspect}px`;
+  canvas.height = Math.round(cssHeight * dpr);
+  canvas.style.width = `${cssWidth}px`;
+  canvas.style.height = `${cssHeight}px`;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -437,6 +444,14 @@ $("zoom-reset").addEventListener("click", () => { state.labels.idealScale = null
 $("help-button").addEventListener("click", () => { $("help").hidden = false; });
 $("help-close").addEventListener("click", () => { $("help").hidden = true; });
 window.addEventListener("resize", render);
+// Back, forward or an edited address: follow the hash.
+window.addEventListener("hashchange", () => {
+  const params = hashParams();
+  if (!state.paper) return;
+  if (params.paper && params.paper !== state.paper.id) return loadPaper(params.paper, Number(params.page));
+  const i = state.paper.pages.findIndex((p) => p.number === Number(params.page));
+  if (i >= 0 && i !== state.page) goTo(i);
+});
 window.addEventListener("beforeunload", (e) => { if (state.dirty || state.saving) { save(); e.preventDefault(); } });
 
 document.addEventListener("keydown", (e) => {
