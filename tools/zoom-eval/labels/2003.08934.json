@@ -1,0 +1,69 @@
+{
+  "comment": "zoom tighter, lose the header. i did a few pages for you",
+  "idealScale": 0.91,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "dba446cf17bc",
+    "scale": 0.945,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": {
+        "x": 205.7,
+        "y": 305.5
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 209.7,
+        "y": 307.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 205.7,
+        "y": 310.5
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": {
+        "x": 205.7,
+        "y": 310.5
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "5": {
+      "comment": "",
+      "idealCentre": {
+        "x": 205.7,
+        "y": 310.5
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2003.08934",
+  "schema": 1
+}

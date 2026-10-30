@@ -1,0 +1,105 @@
+{
+  "comment": "this one is weird. page 8 convinced me to tweak teh zoom. then mostly just try to center each page is what i ended up on. not super strongly held but this is what i think mb looks best?",
+  "idealScale": 0.85,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "dba446cf17bc",
+    "scale": 0.79,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": {
+        "x": 270.9,
+        "y": 391.4
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 336.1,
+        "y": 383.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 270.9,
+        "y": 381.4
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": {
+        "x": 336.1,
+        "y": 431.7
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "5": {
+      "comment": "",
+      "idealCentre": {
+        "x": 270.9,
+        "y": 391.4
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "6": {
+      "comment": "",
+      "idealCentre": {
+        "x": 331.1,
+        "y": 388.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "7": {
+      "comment": "",
+      "idealCentre": {
+        "x": 275.9,
+        "y": 381.4
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "8": {
+      "comment": "",
+      "idealCentre": {
+        "x": 336.1,
+        "y": 388.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "9": {
+      "comment": "",
+      "idealCentre": {
+        "x": 270.9,
+        "y": 381.4
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2104.13478-p20-49",
+  "schema": 1
+}

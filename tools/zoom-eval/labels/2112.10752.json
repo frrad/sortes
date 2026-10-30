@@ -1,0 +1,60 @@
+{
+  "comment": "i did first like 4 pages - I didn't dial it in perfect, but basically ok to lose the page number for better balance",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "dba446cf17bc",
+    "scale": 0.825,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": {
+        "x": 299.6,
+        "y": 402.2
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 294.6,
+        "y": 397.2
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 299.6,
+        "y": 402.2
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": {
+        "x": 294.6,
+        "y": 402.2
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2112.10752",
+  "schema": 1
+}
