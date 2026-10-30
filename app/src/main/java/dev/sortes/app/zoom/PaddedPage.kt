@@ -48,131 +48,241 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     private var blocksGap = -1
     private var blocksFor: List<CellRect> = emptyList()
     private var blockInks = IntArray(0)
+    // Whether each block is sparse: under half its box inked (a figure, a frame). A window
+    // overlapping a sparse block's box may keep none of its cells, so its share is always from
+    // its cells; a dense block (text) is charged for any overlap of its box short of containing
+    // it, which lets most positions be filled in one go.
+    private var blockSparse = BooleanArray(0)
+    // Each block's own summed-area table over its box: sums[i][(y + 1) * (bw + 1) + x + 1] for
+    // the block's cells above and left of (x, y) within the box.
+    private var blockSums: Array<IntArray> = emptyArray()
 
     /**
-     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept for the last gap
-     * asked for.
+     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept (with each
+     * block's own ink table) for the last gap asked for.
      */
     fun blocks(gap: Int): List<CellRect> {
         if (gap != blocksGap) {
             if (inkCount == 0) {
                 blocksFor = emptyList()
                 blockInks = IntArray(0)
+                blockSparse = BooleanArray(0)
+                blockSums = emptyArray()
             } else {
                 val found = PageBlocks.of(mask, gap)
                 blocksFor = found.boxes.map { CellRect(it.left + offX, it.top + offY, it.right + offX, it.bottom + offY) }
                 blockInks = found.inks
+                blockSparse = BooleanArray(found.boxes.size) { b ->
+                    val box = found.boxes[b]
+                    found.inks[b] * 2 < (box.right - box.left) * (box.bottom - box.top)
+                }
+                blockSums = Array(found.boxes.size) { b ->
+                    val box = found.boxes[b]
+                    val bw = box.right - box.left
+                    val bh = box.bottom - box.top
+                    val stride = bw + 1
+                    val sums = IntArray(stride * (bh + 1))
+                    for (y in 0 until bh) {
+                        var row = 0
+                        for (x in 0 until bw) {
+                            if (found.labels[(box.top + y) * found.maskWidth + box.left + x] == b) row++
+                            sums[(y + 1) * stride + x + 1] = sums[y * stride + x + 1] + row
+                        }
+                    }
+                    sums
+                }
             }
             blocksGap = gap
         }
         return blocksFor
     }
 
-    /** How many blocks (with [gap]) a [w] x [h] window at ([x], [y]) passes through. */
+    /** Block [b]'s own ink within frame cells [l, r) x [t, bt) (clipped to its box). */
+    private fun blockInside(b: Int, l: Int, t: Int, r: Int, bt: Int): Int {
+        val box = blocksFor[b]
+        val x0 = maxOf(l, box.left) - box.left
+        val y0 = maxOf(t, box.top) - box.top
+        val x1 = minOf(r, box.right) - box.left
+        val y1 = minOf(bt, box.bottom) - box.top
+        if (x1 <= x0 || y1 <= y0) return 0
+        val stride = box.right - box.left + 1
+        val sums = blockSums[b]
+        return sums[y1 * stride + x1] - sums[y0 * stride + x1] - sums[y1 * stride + x0] + sums[y0 * stride + x0]
+    }
+
+    /** How many blocks (with [gap]) a [w] x [h] window at ([x], [y]) cuts into: some ink in, some out. */
     fun split(x: Int, y: Int, w: Int, h: Int, gap: Int): Int {
-        val window = CellRect(x, y, x + w, y + h)
-        return blocks(gap).count { it.overlaps(window) && !window.contains(it) }
+        val boxes = blocks(gap)
+        return boxes.indices.count { b ->
+            val kept = blockInside(b, x, y, x + w, y + h)
+            kept > 0 && kept < blockInks[b]
+        }
+    }
+
+    /**
+     * The ink cut off one block at which it costs a whole split: [unit], or half the block's
+     * ink if that is less, so a small block (an equation number, a short heading) cut in two
+     * costs as much as a sliced paragraph, and at least one cell.
+     */
+    private fun unitFor(b: Int, unit: Int): Int = minOf(unit, maxOf(1, blockInks[b] / 2))
+
+    /**
+     * Block [b]'s share of a split for a window keeping [kept] of its ink: 0 if all of it, or
+     * none of it and the block is sparse; else the cut as a share of the block's unit, capped
+     * at 1. A dense block's box overlapped but not contained counts even if the window keeps
+     * none of its cells (an L-shaped paragraph's empty corner), which is what lets [splitCosts]
+     * fill most positions without looking at them.
+     */
+    private fun share(b: Int, kept: Int, unit: Int): Double {
+        val cut = blockInks[b] - kept
+        if (cut <= 0 || (kept == 0 && blockSparse[b])) return 0.0
+        val u = unitFor(b, unit)
+        return if (cut >= u) 1.0 else cut.toDouble() / u
     }
 
     /**
      * How badly a [w] x [h] window at ([x], [y]) cuts into the page's blocks (with [gap]): for
-     * each block it passes through, the ink it cuts off that block as a share of [unit] cells,
-     * capped at 1, summed. A nibble off a block's edge counts little; a sliced title, line or
-     * table row counts a whole block. The ink kept of a block is counted over its box, so where
-     * two blocks' boxes overlap (an L-shaped paragraph beside a figure) the cut is underestimated.
+     * each block it cuts into, the ink cut off that block as a share of [unit] cells (or of half
+     * the block, if smaller), capped at 1, summed. A nibble off a block's edge counts little; a
+     * sliced title, line or table row counts a whole block.
      */
     fun splitCost(x: Int, y: Int, w: Int, h: Int, gap: Int, unit: Int): Double {
+        val boxes = blocks(gap)
         val window = CellRect(x, y, x + w, y + h)
         var cost = 0.0
-        val boxes = blocks(gap)
-        for (i in boxes.indices) {
-            val b = boxes[i]
-            if (!b.overlaps(window) || window.contains(b)) continue
-            cost += cutShare(b, blockInks[i], window, unit)
+        for (b in boxes.indices) {
+            if (!boxes[b].overlaps(window)) continue
+            cost += share(b, blockInside(b, x, y, x + w, y + h), unit)
         }
         return cost
     }
 
-    private fun cutShare(b: CellRect, ink: Int, window: CellRect, unit: Int): Double {
-        val l = maxOf(b.left, window.left)
-        val t = maxOf(b.top, window.top)
-        val r = minOf(b.right, window.right)
-        val bt = minOf(b.bottom, window.bottom)
-        val kept = inside(l, t, r - l, bt - t)
-        val cut = (ink - kept).coerceAtLeast(0)
-        return if (cut >= unit) 1.0 else cut.toDouble() / unit
-    }
-
     /**
      * [splitCost] for every position of a [w] x [h] window at once, into [out] at
-     * `y * (width - w + 1) + x`. Each block adds its share over the positions that overlap but
-     * don't contain it; the rest cost nothing.
+     * `y * (width - w + 1) + x`. A dense block (half its box or more inked: text) costs a whole
+     * split at every position whose window overlaps it, through a 2-D difference array, except
+     * in a ring of positions around those containing it, where the window cuts fewer than the
+     * block's unit of cells off one side and the share is computed exactly; the ring is a few
+     * cells wide, so that is about linear in the blocks plus the positions. A sparse block (a
+     * figure, a frame) can have a window inside its box that keeps none of its ink, so its share
+     * is computed exactly at every overlapping position, row by row from a column profile.
      */
     fun splitCosts(w: Int, h: Int, gap: Int, unit: Int, out: DoubleArray) {
         val cols = width - w + 1
         val rows = height - h + 1
-        out.fill(0.0, 0, cols * rows)
         val boxes = blocks(gap)
-        for (i in boxes.indices) {
-            val b = boxes[i]
-            val ink = blockInks[i]
-            // Positions overlapping the block.
-            val x0 = (b.left - w + 1).coerceAtLeast(0)
-            val x1 = (b.right - 1).coerceAtMost(cols - 1)
-            val y0 = (b.top - h + 1).coerceAtLeast(0)
-            val y1 = (b.bottom - 1).coerceAtMost(rows - 1)
-            // ...of which these contain it.
-            val cx0 = b.right - w
-            val cx1 = b.left
-            val cy0 = b.bottom - h
-            val cy1 = b.top
-            for (y in y0..y1) {
-                val containsY = y in cy0..cy1
-                for (x in x0..x1) {
-                    if (containsY && x in cx0..cx1) continue
-                    out[y * cols + x] += cutShare(b, ink, CellRect(x, y, x + w, y + h), unit)
+        val stride = cols + 1
+        val diff = diffBuffer(stride * (rows + 1))
+        diff.fill(0.0, 0, stride * (rows + 1))
+        fun add(x0: Int, y0: Int, x1: Int, y1: Int, v: Double) {
+            if (x0 > x1 || y0 > y1) return
+            diff[y0 * stride + x0] += v
+            diff[y0 * stride + x1 + 1] -= v
+            diff[(y1 + 1) * stride + x0] -= v
+            diff[(y1 + 1) * stride + x1 + 1] += v
+        }
+        // Per block: the rect of positions handled exactly after the fill (x0, y0, x1, y1), and
+        // within it the rect of positions containing the block, which cost nothing.
+        val exact = IntArray(boxes.size * 8)
+        val sparse = BooleanArray(boxes.size)
+        for (b in boxes.indices) {
+            val box = boxes[b]
+            val u = unitFor(b, unit)
+            val ox0 = (box.left - w + 1).coerceAtLeast(0)
+            val ox1 = (box.right - 1).coerceAtMost(cols - 1)
+            val oy0 = (box.top - h + 1).coerceAtLeast(0)
+            val oy1 = (box.bottom - 1).coerceAtMost(rows - 1)
+            val o = b * 8
+            if (ox0 > ox1 || oy0 > oy1) {
+                exact[o] = 1
+                exact[o + 2] = 0
+                continue
+            }
+            if (blockSparse[b]) {
+                sparse[b] = true
+                exact[o] = ox0; exact[o + 1] = oy0; exact[o + 2] = ox1; exact[o + 3] = oy1
+                exact[o + 4] = 1; exact[o + 6] = 0
+                continue
+            }
+            val cx0 = box.right - w
+            val cx1 = box.left
+            val cy0 = box.bottom - h
+            val cy1 = box.top
+            val rx0 = if (cx0 <= cx1) maxOf(ox0, cx0 - edgeRun(b, u, side = 1)) else ox0
+            val rx1 = if (cx0 <= cx1) minOf(ox1, cx1 + edgeRun(b, u, side = 0)) else ox1
+            val ry0 = if (cy0 <= cy1) maxOf(oy0, cy0 - edgeRun(b, u, side = 3)) else oy0
+            val ry1 = if (cy0 <= cy1) minOf(oy1, cy1 + edgeRun(b, u, side = 2)) else oy1
+            add(ox0, oy0, ox1, oy1, 1.0)
+            add(rx0, ry0, rx1, ry1, -1.0)
+            exact[o] = rx0; exact[o + 1] = ry0; exact[o + 2] = rx1; exact[o + 3] = ry1
+            exact[o + 4] = maxOf(cx0, rx0); exact[o + 5] = maxOf(cy0, ry0)
+            exact[o + 6] = minOf(cx1, rx1); exact[o + 7] = minOf(cy1, ry1)
+        }
+        for (y in 0 until rows) {
+            var run = 0.0
+            for (x in 0 until cols) {
+                run += diff[y * stride + x]
+                out[y * cols + x] = (if (y == 0) 0.0 else out[(y - 1) * cols + x]) + run
+            }
+        }
+        var profile = IntArray(0)
+        for (b in boxes.indices) {
+            val o = b * 8
+            val x0 = exact[o]; val y0 = exact[o + 1]; val x1 = exact[o + 2]; val y1 = exact[o + 3]
+            if (x0 > x1 || y0 > y1) continue
+            val box = boxes[b]
+            if (sparse[b]) {
+                // Column profile of the block's ink within the window's rows, prefixed, per row.
+                val bw = box.right - box.left
+                if (profile.size < bw + 1) profile = IntArray(bw + 1)
+                for (y in y0..y1) {
+                    for (c in 0 until bw) profile[c + 1] = profile[c] + blockInside(b, box.left + c, y, box.left + c + 1, y + h)
+                    for (x in x0..x1) {
+                        val l = (x - box.left).coerceIn(0, bw)
+                        val r = (x + w - box.left).coerceIn(0, bw)
+                        out[y * cols + x] += share(b, profile[r] - profile[l], unit)
+                    }
+                }
+            } else {
+                val cx0 = exact[o + 4]; val cy0 = exact[o + 5]; val cx1 = exact[o + 6]; val cy1 = exact[o + 7]
+                for (y in y0..y1) {
+                    val containsY = y in cy0..cy1
+                    for (x in x0..x1) {
+                        if (containsY && x in cx0..cx1) continue
+                        out[y * cols + x] += share(b, blockInside(b, x, y, x + w, y + h), unit)
+                    }
                 }
             }
         }
     }
 
     /**
-     * [split] for every position of a [w] x [h] window at once, into [out] at
-     * `y * (width - w + 1) + x`: each block adds one over the positions that overlap it and takes
-     * one off those that contain it, through a 2-D difference array, so the work is linear in the
-     * blocks plus the positions.
+     * How many columns (sides 0 left, 1 right) or rows (2 top, 3 bottom) of block [b], taken
+     * from that edge inwards, hold fewer than [u] of its cells: how far a window edge may move
+     * into the block from that side before the cut is a whole split.
      */
-    fun splits(w: Int, h: Int, gap: Int, out: IntArray) {
-        val cols = width - w + 1
-        val rows = height - h + 1
-        val stride = cols + 1
-        val diff = IntArray(stride * (rows + 1))
-        fun add(x0: Int, y0: Int, x1: Int, y1: Int, v: Int) {
-            // Positions x0..x1, y0..y1 inclusive, clipped to the grid.
-            val l = x0.coerceAtLeast(0)
-            val t = y0.coerceAtLeast(0)
-            val r = x1.coerceAtMost(cols - 1)
-            val b = y1.coerceAtMost(rows - 1)
-            if (l > r || t > b) return
-            diff[t * stride + l] += v
-            diff[t * stride + r + 1] -= v
-            diff[(b + 1) * stride + l] -= v
-            diff[(b + 1) * stride + r + 1] += v
-        }
-        for (block in blocks(gap)) {
-            // Overlapping: the window's left is at most the block's last column, its right past the block's first.
-            add(block.left - w + 1, block.top - h + 1, block.right - 1, block.bottom - 1, 1)
-            // Containing: the window's left at most the block's left, its right at least the block's right.
-            add(block.right - w, block.bottom - h, block.left, block.top, -1)
-        }
-        for (y in 0 until rows) {
-            var run = 0
-            for (x in 0 until cols) {
-                run += diff[y * stride + x]
-                val above = if (y == 0) 0 else out[(y - 1) * cols + x]
-                out[y * cols + x] = above + run
+    private fun edgeRun(b: Int, u: Int, side: Int): Int {
+        val box = blocksFor[b]
+        val bw = box.right - box.left
+        val bh = box.bottom - box.top
+        var n = 0
+        while (true) {
+            val next = n + 1
+            val ink = when (side) {
+                0 -> if (next > bw) Int.MAX_VALUE else blockInside(b, box.left, box.top, box.left + next, box.bottom)
+                1 -> if (next > bw) Int.MAX_VALUE else blockInside(b, box.right - next, box.top, box.right, box.bottom)
+                2 -> if (next > bh) Int.MAX_VALUE else blockInside(b, box.left, box.top, box.right, box.top + next)
+                else -> if (next > bh) Int.MAX_VALUE else blockInside(b, box.left, box.bottom - next, box.right, box.bottom)
             }
+            if (ink >= u) return n
+            n = next
         }
+    }
+
+    private var diff = DoubleArray(0)
+    private fun diffBuffer(size: Int): DoubleArray {
+        if (diff.size < size) diff = DoubleArray(size)
+        return diff
     }
 
     fun windowWidth(scale: Float) = (scale * width).roundToInt().coerceIn(1, width)

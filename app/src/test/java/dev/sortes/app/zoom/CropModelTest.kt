@@ -437,6 +437,26 @@ class CropModelBlocksTest {
     }
 
     @Test
+    fun anUnsampledPageLeavesASharedWindowThatCutsIntoABlock() = runBlocking {
+        // The sampled pages' text sits at rows 10-66, so the shared window is rows 8-68; an
+        // unsampled page has shorter text and a figure outline at rows 62-70 whose two side
+        // lines the shared window cuts: 4 cells, well under the 1% allowance, but a split. With
+        // blocks, the page gets its own window (rows 10-70) when that is cheaper by a window's
+        // worth; by ink alone it keeps the shared one.
+        val usual = page(rect(10, 10, 50, 66))
+        val odd = page(rect(10, 10, 50, 54), rect(10, 62, 50, 63), rect(10, 62, 11, 70), rect(49, 62, 50, 70))
+        val sample = List(6) { usual }
+        fun paper(weights: CropModelWeights) = SampledPaper(CropModel(aspect, weights), sample, sample.indices.toList())
+        val blocks = paper(weights(kappa = 0.2).copy(gamma = 0.05))
+        val crops = blocks.solve(0.75f)
+        val crop = blocks.cropFor(6, crops, odd)
+        assertEquals(CropModel.OWN_WINDOW, crop.windowIndex)
+        assertEquals(0, crop.splitBlocks)
+        val byInk = paper(CropModelWeights())
+        assertTrue(byInk.cropFor(6, byInk.solve(0.75f), odd).windowIndex != CropModel.OWN_WINDOW)
+    }
+
+    @Test
     fun readerWeightsIgnoreBlocks() {
         val crops = solve(listOf(figurePage), 0.6f, CropModelWeights())
         assertEquals(0, crops.splitBlocks)

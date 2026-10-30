@@ -11,6 +11,11 @@ class TestPage(val width: Int, val height: Int) {
         for (y in top until bottom) for (x in left until right) ink[y * width + x] = true
     }
 
+    /** Clears the rectangle from ([left], [top]) inclusive to ([right], [bottom]) exclusive. */
+    fun clear(left: Int, top: Int, right: Int, bottom: Int) = apply {
+        for (y in top until bottom) for (x in left until right) ink[y * width + x] = false
+    }
+
     fun mask() = InkMask(width, height, ink.copyOf())
 }
 

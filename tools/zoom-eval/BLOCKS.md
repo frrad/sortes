@@ -49,14 +49,29 @@ of a text line). So:
   saturation the first version of this model slid a whole paper's window 60 pt, or opened a
   second window, to avoid such nibbles.
 
-Costs for every window position come from each block's box in O(blocks + positions per block)
-(`PaddedPage.splitCosts`), so the solver's precompute barely changes. Kept ink of a block is
-counted over its box with the page's summed-area table, which under-counts the cut where two
-boxes overlap (an L-shaped paragraph beside a figure); that is rare and errs on the cheap side.
+The cut is counted from each block's own cells (a summed-area table per block over its box),
+never from its box, so a frame around other content, or an L-shaped paragraph beside a figure,
+is charged only for its own ink. `splitInk` is capped at half the block's ink, so a small block
+(an equation number, a short heading) cut in two costs a whole split too.
+
+Costs for every window position (`PaddedPage.splitCosts`): a dense block (half its box or more
+inked: text) costs a whole split at every position whose window overlaps its box without
+containing it, filled through a 2-D difference array, except in a thin ring around the
+containing positions where the window cuts fewer than the block's unit off one side and the
+share is computed exactly; a sparse block (a figure, a frame) is computed exactly at every
+overlapping position, row by row from a column profile, since a window inside its box can keep
+none of its cells. The work is about linear in the positions plus the blocks' rings, plus the
+sparse blocks' overlap rectangles.
 
 With blocks, the convex per-page term ε (which let a page losing a lot earn its own window) is
 redundant and off: a page earns its own window when the shared one would split its blocks by
 more than a window costs (γ + δ₂·2 + δ). That is exactly BatchNorm p11.
+
+Pages outside a long paper's 60-page sample (`SampledPaper.cropFor`) follow the same rule: the
+shared window is kept if it cuts at most the allowance *and* no block; otherwise the page's own
+best window takes over when its per-page cost plus γ is lower. Before, that gate was by cut ink
+alone, so a shared window slicing a line under the 1 % allowance was kept, and a clean own window
+that dropped a footer lost to a slicing shared one.
 
 ### Zoom from the same objective
 

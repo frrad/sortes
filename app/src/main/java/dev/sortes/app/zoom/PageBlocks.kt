@@ -8,13 +8,34 @@ package dev.sortes.app.zoom
  * paragraph and the paragraphs of a section, but leaves a heading, a figure and its caption, or
  * two columns apart.
  *
- * Each block is its bounding box in mask cells. A connected piece has ink in every row and
- * column of its box, so a window edge through the box passes through the block.
+ * Each block has its bounding box in mask cells, its ink, and the cells that are its own
+ * ([labels]). A connected piece has ink in every row and column of its box, but boxes can
+ * overlap or nest (an L-shaped paragraph beside a figure, a frame around its contents), so what
+ * a window cuts off a block is counted from its own cells, never from its box.
  */
-class PageBlocks private constructor(val boxes: List<CellRect>, /** Each block's ink, in cells. */ val inks: IntArray) {
+class PageBlocks private constructor(
+    val maskWidth: Int,
+    val boxes: List<CellRect>,
+    /** Each block's ink, in cells. */
+    val inks: IntArray,
+    /** The block each mask cell belongs to, row-major, or -1 for paper. */
+    val labels: IntArray,
+) {
+    /** Each block's ink inside [cells], by block. */
+    fun kept(cells: CellRect): IntArray {
+        val kept = IntArray(boxes.size)
+        for (i in labels.indices) {
+            val b = labels[i]
+            if (b < 0) continue
+            val x = i % maskWidth
+            val y = i / maskWidth
+            if (x >= cells.left && x < cells.right && y >= cells.top && y < cells.bottom) kept[b]++
+        }
+        return kept
+    }
 
-    /** How many of the blocks a window covering [cells] passes through: overlaps but doesn't contain. */
-    fun split(cells: CellRect): Int = boxes.count { it.overlaps(cells) && !cells.contains(it) }
+    /** How many blocks a window covering [cells] cuts into: some of their ink in, some out. */
+    fun split(cells: CellRect): Int = kept(cells).withIndex().count { (b, k) -> k > 0 && k < inks[b] }
 
     companion object {
         fun of(mask: InkMask, gap: Int): PageBlocks {
@@ -25,6 +46,7 @@ class PageBlocks private constructor(val boxes: List<CellRect>, /** Each block's
             val queue = IntArray(w * h)
             val boxes = mutableListOf<CellRect>()
             val inks = mutableListOf<Int>()
+            val labels = IntArray(w * h) { -1 }
             val reach = gap + 1
             for (start in 0 until w * h) {
                 if (seen[start] || !mask[start % w, start / w]) continue
@@ -54,18 +76,19 @@ class PageBlocks private constructor(val boxes: List<CellRect>, /** Each block's
                         }
                     }
                 }
+                for (i in 0 until tail) labels[queue[i]] = boxes.size
                 boxes += CellRect(x0, y0, x1 + 1, y1 + 1)
                 inks += tail
             }
-            return PageBlocks(boxes, inks.toIntArray())
+            return PageBlocks(w, boxes, inks.toIntArray(), labels)
         }
     }
 }
 
 /** Whether this rect and [other] share any cell. */
-fun CellRect.overlaps(other: CellRect): Boolean =
+internal fun CellRect.overlaps(other: CellRect): Boolean =
     left < other.right && other.left < right && top < other.bottom && other.top < bottom
 
 /** Whether [other] lies entirely inside this rect. */
-fun CellRect.contains(other: CellRect): Boolean =
+internal fun CellRect.contains(other: CellRect): Boolean =
     other.left >= left && other.right <= right && other.top >= top && other.bottom <= bottom

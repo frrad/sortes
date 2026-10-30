@@ -111,7 +111,7 @@ data class PageCrop(
     /** pageCut_p: cut cells / this page's ink (0 for a blank page). */
     val pageCut: Double,
     val offCentre: Double,
-    /** Blocks the window cuts through (0 unless [CropModelWeights.kappa] is set). */
+    /** Blocks the window cuts into, some of their ink kept and some cut (0 unless [CropModelWeights.kappa] is set). */
     val splitBlocks: Int = 0,
     /** split_p: those blocks' cut shares, each capped at 1 (0 unless [CropModelWeights.kappa] is set). */
     val split: Double = 0.0,
@@ -327,13 +327,12 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         val rows = page.height - h + 1
         val offCentres = DoubleArray(cols * rows)
         page.offCentres(w, h, offCentres)
-        val splits = DoubleArray(cols * rows)
-        if (weights.kappa > 0.0) page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), splits)
+        val splits = if (weights.kappa > 0.0) DoubleArray(cols * rows).also { page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), it) } else null
         var best = 0
         var bestCost = Double.MAX_VALUE
         for (pos in 0 until cols * rows) {
             val cut = page.inkCount - page.inside(pos % cols, pos / cols, w, h)
-            val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] + weights.kappa * splits[pos] +
+            val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] + (if (splits != null) weights.kappa * splits[pos] else 0.0) +
                 if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)
             if (c < bestCost - EPS) {
                 bestCost = c
@@ -367,9 +366,12 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
             val (x, y) = page.positionOf(crops.windows[j])
             pageCrop(page, referenceInk, j, x, y, crops.scale)
         }
-        fun cost(c: PageCrop) = weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split
-        return options.minWith(compareBy<PageCrop> { cost(it) }.thenBy { if (it.windowIndex == preferred) 0 else 1 })
+        return options.minWith(compareBy<PageCrop> { pageCost(it) }.thenBy { if (it.windowIndex == preferred) 0 else 1 })
     }
+
+    /** A page's own share of the cost in its window: every per-page term, none of the per-paper ones. */
+    fun pageCost(c: PageCrop): Double =
+        weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split
 
     private fun pageCrop(page: PaddedPage, refInk: Double, window: Int, x: Int, y: Int, scale: Float): PageCrop {
         val w = page.windowWidth(scale)
