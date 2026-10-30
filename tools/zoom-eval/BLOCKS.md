@@ -197,26 +197,36 @@ window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 cha
 ### Runtime and memory
 
 `zoom-eval bench` (best of five, on the reader's sample of at most 60 pages, no rendering):
-the automatic zoom end to end, the number of scales it solves, and one solve at a fixed scale.
-"Before" is `TUNED` as it was before #36; "#36" the first block model; "now" this one.
+the automatic zoom end to end as wall time, the CPU time its solves add up to, the number of
+scales solved, and one solve at a fixed scale. "Before" is `TUNED` as it was before #36. The
+host had a load of about 2–4 from other work during these runs, so take them as relative.
 
-| paper | before: auto / solves / one solve | #36: auto / solves / one solve | now: auto / solves / one solve |
+| paper | before: auto / one solve | now, one scale at a time: auto / cpu / solves / one solve | now, four at a time: auto / cpu |
 | --- | --- | --- | --- |
-| Attention, 15 pages | 15 ms / 2 / 5 ms | 161 ms / 11 / 39 ms | 56 ms / 9 / 12 ms |
-| GPT-3, 60 of 75 pages | 44 ms / 2 / 24 ms | 479 ms / 11 / 185 ms | 231 ms / 9 / 46 ms |
-| Shannon, 45 pages | 54 ms / 3 / 22 ms | 373 ms / 11 / 142 ms | 172 ms / 9 / 43 ms |
-| PDLT, 60 of 237 pages | 67 ms / 2 / 24 ms | 735 ms / 11 / 164 ms | 313 ms / 10 / 49 ms |
+| Attention, 15 pages | 23 ms / 13 ms | 61 ms / 45 ms / 10 / 19 ms | 84 ms / 166 ms |
+| GPT-3, 60 of 75 pages | 68 ms / 51 ms | 251 ms / 212 ms / 10 / 83 ms | **167 ms** / 226 ms |
+| Shannon, 45 pages | 69 ms / 39 ms | 207 ms / 153 ms / 10 / 58 ms | **173 ms** / 533 ms |
+| PDLT, 60 of 237 pages | 93 ms / 53 ms | 317 ms / 245 ms / 11 / 73 ms | **243 ms** / 402 ms |
 
 Where the time goes, from the solver's own counters (`bench` prints them): a solve is almost
-all precompute, and of that the kept ink's off-centredness (`offCentres`, which the old model
-pays too) is the largest part; the block costs are 2–4 ms a solve over 60 pages once the pages'
-tables are built, and the search for second and third windows is skipped outright when no
-extra window could pay for itself (every page at its own cheapest position would not save a
-window's price: an exact bound, so results are unchanged). What remains over the old model is
-nine solves against two, since the cost-based zoom has to look at the scales where the cut
-budget bisected on a cheap per-page bound, and about twice the work per solve. Three to five
-times the old model's automatic solve, half of #36's; a 60-page sample takes about a quarter of
-a second on the host.
+all precompute. Of that, the kept ink's off-centredness (`offCentres`) was the largest part;
+it now comes from the page's ink runs along rows and columns (which window columns see ink in
+a row is a difference array over the row's runs), with no table lookups. The block costs are
+2–4 ms a solve over 60 pages once the pages' tables are built, and the search for second and
+third windows is skipped outright when no extra window could pay for itself (every page at its
+own cheapest position would not save a window's price: an exact bound, so results are
+unchanged). What remains over the old model is ten solves against two, since the cost-based
+zoom has to look at the scales where the cut budget bisected on a cheap per-page bound, and
+about 1.5× the work per solve.
+
+The candidate scales are solved up to four at a time (`CropModel.parallelism`, on
+`Dispatchers.Default`, each solve with its own scratch, at most four buffers kept): the walk's
+next scales are solved as a batch and then taken in the walk's own order, so the choice is
+exactly the one-by-one walk's (a test checks it on random papers). On a 60-page sample that
+takes a third off the wall time on this loaded four-core host; on a 15-page paper the solves
+are too small for it to pay and it costs about 20 ms. The CPU time is the same work plus the
+batch's unused scales. Against the old model that is 2.5× on the long papers and 3.5× on the
+short ones, down from 4–7× in #36.
 
 A page keeps its blocks as runs and boxes plus ink tables for the largest blocks, capped at one
 frame's worth of cells: measured by `bench`, 85–110 KB a page on Attention, LDM, GPT-3,
@@ -259,6 +269,6 @@ same rule as the rest. READER is untouched.
 
 **Numbers** (against `TUNED` before #36): pages agreeing 99 → 103 of 107; zooms agreeing
 14 → 15 of 16; sliced-line pages 25 → 0 at the automatic zoom and 491 → 279 at 0.7; the
-automatic solve three to five times the old model's and half of #36's (GPT-3's 60-page sample
-231 ms on the host). Round 4, labelled by the owner on these crops, is the held-out test still
+automatic solve about 2.5× the old model's on long papers with four scales solved at once
+(GPT-3's 60-page sample 167 ms wall on a loaded host), a third of #36's. Round 4, labelled by the owner on these crops, is the held-out test still
 to come.
