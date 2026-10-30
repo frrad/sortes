@@ -1,0 +1,69 @@
+{
+  "comment": "",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "f80ae4ffc214",
+    "scale": 0.71500003,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "10": {
+      "comment": "",
+      "idealCentre": {
+        "x": 317.4,
+        "y": 396.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "14": {
+      "comment": "",
+      "idealCentre": {
+        "x": 317.4,
+        "y": 396.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "16": {
+      "comment": "",
+      "idealCentre": {
+        "x": 317.4,
+        "y": 396.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "18": {
+      "comment": "",
+      "idealCentre": {
+        "x": 317.4,
+        "y": 396.3
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "for this page, ok to just crop that paage number for consistency with other pages",
+      "idealCentre": {
+        "x": 313,
+        "y": 391.7
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2106.10165-p1-40",
+  "schema": 1
+}

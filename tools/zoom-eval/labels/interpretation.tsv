@@ -1,0 +1,54 @@
+# How each label reads as a scoring target: the machine-readable form of ROUND-<n>.md, used by
+# `zoom-eval fit`. Edit it when the owner corrects a reading. Columns (tab-separated):
+#   paper    corpus id
+#   page     page number, or * for the paper
+#   move     high | medium | low | none: confidence in the page's moved window (pages only)
+#   keep     yes | no: the ink the ideal crop keeps must stay visible (pages only)
+#   verdict  good | bad | -: the verdict a comment implies, where none was given (pages only)
+#   zoom     affirmed | tighter | looser | -: what the label says about the paper's zoom
+#   note     free text
+# Pages missing from this table read their labels plainly: a move of 8 pt or more is high
+# confidence, a smaller one low, and a verdict as given. Round 1 (ROUND-1.md) is at the top,
+# round 2 (ROUND-2.md) below it. From round 2 on, small moves are deliberate nudges, so they are
+# listed as high (or medium where the owner called the labels rough).
+1706.03762	*	-	-	-	tighter	p2 "could mb be slightly tighter"
+1706.03762	1	high	yes	-	-	notice and footnote both visible
+1706.03762	2	low	no	good	-	"this is good"; affirms cutting the page number
+1706.03762	3	low	no	good	-	"also good"
+1706.03762	4	high	no	-	-	"could move up slightly"
+1706.03762	5	high	no	-	-	"up-down centring maybe not quite perfect"
+1706.03762	6	none	no	-	-	a click
+2311.08105	1	low	yes	-	-	soft must-keep: Google and footnote; owner trades it for the zoom
+2311.08105	2	low	no	good	affirmed	"looks great at this zoom level"
+2311.08105	16	none	no	-	affirmed	"rest looks really good at this zoom / box"
+1502.03167	*	-	-	-	affirmed	"overall zoom level looks good"
+1502.03167	1	high	no	-	-	"padding uneven both lr and up-down"
+1502.03167	5	high	no	-	-	"little off left-right"
+1502.03167	8	high	no	-	-	no comment; 11.5 pt
+1502.03167	11	high	yes	-	-	"cut off some table unnecessarily!"
+2006.11239	*	-	-	-	affirmed	"this is the right zoom level"
+2006.11239	1	high	yes	-	-	keep the footnote; losing the top line is fine
+# Round 2
+2106.10165-p1-40	2	high	no	-	-	"ok to just crop that page number for consistency with other pages"
+2106.10165-p1-40	10	none	no	-	-	viewed
+2106.10165-p1-40	14	none	no	-	-	viewed
+2106.10165-p1-40	16	none	no	-	-	viewed
+2106.10165-p1-40	18	none	no	-	-	viewed
+1810.04805	*	-	-	-	affirmed	"nice one, easy. but you did a good job"
+1512.03385	*	-	-	-	-	"better to just lose the page numbers and have even up-down balance"
+2003.08934	*	-	-	-	-	"zoom tighter, lose the header" (zoom set to 0.91)
+2112.10752	*	-	-	-	affirmed	"basically ok to lose the page number for better balance"
+2112.10752	1	medium	no	-	-	"I didn't dial it in perfect"
+2112.10752	2	medium	no	-	-
+2112.10752	3	medium	no	-	-
+2112.10752	4	medium	no	-	-
+2104.13478-p20-49	*	-	-	-	-	"mostly just try to center each page"; zoom set looser (0.85)
+2104.13478-p20-49	1	medium	no	-	-	"not super strongly held"
+2104.13478-p20-49	2	medium	no	-	-
+2104.13478-p20-49	3	medium	no	-	-
+2104.13478-p20-49	4	medium	yes	-	-	crop cut 1.5%
+2104.13478-p20-49	5	medium	no	-	-
+2104.13478-p20-49	6	medium	no	-	-
+2104.13478-p20-49	7	medium	no	-	-
+2104.13478-p20-49	8	medium	yes	-	-	"page 8 convinced me to tweak the zoom"
+2104.13478-p20-49	9	medium	no	-	-
