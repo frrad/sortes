@@ -30,6 +30,7 @@ object ScoreWeights {
 
     /** Confidence of each kind of position target. */
     const val HIGH = 1.0
+    const val MEDIUM = 0.5
     const val LOW = 0.25
 
     /** Weight of a good page's own crop as a target: it should stay put. */
@@ -62,7 +63,7 @@ fun readInterpretations(file: File): Map<String, Map<Int, Interpretation>> {
         val f = line.split('\t').map { it.trim() }
         require(f.size >= 6) { "Bad interpretation line: $line" }
         fun dash(s: String) = s.takeIf { it != "-" && it.isNotEmpty() }
-        val move = dash(f[2])?.also { require(it in setOf("high", "low", "none")) { "Bad move $it: $line" } }
+        val move = dash(f[2])?.also { require(it in setOf("high", "medium", "low", "none")) { "Bad move $it: $line" } }
         val zoom = dash(f[5])?.also { require(it in setOf("affirmed", "tighter", "looser")) { "Bad zoom $it: $line" } }
         require(f[3] in setOf("yes", "no", "-")) { "Bad keep ${f[3]}: $line" }
         out.getOrPut(f[0]) { HashMap() }[if (f[1] == "*") 0 else f[1].toInt()] =
@@ -117,6 +118,7 @@ fun targets(
         val moved = label.idealCentre?.takeIf { hypot(it.x - judged.x, it.y - judged.y) > 0.05 }
         val confidence = when (reading?.move) {
             "high" -> ScoreWeights.HIGH
+            "medium" -> ScoreWeights.MEDIUM
             "low" -> ScoreWeights.LOW
             "none" -> 0.0
             else -> if (moved == null) 0.0

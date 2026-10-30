@@ -15,6 +15,7 @@ import dev.sortes.zoomeval.Algorithm
 import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.Paper
 import dev.sortes.zoomeval.cropsFor
+import dev.sortes.zoomeval.fit.Variant
 import org.json.JSONArray
 import org.json.JSONObject
 import java.awt.Color
@@ -37,13 +38,15 @@ suspend fun exportPaper(
     weights: CropModelWeights,
     commit: String,
     out: File,
+    variant: Variant = Variant(),
 ): JSONObject {
     val dir = File(out, paper.id).apply { mkdirs() }
     val density = analysisDensity(pdf.pageSizes, aspect)
-    val masks = pdf.pageSizes.indices.map { i ->
+    // The pages as the model sees them, which is also what its cut ink is counted on.
+    val masks = variant.prepare(pdf.pageSizes.indices.map { i ->
         val (w, h) = maskSize(pdf.pageSizes[i], density)
         pdf.renderMask(i, w, h).withoutIgnorableInk()
-    }
+    })
     val crops: ModelCrops = cropsFor(Algorithm.READER, masks, CropModel(aspect, weights))
     val pages = JSONArray()
     for (i in masks.indices) {
@@ -76,7 +79,7 @@ suspend fun exportPaper(
         .put("pageCount", masks.size)
         .put("labelledAgainst", LabelledAgainst(
             commit = commit,
-            algorithm = "reader",
+            algorithm = if (variant == Variant()) "reader" else "reader+$variant",
             weights = weights.toMap(),
             scale = crops.scale.toString().toDouble(),
             aspect = aspect.toDouble(),
@@ -94,6 +97,7 @@ fun CropModelWeights.toMap(): Map<String, Double> = sortedMapOf(
     "alpha" to alpha, "beta" to beta, "epsilon" to epsilon, "allowance" to allowance,
     "gamma" to gamma, "delta" to delta, "delta2" to delta2, "maxWindows" to maxWindows.toDouble(),
     "autoMaxLost" to autoMaxLost, "autoMargin" to autoMargin, "zoomIgnoredPages" to zoomIgnoredPages.toDouble(),
+    "autoMaxPageCut" to autoMaxPageCut,
 )
 
 private fun Region.toJson(): JSONObject = JSONObject()

@@ -3,10 +3,12 @@ package dev.sortes.zoomeval.fit
 import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.CropModelWeights
 import dev.sortes.app.zoom.InkMask
+import dev.sortes.app.zoom.IsolatedMarks
 import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.maskSize
+import dev.sortes.app.zoom.withoutFurniture
 import dev.sortes.app.zoom.withoutIgnorableInk
 import dev.sortes.zoomeval.Algorithm
 import dev.sortes.zoomeval.MutoolPdf
@@ -21,21 +23,57 @@ import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.random.Random
 
+/** Changes to the model beyond its weights, prototyped against the labels. */
+data class Variant(
+    /** Strip page numbers and running heads and feet ([PageFurniture]) before the model sees the pages. */
+    val furniture: Boolean = false,
+    /** Strip isolated marks ([IsolatedMarks]: specks, scan edges) first. */
+    val marks: Boolean = false,
+) {
+    override fun toString() = listOfNotNull("furniture".takeIf { furniture }, "marks".takeIf { marks })
+        .joinToString("+").ifEmpty { "reader" }
+
+    /** [masks] as this variant's model sees them. */
+    fun prepare(masks: List<InkMask>): List<InkMask> {
+        val unmarked = if (marks) masks.map { IsolatedMarks.strip(it) } else masks
+        return if (furniture) unmarked.withoutFurniture() else unmarked
+    }
+
+    companion object {
+        fun parse(name: String) = when (name) {
+            "reader" -> Variant()
+            else -> name.split('+').fold(Variant()) { v, part ->
+                when (part) {
+                    "furniture" -> v.copy(furniture = true)
+                    "marks" -> v.copy(marks = true)
+                    else -> throw IllegalArgumentException("Unknown variant part $part")
+                }
+            }
+        }
+    }
+}
+
 /** A labelled paper, rendered once, with what its labels ask. */
 class LabelledPaper(
     val paper: Paper,
+    /** The pages as the reader sees them today: without ignorable ink. */
     val masks: List<InkMask>,
+    /** ...and without furniture or marks: what scoring counts as ink, since the owner doesn't mind losing those. */
+    val bare: List<InkMask>,
     val sizes: List<PageSize>,
     val labels: PaperLabels,
     val targets: PaperTargets,
     val aspect: Float,
 ) {
-    /** The paper's crops under [weights], as the reader would choose them. */
-    suspend fun crops(weights: CropModelWeights): ModelCrops = cropsFor(Algorithm.READER, masks, CropModel(aspect, weights))
+    /** The paper's crops under [weights] and [variant], as the reader would choose them. */
+    private val prepared = HashMap<Variant, List<InkMask>>()
 
-    suspend fun score(weights: CropModelWeights): PaperScore = score(crops(weights))
+    suspend fun crops(weights: CropModelWeights, variant: Variant = Variant()): ModelCrops =
+        cropsFor(Algorithm.READER, prepared.getOrPut(variant) { variant.prepare(masks) }, CropModel(aspect, weights))
 
-    fun score(crops: ModelCrops): PaperScore = score(targets, crops, masks, sizes, aspect)
+    suspend fun score(weights: CropModelWeights, variant: Variant = Variant()): PaperScore = score(crops(weights, variant))
+
+    fun score(crops: ModelCrops): PaperScore = score(targets, crops, bare, sizes, aspect)
 }
 
 /** Renders [paper] and reads its [labels] through [interpretation]. */
@@ -55,14 +93,16 @@ suspend fun labelledPaper(
     val judgedWeights = CropModelWeights().with(labels.labelledAgainst?.weights.orEmpty().mapValues { (k, v) ->
         if (k in setOf("maxWindows", "zoomIgnoredPages")) v.toInt().toString() else v.toString()
     })
-    val judged = cropsFor(Algorithm.READER, masks, CropModel(aspect, judgedWeights))
+    // ...and the model variant ("reader+furniture+marks" for crops made with one).
+    val judgedVariant = Variant.parse(labels.labelledAgainst?.algorithm?.removePrefix("reader+")?.takeIf { it != "reader" } ?: "reader")
+    val judged = cropsFor(Algorithm.READER, judgedVariant.prepare(masks), CropModel(aspect, judgedWeights))
     val centres = judged.pages.indices.map { centreOf(judged.pages[it].window, pdf.pageSizes[it], aspect) }
     val targets = targets(labels, interpretation, judged.scale.toDouble(), centres)
-    return LabelledPaper(paper, masks, pdf.pageSizes, labels, targets, aspect)
+    return LabelledPaper(paper, masks, Variant(furniture = true, marks = true).prepare(masks), pdf.pageSizes, labels, targets, aspect)
 }
 
 /** A candidate's per-paper scores. */
-class Trial(val weights: CropModelWeights, val scores: List<PaperScore>) {
+class Trial(val weights: CropModelWeights, val variant: Variant, val scores: List<PaperScore>) {
     val units: Double get() = scores.sumOf { it.units }
     fun unitsWithout(paper: String): Double = scores.filter { it.paper != paper }.sumOf { it.units }
     fun unitsOf(paper: String): Double = scores.first { it.paper == paper }.units
@@ -80,12 +120,13 @@ fun sampleWeights(random: Random, base: CropModelWeights = CropModelWeights()): 
         autoMaxLost = logUniform(0.002, 0.03),
         autoMargin = random.nextDouble(-0.02, 0.04),
         zoomIgnoredPages = random.nextInt(0, 3),
+        autoMaxPageCut = if (random.nextDouble() < 0.3) 1.0 else logUniform(0.004, 0.04),
     )
 }
 
-/** Scores [weights] on every paper. */
-suspend fun trial(papers: List<LabelledPaper>, weights: CropModelWeights): Trial =
-    Trial(weights, papers.map { it.score(weights) })
+/** Scores [weights] and [variant] on every paper. */
+suspend fun trial(papers: List<LabelledPaper>, weights: CropModelWeights, variant: Variant = Variant()): Trial =
+    Trial(weights, variant, papers.map { it.score(weights, variant) })
 
 /** The weights that differ from [base], as name=value. */
 fun CropModelWeights.diff(base: CropModelWeights = CropModelWeights()): String {

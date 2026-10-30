@@ -204,3 +204,34 @@ settings.
   steadier.
 - **Scale and cost.** The scale comes from the cut budget, not from the cost. Folding it in
   would need a legibility reward (e.g. −ζ·log s per page), which is another weight to learn.
+
+## Tuning against the owner's labels (rounds 1 and 2)
+
+Labels: `labels/ROUND-1.md` and `ROUND-2.md`. Fit: `zoom-eval fit` (see README.md).
+
+### Prototyped, not in the reader yet
+
+- **`PageFurniture`** (paper-level) ignores page numbers and running heads and feet.
+  - It takes the outermost short block of rows at the top or bottom of a page (a line, or a line
+    with a rule), clear of the rest.
+  - The block must be either narrow (a page number) or at a height that recurs on 30% of the
+    paper's pages (a running head or foot).
+  - A page that is only furniture ends up blank and takes the usual window.
+- **`IsolatedMarks`** ignores small pieces of ink (≤ 0.5% of the page's) with nothing else within
+  3% of the page height: scan dirt, scan edges, stray marks.
+
+### New weights, defaults unchanged
+
+| weight | meaning |
+| --- | --- |
+| `autoMaxLost` | The automatic zoom's budget, which was the constant `AUTO_MAX_LOST`. |
+| `autoMargin` | How much looser than the tightest acceptable scale the auto zoom is, which was the constant `AUTO_MARGIN`. |
+| `zoomIgnoredPages` | Pages the budget leaves out (those that would lose most). |
+| `autoMaxPageCut` | A per-page cap on what the auto zoom may cut. |
+
+The fit found no robust gain from these, so they stay at their old values (off).
+
+### Proposed for approval
+
+The furniture and marks rules in the reader, and β 0.1 → 0.5.
+

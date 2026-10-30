@@ -88,3 +88,48 @@ tune:
 - two two-sided book excerpts (30 pages each), with alternating margins.
 
 PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-corpus.sh`.
+
+## Fitting to the labels
+
+`zoom-eval fit` scores the model against the owner's labels (`labels/*.json`, read through
+`labels/interpretation.tsv`). It then searches for weights and model variants that score better.
+
+    flock /tmp/sortes-gradle.lock nice ./gradlew :zoom-eval:run \
+        --args="fit --trials=400 --variants=reader,furniture+marks --split=<round-1 ids>"
+
+**Scoring** (`fit/Score.kt`; lower is better, about 1 unit per noticeable miss):
+
+- **Position:** each labelled page with a target centre (a moved window, or a crop called good)
+  scores the distance from the model's window centre, at 1 unit per 10 pt. The distance is
+  weighted by confidence: high 1, medium 0.5, low 0.25, good 0.5.
+- **Kept ink:** the ink the owner's crop keeps but the model cuts, at 1 unit per percent of the
+  page's ink. Page numbers, running heads and isolated marks don't count, since the owner is
+  happy to lose them.
+- **Zoom:** each paper's distance from the owner's zoom (or the zoom they saw and left, at half
+  weight), at 2 units per 0.01 of scale.
+- **Unlabelled pages:** no opinion. They aren't scored.
+
+**Search:**
+- `--trials=` random weight sets (`sampleWeights`), alternating over `--variants=`. Variants:
+  - `reader`, today's reader;
+  - `furniture`, `PageFurniture`;
+  - `marks`, `IsolatedMarks`;
+  - `furniture+marks`.
+- `--<weight>=` fixes a weight and also scores that set as "given".
+- `--split=id,…` adds a held-out test between that group and the rest (e.g. round 1 against
+  round 2).
+- `--out=` is the report folder, by default `~/sortes-review/fit`.
+
+**Report** (`report.md`):
+- the best set and per-paper scores before and after;
+- leave-one-paper-out and by-group held-out scores;
+- **agreement in principle** per paper: window within 8 pt, at most 0.25% of the kept ink
+  cut, zoom within 0.015;
+- every page that changes;
+- where the defaults lose.
+
+`trials.tsv` has every trial's per-paper scores.
+
+To label a candidate model's crops, render them with
+`LABELLER_ARGS="--variant=furniture+marks --beta=0.5" tools/zoom-eval/label.sh --render`.
+

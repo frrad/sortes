@@ -45,6 +45,12 @@ data class CropModelWeights(
      * that can't fit at a good zoom for the rest of the paper then doesn't hold the paper back.
      */
     val zoomIgnoredPages: Int = 0,
+    /**
+     * Most of its own ink any one page may lose at the automatic zoom, besides the paper-wide
+     * [autoMaxLost]; the [zoomIgnoredPages] pages that would lose the largest share are exempt.
+     * 1 (the default) means no cap.
+     */
+    val autoMaxPageCut: Double = 1.0,
 ) {
     init {
         require(listOf(alpha, beta, epsilon, allowance, gamma, delta, delta2).all { it >= 0.0 && it.isFinite() }) {
@@ -54,6 +60,7 @@ data class CropModelWeights(
         require(autoMaxLost > 0.0 && autoMaxLost < 1.0) { "Bad autoMaxLost: $autoMaxLost" }
         require(autoMargin in -0.5..0.5) { "Bad autoMargin: $autoMargin" }
         require(zoomIgnoredPages >= 0) { "Bad zoomIgnoredPages: $zoomIgnoredPages" }
+        require(autoMaxPageCut > 0.0 && autoMaxPageCut <= 1.0) { "Bad autoMaxPageCut: $autoMaxPageCut" }
     }
 }
 
@@ -136,10 +143,13 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         /** The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
         suspend fun solve(scale: Float): ModelCrops = solverFor(pages, scale, buffer).best()
 
-        /** Whether pages losing [lost] cells each are within the automatic zoom's budget. */
+        /** Whether pages losing [lost] cells each (in page order) are within the automatic zoom's budget. */
         private fun withinBudget(lost: List<Long>): Boolean {
             val counted = lost.sortedDescending().drop(weights.zoomIgnoredPages).sum()
-            return counted.toDouble() / totalInk <= weights.autoMaxLost
+            if (counted.toDouble() / totalInk > weights.autoMaxLost) return false
+            if (weights.autoMaxPageCut >= 1.0) return true
+            val shares = lost.indices.map { if (pages[it].inkCount == 0) 0.0 else lost[it].toDouble() / pages[it].inkCount }
+            return shares.sortedDescending().drop(weights.zoomIgnoredPages).all { it <= weights.autoMaxPageCut }
         }
 
         /**

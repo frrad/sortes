@@ -2,6 +2,7 @@ package dev.sortes.zoomeval.labeller
 
 import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.WEIGHT_NAMES
+import dev.sortes.zoomeval.fit.Variant
 import dev.sortes.zoomeval.readCorpus
 import dev.sortes.zoomeval.readWeights
 import kotlinx.coroutines.runBlocking
@@ -25,12 +26,14 @@ private val home = System.getProperty("user.home")
 val DEFAULT_LABELLER_DATA = "$home/sortes-review/labeller/data"
 
 /**
- * `labeller-export --papers=id,id [--corpus=] [--pdfs=] [--out=] [--aspect=] [--weights=] [--<weight>=]`:
- * renders the papers (ids from the corpus) with the reader's current crops for the labeller, and
- * lists them in `<out>/papers.json`.
+ * `labeller-export --papers=id,id [--corpus=] [--pdfs=] [--out=] [--aspect=] [--weights=] [--<weight>=]
+ * [--variant=reader|furniture|marks|furniture+marks]`: renders the papers (ids from the corpus)
+ * with the reader's crops (or a model variant's) for the labeller, and lists them in
+ * `<out>/papers.json`.
  */
 fun labellerExport(args: List<String>) {
-    val opts = options(args, WEIGHT_NAMES + setOf("papers", "corpus", "pdfs", "out", "aspect", "weights"))
+    val opts = options(args, WEIGHT_NAMES + setOf("papers", "corpus", "pdfs", "out", "aspect", "weights", "variant"))
+    val variant = Variant.parse(opts["variant"] ?: "reader")
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv")).associateBy { it.id }
     val ids = requireNotNull(opts["papers"]) { "--papers=id,id is required" }.split(',').map { it.trim() }
     val pdfs = File(opts["pdfs"] ?: "$home/.cache/sortes-zoom-eval/pdf")
@@ -45,7 +48,7 @@ fun labellerExport(args: List<String>) {
     for (id in ids) {
         val paper = requireNotNull(corpus[id]) { "$id isn't in the corpus" }
         val started = System.currentTimeMillis()
-        val json = runBlocking { exportPaper(paper, MutoolPdf(File(pdfs, paper.file)), aspect, weights, commit, out) }
+        val json = runBlocking { exportPaper(paper, MutoolPdf(File(pdfs, paper.file)), aspect, weights, commit, out, variant) }
         entries[id] = JSONObject()
             .put("id", id)
             .put("title", paper.title)

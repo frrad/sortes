@@ -75,6 +75,7 @@ fun CropModelWeights.with(overrides: Map<String, String>): CropModelWeights {
             "autoMaxLost" -> w.copy(autoMaxLost = value.toDouble())
             "autoMargin" -> w.copy(autoMargin = value.toDouble())
             "zoomIgnoredPages" -> w.copy(zoomIgnoredPages = value.toInt())
+            "autoMaxPageCut" -> w.copy(autoMaxPageCut = value.toDouble())
             else -> throw IllegalArgumentException("Unknown weight $name")
         }
     }
@@ -84,7 +85,7 @@ fun CropModelWeights.with(overrides: Map<String, String>): CropModelWeights {
 /** The names [with] understands. */
 val WEIGHT_NAMES = setOf(
     "alpha", "beta", "epsilon", "allowance", "gamma", "delta", "delta2", "maxWindows",
-    "autoMaxLost", "autoMargin", "zoomIgnoredPages",
+    "autoMaxLost", "autoMargin", "zoomIgnoredPages", "autoMaxPageCut",
 )
 
 /**

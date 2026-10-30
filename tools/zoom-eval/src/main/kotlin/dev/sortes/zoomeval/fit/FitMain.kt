@@ -19,7 +19,7 @@ fun fitMain(args: List<String>) {
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg" }
         arg.removePrefix("--").substringBefore('=') to arg.substringAfter('=')
     }
-    val known = WEIGHT_NAMES + setOf("trials", "seed", "labels", "out", "only", "corpus", "pdfs", "aspect")
+    val known = WEIGHT_NAMES + setOf("trials", "seed", "labels", "out", "only", "corpus", "pdfs", "aspect", "variants", "split")
     opts.keys.firstOrNull { it !in known }?.let { throw IllegalArgumentException("Unknown option --$it") }
     val home = System.getProperty("user.home")
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv")).associateBy { it.id }
@@ -29,6 +29,8 @@ fun fitMain(args: List<String>) {
     val trials = (opts["trials"] ?: "200").toInt()
     val random = Random((opts["seed"] ?: "1").toLong())
     val fixed = opts.filterKeys { it in WEIGHT_NAMES }
+    // The variants the search tries, alternating; the baseline is always today's reader.
+    val variants = (opts["variants"] ?: "reader,furniture,furniture+marks").split(',').map { Variant.parse(it) }
 
     val started = System.currentTimeMillis()
     val papers = loadLabelled(corpus, labelsDir, File(opts["pdfs"] ?: "$home/.cache/sortes-zoom-eval/pdf"), aspect,
@@ -36,14 +38,15 @@ fun fitMain(args: List<String>) {
     println("Loaded ${papers.size} labelled papers (${System.currentTimeMillis() - started} ms): " +
         papers.joinToString { "${it.paper.id} ${it.targets.pages.size} targets" })
 
-    val report = FitReport(papers, out)
+    val report = FitReport(papers, out, opts["split"]?.split(',')?.toSet().orEmpty())
     runBlocking {
         val baseline = trial(papers, CropModelWeights())
-        val given = if (fixed.isEmpty()) null else trial(papers, CropModelWeights().with(fixed))
+        val given = if (fixed.isEmpty()) null else trial(papers, CropModelWeights().with(fixed), variants.last())
         val tried = mutableListOf(baseline)
+        variants.filter { it != Variant() }.forEach { tried += trial(papers, CropModelWeights(), it) }
         given?.let { tried += it }
         for (n in 1..trials) {
-            tried += trial(papers, sampleWeights(random).with(fixed))
+            tried += trial(papers, sampleWeights(random).with(fixed), variants[n % variants.size])
             if (n % 25 == 0) println("$n trials, best ${"%.2f".format(tried.minOf { it.units })} (baseline ${"%.2f".format(baseline.units)})")
         }
         report.write(baseline, given, tried)

@@ -5,6 +5,8 @@
 # Usage: tools/zoom-eval/label.sh [--render]
 #   --render   re-render every paper in labeller/papers.txt with the current code and weights
 #              (otherwise only papers not rendered yet are rendered)
+# LABELLER_ARGS adds export options, e.g. LABELLER_ARGS="--variant=furniture+marks --beta=0.5" to
+# show a candidate model's crops instead of the reader's.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -26,7 +28,7 @@ if [ -n "$todo" ]; then
     "$EVAL/fetch-corpus.sh"
     echo "Rendering: $(echo $todo)"
     flock "$LOCK" ./gradlew -q :zoom-eval:run \
-        --args="labeller-export --out=$DATA --papers=$(echo $todo | tr ' ' ',')"
+        --args="labeller-export --out=$DATA --papers=$(echo $todo | tr ' ' ',') ${LABELLER_ARGS:-}"
 fi
 
 # Run the server outside Gradle, from its own copy, so it holds neither the build lock nor files
