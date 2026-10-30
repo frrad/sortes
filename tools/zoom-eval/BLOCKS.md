@@ -219,15 +219,15 @@ unchanged). What remains over the old model is ten solves against two, since the
 zoom has to look at the scales where the cut budget bisected on a cheap per-page bound, and
 about 1.5× the work per solve.
 
-The candidate scales are solved up to four at a time (`CropModel.parallelism`, on
-`Dispatchers.Default`, each solve with its own scratch, at most four buffers kept): the walk's
-next scales are solved as a batch and then taken in the walk's own order, so the choice is
-exactly the one-by-one walk's (a test checks it on random papers). On a 60-page sample that
-takes a third off the wall time on this loaded four-core host; on a 15-page paper the solves
-are too small for it to pay, so a paper under about 30 letter pages' worth of frame cells
-(`MIN_PARALLEL_CELLS`) is solved one scale at a time. The CPU time is the same work plus the
-batch's unused scales. Against the old model that is 2.5× on the long papers and 3.5× on the
-short ones, down from 4–7× in #36.
+Within a solve, the pages are spread over up to four threads (`CropModel.parallelism`, on
+`Dispatchers.Default`): each page's costs are computed on their own, with per-thread scratch,
+into the page's own row of the cost table, so the table is the same however the pages are
+shared out (tests check the table and the automatic zoom on one thread against four). The
+pages' preparation (padding, segmentation, tables) is spread the same way. Scales are solved
+one at a time, so no solve is wasted. On a quiet four-core host that should take about a third
+off the wall time at the same CPU time; the host these were measured on carried a load of 4–7
+from other work, so the four-thread numbers above are contention-bound and the one-thread
+numbers are the ones to compare.
 
 A page keeps its blocks as runs and boxes plus ink tables for the largest blocks, capped at one
 frame's worth of cells: measured by `bench`, 85–110 KB a page on Attention, LDM, GPT-3,
