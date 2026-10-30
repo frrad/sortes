@@ -1,0 +1,39 @@
+{
+  "comment": "",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "tuned",
+    "aspect": 0.75,
+    "commit": "7acac7a7f0a7",
+    "scale": 0.685,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.01,
+      "autoMaxLost": 0.005,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "blockGap": 2,
+      "delta": 0.005,
+      "delta2": 0.02,
+      "epsilon": 0,
+      "gamma": 0.1,
+      "kappa": 0.2,
+      "maxWindows": 3,
+      "splitInk": 0.005,
+      "zeta": 0.5,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "labeller": "agent",
+  "pages": {
+    "15": {
+      "comment": "the equation tail '(dr)' is nibbled rather than the whole line dropped",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    }
+  },
+  "paper": "perelman-0211159",
+  "schema": 1
+}
