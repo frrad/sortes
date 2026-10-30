@@ -33,7 +33,7 @@ application {
 val labellerJsTest by tasks.registering(Exec::class) {
     description = "Runs the labeller's JavaScript unit tests (node --test)."
     workingDir = projectDir
-    commandLine("node", "--test", "labeller/geometry.test.js")
+    commandLine("node", "--test", "labeller/geometry.test.js", "labeller/labels.test.js")
     inputs.files(fileTree("labeller") { include("*.js") })
 }
 

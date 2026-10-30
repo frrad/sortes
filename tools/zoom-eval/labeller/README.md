@@ -91,6 +91,33 @@ Keys:
 | `C` | comment |
 | `?` | help |
 
+## Saving: nothing is lost
+
+- **Autosave:** every change saves about half a second later, and on leaving the page (with a
+  request that outlives it).
+- **Backup in the browser:** until the server has a change, it is also kept in this browser's
+  storage, one backup per tab. If the server is down, or the tab is closed or reloaded first, the
+  next visit restores those changes and saves them (also for papers not reopened).
+- **Failed saves:** the page shows a black **NOT SAVED** banner and retries by itself (after 1, 2,
+  5, 10, then every 30 seconds, and whenever the browser comes back online).
+- **Two tabs:** each save carries the revision of the labels the tab last saw. If another tab saved
+  meanwhile, the server refuses with 409 and the current labels. The tab then puts its own unsaved
+  changes on top and saves again, so neither tab overwrites the other's work.
+- **The comment box:** it always belongs to the page shown. Changing page refreshes it even while
+  it has focus, which on a Mac clicking a button doesn't take away.
+- **No-op moves:** a window nudged off and back to the model's centre (within 0.5 pt) is no move,
+  and isn't recorded.
+
+Checks:
+- `node --test tools/zoom-eval/labeller/labels.test.js` covers the label logic.
+- `LabellerServerTest` covers revisions and 409.
+- `labeller/checks/save-check.mjs` is a headless-Chromium run of every way of moving on:
+  - Next, the filmstrip, reload, N to the next paper;
+  - the server going down and coming back;
+  - closed tabs while it was down;
+  - two tabs;
+  - nudges.
+
 ## Label schema (version 1)
 
 One file per paper: `tools/zoom-eval/labels/<paper>.json`. It is canonical JSON (sorted keys,

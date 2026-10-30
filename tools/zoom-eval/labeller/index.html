@@ -10,6 +10,9 @@
   <nav id="papers" aria-label="Papers"></nav>
   <button id="help-button" title="Keyboard shortcuts (?)">?</button>
 </header>
+<div id="not-saved" role="alert" hidden>
+  <b>NOT SAVED</b> <span id="not-saved-why"></span>
+</div>
 <div id="bar">
   <span id="progress"></span>
   <span class="hint">Label as many or as few pages as you like; unlabelled pages count as no opinion. Everything saves as you go: there's no submit.</span>
@@ -90,6 +93,7 @@
 </div>
 
 <script src="geometry.js"></script>
+<script src="labels.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
