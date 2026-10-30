@@ -274,5 +274,25 @@ same rule as the rest. READER is untouched.
 14 → 15 of 16; sliced-line pages 25 → 0 at the automatic zoom and 491 → 279 at 0.7; the
 automatic solve about 1.5× the old model's wall time on long papers with the pages spread
 over four threads (GPT-3's 60-page sample 102 ms on a loaded host) and 2× on short ones, a
-fifth of #36's. Round 4, labelled by the owner on these crops, is the held-out test still
-to come.
+fifth of #36's.
+
+### Owner's round-4 review
+
+Round 4 has now been scored without changing TUNED's weights: **37 of 41 pages** and
+**5 of 6 zooms** agree, score 26.65 (READER 29.32). Full feedback, provenance,
+reproduction command and raw report are in [labels/ROUND-4.md](labels/ROUND-4.md).
+The 33 good pages all agree; MMLU's four explicit 5 pt balance adjustments also
+agree under the existing 8 pt tolerance.
+
+The four misses add two concrete requirements to the earlier audit:
+
+- NTK p1 and SuperGLUE p1: the owner explicitly prefers footnotes over decorative
+  rules. These are not requests to cut title text; don't conflate them with the
+  title-page pushback above.
+- Perelman pp. 15–16: the owner loosened the whole paper from 0.685 to 0.755 to
+  include the wide equations. The small ink fraction is not sufficient evidence
+  that a cropped equation tail is acceptable.
+
+These labels were held out from the rounds 1–3 fit. Subsequent searches using
+them are training experiments, not further held-out evidence. READER remains
+unchanged.
