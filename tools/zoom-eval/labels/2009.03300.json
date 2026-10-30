@@ -1,0 +1,68 @@
+{
+  "comment": "mostly fine. a hair out of vertical balance tho i think",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "tuned",
+    "aspect": 0.75,
+    "commit": "c307074745ad",
+    "scale": 0.84000003,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.01,
+      "autoMaxLost": 0.004999999888241291,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "blockGap": 2,
+      "delta": 0.005,
+      "delta2": 0.02,
+      "epsilon": 0,
+      "gamma": 0.1,
+      "kappa": 0.2,
+      "maxWindows": 3,
+      "splitInk": 0.005,
+      "zeta": 0.5,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "pages": {
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 399
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 399
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 399
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "5": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 399
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2009.03300",
+  "schema": 1
+}
