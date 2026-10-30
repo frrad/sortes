@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sortes crop labeller</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <label>Paper <select id="paper"></select></label>
+  <span id="progress"></span>
+  <span id="status" class="status">Loading…</span>
+  <button id="help-button" title="Keyboard shortcuts (?)">?</button>
+</header>
+
+<section id="paper-panel">
+  <div id="model-info"></div>
+  <div class="zoom">
+    <label for="zoom">Your zoom for this paper</label>
+    <input id="zoom" type="range" min="0" step="1">
+    <span id="zoom-value"></span>
+    <button id="zoom-reset" title="Use the model's zoom">Model's zoom</button>
+  </div>
+  <label class="paper-comment">Paper comment
+    <textarea id="paper-comment" rows="2" placeholder="Anything about this paper's crops as a whole"></textarea>
+  </label>
+</section>
+
+<main>
+  <div id="page-area">
+    <div id="page-wrap">
+      <img id="page-image" alt="">
+      <svg id="overlay"></svg>
+    </div>
+  </div>
+  <aside id="side">
+    <div class="page-title"><span id="page-number"></span> <span id="page-facts"></span></div>
+    <div class="preview-label">On the tablet, with <span id="preview-which"></span></div>
+    <canvas id="preview"></canvas>
+    <div class="verdict">
+      <button id="good" class="verdict-button" title="Good (G)">Good <kbd>G</kbd></button>
+      <button id="bad" class="verdict-button" title="Bad (B)">Bad <kbd>B</kbd></button>
+    </div>
+    <div id="tags"></div>
+    <label class="page-comment">Comment <kbd>C</kbd>
+      <textarea id="page-comment" rows="3" placeholder="What's wrong, or right, with this crop"></textarea>
+    </label>
+    <div class="window-controls">
+      <span id="window-state"></span>
+      <button id="reset-window" title="Use the model's position (R)">Model's position <kbd>R</kbd></button>
+    </div>
+    <div class="nav">
+      <button id="prev" title="Previous page (K or ←)">← Prev</button>
+      <button id="next-unjudged" title="Next page without a verdict (U)">Next unjudged <kbd>U</kbd></button>
+      <button id="next" title="Next page (J or →)">Next →</button>
+    </div>
+  </aside>
+</main>
+
+<nav id="strip"></nav>
+
+<div id="help" hidden>
+  <div class="help-box">
+    <h2>Labelling crops</h2>
+    <p>Each page shows the reader's crop today: the <b>solid frame</b>, labelled with its window
+      (W1, W2…), with ink it cuts off <span class="swatch cut"></span> boxed. The <b>dashed frame</b>
+      is yours: drag it (or click where its centre should go) to put the window where it should be.
+      Its size is the paper's zoom, set with the slider above; one size for every page.</p>
+    <table>
+      <tr><td><kbd>G</kbd> / <kbd>B</kbd></td><td>good / bad (again to clear)</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>7</kbd></td><td>toggle tags</td></tr>
+      <tr><td><kbd>J</kbd> <kbd>→</kbd> / <kbd>K</kbd> <kbd>←</kbd></td><td>next / previous page</td></tr>
+      <tr><td><kbd>U</kbd></td><td>next page without a verdict</td></tr>
+      <tr><td><kbd>R</kbd></td><td>your window back to the model's position</td></tr>
+      <tr><td><kbd>Shift</kbd>+arrows</td><td>nudge your window (Alt: finer)</td></tr>
+      <tr><td><kbd>C</kbd></td><td>comment on the page; <kbd>Esc</kbd> to leave it</td></tr>
+      <tr><td><kbd>?</kbd></td><td>this help</td></tr>
+    </table>
+    <p>Everything saves as you go, to <code>tools/zoom-eval/labels/&lt;paper&gt;.json</code>.</p>
+    <button id="help-close">Close</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

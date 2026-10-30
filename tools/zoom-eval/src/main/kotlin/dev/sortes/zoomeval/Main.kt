@@ -7,6 +7,8 @@ import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.maskSize
 import dev.sortes.app.zoom.withoutIgnorableInk
+import dev.sortes.zoomeval.labeller.labellerExport
+import dev.sortes.zoomeval.labeller.labellerServe
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.Properties
@@ -53,12 +55,17 @@ class ColumnResult(
 }
 
 private val USAGE = """
-    Usage: zoom-eval [--corpus=corpus.tsv] [--columns=columns.tsv] [--pdfs=DIR] [--out=DIR]
+    Usage: zoom-eval labeller-export ... | labeller-serve ... (see labeller/README.md)
+           zoom-eval [--corpus=corpus.tsv] [--columns=columns.tsv] [--pdfs=DIR] [--out=DIR]
                      [--aspect=W/H] [--scale=S] [--weights=FILE] [--<weight>=value ...] [--only=id,id]
     Weights: ${WEIGHT_NAMES.joinToString(", ")}
 """.trimIndent()
 
 fun main(args: Array<String>) {
+    when (args.firstOrNull()) {
+        "labeller-export" -> return labellerExport(args.drop(1))
+        "labeller-serve" -> return labellerServe(args.drop(1))
+    }
     val opts = args.associate { arg ->
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg\n$USAGE" }
         arg.removePrefix("--").substringBefore('=') to arg.substringAfter('=')

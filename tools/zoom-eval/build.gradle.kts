@@ -15,6 +15,7 @@ sourceSets {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.org.json)
     testImplementation(libs.junit)
 }
 
