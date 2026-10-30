@@ -1,4 +1,4 @@
-package dev.sortes.zoomeval.content
+package dev.sortes.app.zoom
 
 import kotlin.math.pow
 

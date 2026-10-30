@@ -1,5 +1,9 @@
 # Component-level content cost: first experiment
 
+*Retired: `content-experiment` was removed with the READER and TUNED configs when the text model
+shipped (see [../unified-pipeline.md](../unified-pipeline.md)); rerun it at a869e26. The component
+cost itself (`ElementLoss`) is now part of the reader.*
+
 Offline research on digital-native PDFs, starting from merged main 950d48a.
 Neither READER nor TUNED is changed. This is a reproducible prototype, not a
 replacement config. The placement-only control improves agreement from 137/144

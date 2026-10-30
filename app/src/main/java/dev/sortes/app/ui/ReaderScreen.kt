@@ -175,7 +175,7 @@ internal fun PageReader(
                 analyzePaper(pages, aspect).also {
                     Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages, " +
                         "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
-                        "(${it.solveMillis} ms solving)")
+                        "(${it.solveMillis} ms solving), ${it.config.name}, body text ${it.glyphPx?.let { px -> "%.1f".format(px) }} px at scale 1")
                 }
             }
         }
@@ -207,7 +207,7 @@ internal fun PageReader(
             if (paper != null && currentCropsResult == null) return@produceState
             value = catching {
                 val placement = if (paper != null && currentCrops != null) {
-                    paper.place(pages, index, currentCrops)
+                    paper.place(index, currentCrops)
                 } else {
                     null
                 }

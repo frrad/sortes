@@ -151,15 +151,6 @@ class CropModelTest {
     }
 
     @Test
-    fun autoKeepsTheModelsCutWithinTheReadersBudget() = runBlocking {
-        val masks = List(5) { page(body, pageNumber) } + page(rect(10, 30, 50, 60), pageNumber)
-        val crops = CropModel(aspect).auto(masks)
-        assertTrue(crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST)
-        // Tight enough to cut the page numbers (0.3% of the ink), so tighter than the whole page.
-        assertTrue(crops.scale < 0.9f)
-    }
-
-    @Test
     fun aBlankPaperStaysWhole() = runBlocking {
         val masks = listOf(page(), page())
         val crops = CropModel(aspect).auto(masks)
@@ -307,33 +298,6 @@ class CropModelTest {
     }
 
     @Test
-    fun theBisectedBoundIsTheFullAnalysisBound() = runBlocking {
-        // The bound auto starts from must be exactly the tightest scale at which CropAnalysis'
-        // whole curve is within budget.
-        val random = Random(29)
-        repeat(25) {
-            val masks = randomPaper(random)
-            val analysis = CropAnalysis.of(masks, aspect)
-            val expected = if (analysis.totalInk == 0L) 0 else
-                analysis.scales.indices.last { analysis.lostFraction(it) <= CropAnalysis.AUTO_MAX_LOST }
-            assertEquals(expected, CropModel(aspect).prepare(masks).bound(analysis.scales))
-        }
-    }
-
-    @Test
-    fun autoIsWithinBudgetAndNoTighterThanTheBound() = runBlocking {
-        val random = Random(31)
-        repeat(10) {
-            val masks = randomPaper(random)
-            val prepared = CropModel(aspect).prepare(masks)
-            val scales = CropAnalysis.defaultScales()
-            val crops = prepared.auto(scales)
-            assertTrue(crops.scale >= scales[prepared.bound(scales)] - 1e-6f)
-            assertTrue(crops.cutFraction <= CropAnalysis.AUTO_MAX_LOST + 1e-9)
-        }
-    }
-
-    @Test
     fun aPagesOwnCropIsItsBestPositionAtTheSameScale() {
         val offset = page(rect(26, 10, 58, 70))
         val own = CropModel(aspect).ownCrop(offset, 0.75f, 2000.0)
@@ -387,7 +351,7 @@ class CropModelBlocksTest {
         assertEquals(0.2 * crops.pages.sumOf { it.split }, crops.splitTerm, 1e-12)
         assertTrue(crops.pages[0].split > 0.0 && crops.pages[0].split <= crops.splitBlocks)
         assertEquals(crops.cutTerm + crops.offTerm + crops.pageCutTerm + crops.splitTerm + crops.windowTerm + crops.switchTerm, crops.total, 1e-9)
-        assertEquals(crops.total / 1 + 1.0 * 0.6, crops.zoomObjective, 1e-6)
+        assertEquals(crops.total / 1, crops.costPerPage, 1e-9)
     }
 
     @Test

@@ -1,13 +1,10 @@
-package dev.sortes.zoomeval.content
+package dev.sortes.app.zoom
 
-import dev.sortes.app.zoom.CellRect
-import dev.sortes.app.zoom.InkMask
-import dev.sortes.app.zoom.PageBlocks
 import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Experimental page cost: lines a window's left or right edge truncates.
+ * The text model's line cost ([PageText]): lines a window's left or right edge truncates.
  *
  * A "line segment" is a horizontal run of fine connected components (glyphs, roughly) that
  * overlap vertically by at least half the shorter one's height and are separated by at most
@@ -21,28 +18,66 @@ import kotlin.math.min
  * Only the left and right edges count: a top or bottom edge slices a line through its glyphs,
  * which the ink and block costs already see. Components are kept only when wholly inside the
  * kept cells. The edges are costed separately (a segment truncated at both ends costs twice) so
- * the cost is a sum of per-edge tables, O(1) per window.
+ * the cost is a sum of per-edge tables ([table]), O(1) per window.
  */
 class LineTruncation private constructor(
     private val width: Int,
     private val height: Int,
-    /** left[x * (height + 1) + y]: cost of a left edge at column x, over segments centred above row y. */
-    private val left: DoubleArray,
-    private val right: DoubleArray,
+    private val saturation: Double,
     private val segments: List<IntArray>,
     private val cl: IntArray,
     private val cr: IntArray,
     private val segmentRow: IntArray,
 ) {
-    /** The cost of keeping [cells]. */
-    fun cost(cells: CellRect): Double {
-        val t = cells.top.coerceIn(0, height)
-        val b = cells.bottom.coerceIn(t, height)
-        val l = cells.left.coerceIn(0, width)
-        val r = cells.right.coerceIn(0, width)
-        val s = height + 1
-        return left[l * s + b] - left[l * s + t] + right[r * s + b] - right[r * s + t]
+    /**
+     * The per-edge tables, for O(1) queries: left[x * (height + 1) + y] is the cost of a left edge
+     * at column x over segments centred above row y, likewise right. Two tables of the page's
+     * cells, so built per use from the segments (a few kilobytes) and dropped.
+     */
+    fun table(): Table {
+        val w = width
+        val h = height
+        val s = h + 1
+        val left = DoubleArray((w + 1) * s)
+        val right = DoubleArray((w + 1) * s)
+        for ((g, members) in segments.withIndex()) {
+            val row = segmentRow[g]
+            if (members.size < 2) continue
+            val lefts = members.map { cl[it] }.sorted()
+            val rights = members.map { cr[it] }.sortedDescending()
+            // A left edge at x loses the components starting left of it.
+            var lost = 0
+            for (x in lefts.first() + 1..lefts.last()) {
+                while (lost < lefts.size && lefts[lost] < x) lost++
+                if (lost in 1 until members.size) left[x * s + row + 1] += min(1.0, lost / saturation)
+            }
+            lost = 0
+            for (x in rights.first() - 1 downTo rights.last()) {
+                while (lost < rights.size && rights[lost] > x) lost++
+                if (lost in 1 until members.size) right[x * s + row + 1] += min(1.0, lost / saturation)
+            }
+        }
+        for (x in 0..w) for (y in 1..h) {
+            left[x * s + y] += left[x * s + y - 1]
+            right[x * s + y] += right[x * s + y - 1]
+        }
+        return Table(left, right)
     }
+
+    inner class Table internal constructor(private val left: DoubleArray, private val right: DoubleArray) {
+        /** The cost of keeping [cells]. */
+        fun cost(cells: CellRect): Double {
+            val t = cells.top.coerceIn(0, height)
+            val b = cells.bottom.coerceIn(t, height)
+            val l = cells.left.coerceIn(0, width)
+            val r = cells.right.coerceIn(0, width)
+            val s = height + 1
+            return left[l * s + b] - left[l * s + t] + right[r * s + b] - right[r * s + t]
+        }
+    }
+
+    /** The cost of keeping [cells]; builds the [table] each call, so for one-off queries. */
+    fun cost(cells: CellRect): Double = table().cost(cells)
 
     /** How many segments [cells] truncates at its left or right edge (for reporting). */
     fun truncated(cells: CellRect): Int = truncatedSegments(cells).size
@@ -69,14 +104,30 @@ class LineTruncation private constructor(
 
     companion object {
         fun of(fine: InkMask, raw: InkMask, prepared: InkMask, gap: Double = 1.5, saturation: Double = 2.0): LineTruncation {
+            val comps = PageBlocks.of(fine, 0)
+            return of(fine, raw, prepared, gap, saturation, comps, TextSize.glyphHeight(comps, fine.height))
+        }
+
+        /**
+         * As [of], given [fine]'s components ([PageBlocks] at gap 0) and its [glyphHeight]
+         * ([TextSize.glyphHeight]), so they're found once per page.
+         */
+        fun of(
+            fine: InkMask,
+            raw: InkMask,
+            prepared: InkMask,
+            gap: Double,
+            saturation: Double,
+            comps: PageBlocks,
+            glyphHeight: Double?,
+            labels: IntArray = comps.labels(),
+        ): LineTruncation {
             val factorX = fine.width / raw.width
             val factorY = fine.height / raw.height
             require(factorX >= 1 && factorY >= 1 && fine.width == raw.width * factorX && fine.height == raw.height * factorY) {
                 "Fine mask must be a whole multiple of the solver mask"
             }
-            val glyph = TextSize.glyphHeight(fine) ?: (2.0 * factorY)
-            val comps = PageBlocks.of(fine, 0)
-            val labels = comps.labels()
+            val glyph = glyphHeight ?: (2.0 * factorY)
             // Leave out components that are mostly ignorable ink, as ElementLoss does.
             val removed = IntArray(comps.boxes.size)
             for (y in 0 until fine.height) for (x in 0 until fine.width) {
@@ -126,37 +177,14 @@ class LineTruncation private constructor(
             val groups = (0 until n).groupBy { find(it) }.values.map { it.toIntArray() }
             val cl = IntArray(n) { boxes[it].left / factorX }
             val cr = IntArray(n) { (boxes[it].right + factorX - 1) / factorX }
-            val w = raw.width
             val h = raw.height
-            val s = h + 1
-            val left = DoubleArray((w + 1) * s)
-            val right = DoubleArray((w + 1) * s)
-            val rows = IntArray(groups.size)
-            for ((g, members) in groups.withIndex()) {
+            val rows = IntArray(groups.size) { g ->
+                val members = groups[g]
                 val top = members.minOf { boxes[it].top }
                 val bottom = members.maxOf { boxes[it].bottom }
-                val row = ((top + bottom) / 2 / factorY).coerceIn(0, h - 1)
-                rows[g] = row
-                if (members.size < 2) continue
-                val lefts = members.map { cl[it] }.sorted()
-                val rights = members.map { cr[it] }.sortedDescending()
-                // A left edge at x loses the components starting left of it.
-                var lost = 0
-                for (x in lefts.first() + 1..lefts.last()) {
-                    while (lost < lefts.size && lefts[lost] < x) lost++
-                    if (lost in 1 until members.size) left[x * s + row + 1] += min(1.0, lost / saturation)
-                }
-                lost = 0
-                for (x in rights.first() - 1 downTo rights.last()) {
-                    while (lost < rights.size && rights[lost] > x) lost++
-                    if (lost in 1 until members.size) right[x * s + row + 1] += min(1.0, lost / saturation)
-                }
+                ((top + bottom) / 2 / factorY).coerceIn(0, h - 1)
             }
-            for (x in 0..w) for (y in 1..h) {
-                left[x * s + y] += left[x * s + y - 1]
-                right[x * s + y] += right[x * s + y - 1]
-            }
-            return LineTruncation(w, h, left, right, groups, cl, cr, rows)
+            return LineTruncation(raw.width, h, saturation, groups, cl, cr, rows)
         }
     }
 }

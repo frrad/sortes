@@ -54,16 +54,6 @@ class MutoolTest {
         )
         assertEquals(CropModelWeights(), readWeights(File(dir, "missing"), emptyMap()))
         assertThrows(IllegalArgumentException::class.java) { CropModelWeights().with(mapOf("omega" to "1")) }
-        val columns = File(dir, "columns.tsv").apply {
-            writeText("# label\talgorithm\tthreshold\toverrides\nold\tanchor\t224\t-\nkeep\tmodel\tdefault\tepsilon=0, gamma=0.1\n")
-        }
-        assertEquals(
-            listOf(
-                Column("old", Algorithm.ANCHOR, 224, emptyMap()),
-                Column("keep", Algorithm.MODEL, null, mapOf("epsilon" to "0", "gamma" to "0.1")),
-            ),
-            readColumns(columns),
-        )
         dir.deleteRecursively()
     }
 }

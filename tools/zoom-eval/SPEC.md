@@ -87,21 +87,23 @@ below scale 1 gets a centred window.
 
 ## Scale
 
-The scale is fixed per paper. With ζ > 0 (`TUNED`) it is the scale minimising the cost per page
-plus ζ·scale, a legibility reward; see `BLOCKS.md`. Otherwise (`READER`) it uses the same rule as
-the reader's auto zoom, applied to the crops the model will actually use. That is the tightest scale on `CropAnalysis.defaultScales()`
-at which the model's solved crops cut at most `AUTO_MAX_LOST` (0.5%) of the paper's ink,
-loosened by `AUTO_MARGIN` (+0.02). The reader's own curve gives a lower bound on the scale,
-because each page's best window loses least. The search starts there and steps looser,
-re-solving each time, until the model's crops are within budget. Usually it takes 0–2 steps.
+The scale is fixed per paper: every scale of `ZoomScales.defaultScales()` from 0.60 to 0.97
+is solved without the text model's page costs, the one minimising the cost per page plus a
+legibility cost is loosened by `autoMargin` (+0.01), and the crops there are solved with the
+page costs (`CropModel.Prepared.auto`). The legibility cost is ζ·scale while the body text is
+small, earning less once it is bigger than 28 px on the Boox's screen (`Legibility`, `PageText`,
+[notes/text-size](notes/text-size/README.md)). The search is exhaustive over that range (about 75
+solves; an earlier sparse walk found the same scales on the corpus) and is the only one: the
+cut-budget zoom (`AUTO_MAX_LOST`) that the older reader config used is gone.
 
-Because the model keeps windows put, it can cut more than per-page optima, so its scale is
-never tighter than the per-page anchor placement's. Across the corpus it came out equal, or 0.005 looser on a few
-papers.
+*History: the sections below describe the model as it was built; `READER`, `TUNED`,
+`CropAnalysis` and the cut budget they mention were removed when the reader moved to
+`CropConfig.DEFAULT` (see [notes/unified-pipeline.md](notes/unified-pipeline.md)).*
 
 ## In the reader
 
-`analyzePaper` renders a sample of at most 60 pages and strips their ignorable ink. The sample
+`analyzePaper` is the one entry point, shared with zoom-eval: it renders a sample of at most
+60 pages, strips their ignorable ink, and measures each sampled page's text on a 4× render. The sample
 is evenly spaced pairs of facing pages (`samplePages`): even, odd, even, odd, so both sides of a
 two-sided layout are seen equally. Plain even spacing put every sampled page of a 119-page
 paper on one side. It then solves the model at its automatic scale (`SampledPaper`, shared with

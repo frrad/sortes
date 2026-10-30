@@ -1,13 +1,11 @@
-package dev.sortes.zoomeval.content
+package dev.sortes.app.zoom
 
-import dev.sortes.app.zoom.InkMask
-import dev.sortes.app.zoom.PageBlocks
 import kotlin.math.floor
 import kotlin.math.max
 
 /**
  * Image-space estimates of a page's body-text size, in mask pixels. No PDF text is used, so
- * these work on whatever the reader renders. Experimental (offline) for now.
+ * these work on whatever the reader renders.
  */
 object TextSize {
     /**
@@ -71,15 +69,18 @@ object TextSize {
      * [maxFraction] of the page, or more than [maxAspect] times wider than tall (rules), are
      * left out, as are specks under [minPixels].
      */
-    fun glyphHeight(fine: InkMask, minPixels: Int = 4, maxFraction: Double = 0.03, maxAspect: Double = 3.0): Double? {
-        val blocks = PageBlocks.of(fine, 0)
+    fun glyphHeight(fine: InkMask, minPixels: Int = 4, maxFraction: Double = 0.03, maxAspect: Double = 3.0): Double? =
+        glyphHeight(PageBlocks.of(fine, 0), fine.height, minPixels, maxFraction, maxAspect)
+
+    /** [glyphHeight] from the fine render's [blocks] (its 8-connected components, gap 0), [height] pixels tall. */
+    fun glyphHeight(blocks: PageBlocks, height: Int, minPixels: Int = 4, maxFraction: Double = 0.03, maxAspect: Double = 3.0): Double? {
         val heights = ArrayList<Int>()
         for (b in blocks.boxes.indices) {
             val box = blocks.boxes[b]
             val bw = box.right - box.left
             val bh = box.bottom - box.top
             if (blocks.inks[b] < minPixels) continue
-            if (bh > fine.height * maxFraction) continue
+            if (bh > height * maxFraction) continue
             if (bw > bh * maxAspect) continue
             heights += bh
         }

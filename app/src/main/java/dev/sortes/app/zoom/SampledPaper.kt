@@ -34,17 +34,21 @@ class SampledPaper(
     val masks: List<InkMask>,
     /** Which page each of [masks] is. */
     val sample: List<Int>,
+    /** Each sampled page's extra cost (the text model's), if any, in the order of [sample]. */
+    val extras: List<PageCost?>? = null,
+    /** The automatic zoom's legibility cost of a scale; by default zeta·scale. */
+    private val zoomCost: (Float) -> Double = { model.weights.zeta * it },
 ) {
     init {
         require(masks.isNotEmpty() && masks.size == sample.size) { "One mask per sampled page" }
     }
 
-    private val prepared = model.prepare(masks)
+    private val prepared = model.prepare(masks, extras)
 
     /** The unit pages' cut ink is measured in: the sample's median ink per page. */
     val referenceInk = CropModel.referenceInk(masks)
 
-    suspend fun auto(): ModelCrops = prepared.auto()
+    suspend fun auto(): ModelCrops = prepared.auto(zoomCost = zoomCost)
 
     suspend fun solve(scale: Float): ModelCrops = prepared.solve(scale)
 
@@ -53,7 +57,7 @@ class SampledPaper(
 
     /**
      * Page [index]'s crop in [crops]: the model's own choice for a sampled page. A page outside
-     * the sample, given its [mask] (without ignorable ink), takes the window that costs it least,
+     * the sample, given its [mask] (without ignorable ink) and its [extra] cost, takes the window that costs it least,
      * ties going to the window of the nearest sampled page on the same side. If even that window
      * cuts more than [CropModelWeights.allowance] of its ink, or (with blocks on) cuts into a
      * block (a landscape table, an offset figure the sample didn't see), it may get its own best
@@ -64,14 +68,14 @@ class SampledPaper(
      * makes for the sampled pages, deliberately, so an unsampled page is treated like its
      * neighbours rather than by a stricter rule.
      */
-    fun cropFor(index: Int, crops: ModelCrops, mask: InkMask?): PageCrop {
+    fun cropFor(index: Int, crops: ModelCrops, mask: InkMask?, extra: PageCost? = null): PageCrop {
         val analysed = sampled(index)
         if (analysed >= 0) return crops.pages[analysed]
         requireNotNull(mask) { "Page $index wasn't sampled: its mask is needed" }
         val weights = model.weights
-        val shared = model.assign(mask, crops, referenceInk, preferred = preferredWindow(index, crops))
+        val shared = model.assign(mask, crops, referenceInk, preferred = preferredWindow(index, crops), pageCost = extra)
         if (shared.pageCut <= weights.allowance && shared.split == 0.0) return shared
-        val own = model.ownCrop(mask, crops.scale, referenceInk)
+        val own = model.ownCrop(mask, crops.scale, referenceInk, extra)
         val better = if (weights.kappa > 0.0) model.pageCost(own) + weights.gamma < model.pageCost(shared) else own.pageCut < shared.pageCut
         return if (better) own else shared
     }

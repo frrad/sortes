@@ -47,8 +47,8 @@ class InkMaskTest {
     fun aGrainyScanStillZoomsToItsText() = kotlinx.coroutines.runBlocking {
         val random = kotlin.random.Random(5)
         val masks = List(4) { InkMask.fromArgb(scan(8, random), 60, 80) }
-        val analysis = CropAnalysis.of(masks, 0.75f)
-        assertTrue("auto ${analysis.autoScale} ink ${masks.map { it.inkCount }} lost ${(0 until analysis.scales.size step 10).map { analysis.lostFraction(it) }}", analysis.autoScale < 0.85f)
+        val auto = CropModel(0.75f, CropConfig.DEFAULT.weights).auto(masks).scale
+        assertTrue("auto $auto ink ${masks.map { it.inkCount }}", auto < 0.85f)
     }
 
     @Test

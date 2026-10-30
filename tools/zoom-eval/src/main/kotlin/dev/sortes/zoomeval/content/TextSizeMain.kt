@@ -1,5 +1,6 @@
 package dev.sortes.zoomeval.content
 
+import dev.sortes.app.zoom.TextSize
 import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.maskSize
 import dev.sortes.zoomeval.MutoolPdf

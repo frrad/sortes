@@ -1,7 +1,5 @@
-package dev.sortes.zoomeval.content
+package dev.sortes.app.zoom
 
-import dev.sortes.app.zoom.CellRect
-import dev.sortes.app.zoom.InkMask
 import org.junit.Assert.*
 import org.junit.Test
 

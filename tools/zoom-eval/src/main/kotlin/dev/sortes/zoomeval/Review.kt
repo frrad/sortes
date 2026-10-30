@@ -1,13 +1,10 @@
 package dev.sortes.zoomeval
 
 import dev.sortes.app.zoom.CropConfig
-import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.InkMask
 import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.PageBlocks
-import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.cutInk
-import dev.sortes.app.zoom.maskSize
 import dev.sortes.app.zoom.padded
 import dev.sortes.app.zoom.regionOn
 import kotlinx.coroutines.runBlocking
@@ -78,15 +75,9 @@ fun reviewMain(args: List<String>) {
         }
         val started = System.currentTimeMillis()
         val pdf = MutoolPdf(file)
-        val density = analysisDensity(pdf.pageSizes, aspect)
-        val rendered = pdf.pageSizes.indices.map { i ->
-            val (w, h) = maskSize(pdf.pageSizes[i], density)
-            pdf.renderMask(i, w, h)
-        }
         val results = specs.map { spec ->
-            val masks = spec.config.prepare(rendered)
-            val crops = runBlocking { cropsFor(Algorithm.READER, masks, CropModel(aspect, spec.config.weights), scale) }
-            ReviewResult(spec, crops, masks, rendered)
+            val r = runBlocking { readerCrops(pdf, aspect, spec.config, scale) }
+            ReviewResult(spec, r.crops, r.masks)
         }
         writePaper(paper, pdf, aspect, width, results, out, blocks)
         index += indexRow(paper, pdf.pageCount, results)
@@ -103,7 +94,7 @@ fun reviewMain(args: List<String>) {
     println("Wrote ${File(out, "index.html")}")
 }
 
-internal class ReviewResult(val spec: ConfigSpec, val crops: ModelCrops, val masks: List<InkMask>, val raw: List<InkMask>) {
+internal class ReviewResult(val spec: ConfigSpec, val crops: ModelCrops, val masks: List<InkMask>) {
     val slices = crops.pages.mapIndexed { p, c -> edgeSlices(masks[p], c.cells) }
     val slicedLinePages get() = slices.count { it.slicesLine() }
 }

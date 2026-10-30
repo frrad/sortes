@@ -45,15 +45,15 @@ class FakePages(
         return PageSize(masks[index].width * POINTS_PER_CELL, masks[index].height * POINTS_PER_CELL)
     }
 
-    override suspend fun renderMask(index: Int, width: Int, height: Int): InkMask {
+    /** Black where the page's mask has ink, white elsewhere, nearest-neighbour scaled to [width] x [height]. */
+    override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
         maskGate?.await()
         if (index in broken) throw IOException("Can't render page $index")
         masked += index
         val mask = masks[index]
-        val ink = BooleanArray(width * height) {
-            mask[(it % width) * mask.width / width, (it / width) * mask.height / height]
+        return IntArray(width * height) {
+            if (mask[(it % width) * mask.width / width, (it / width) * mask.height / height]) BLACK else WHITE
         }
-        return InkMask(width, height, ink)
     }
 
     override suspend fun renderRegion(index: Int, region: Region, width: Int, height: Int): Bitmap {
@@ -85,5 +85,7 @@ class FakePages(
 
     companion object {
         const val POINTS_PER_CELL = 10f
+        private const val BLACK = 0xFF000000.toInt()
+        private const val WHITE = 0xFFFFFFFF.toInt()
     }
 }

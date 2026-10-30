@@ -316,6 +316,10 @@ class PageReaderTest {
 
     @Test
     fun openPanelShowsTheWholePageWithTheCropFramed() {
+        // A footnote rule under page 0's text only: real content, so cut and boxed (the page
+        // numbers, repeated on every page, are furniture the reader ignores, so not boxed).
+        val plain = TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78)
+        pages = FakePages(listOf(TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).rect(12, 73, 48, 75).mask()) + List(2) { plain.mask() })
         showZoomed()
         val before = pages.renders.toList()
         val crop = before.last().region
@@ -335,9 +339,9 @@ class PageReaderTest {
         assertEquals(preview.width.roundToInt() to preview.height.roundToInt(), whole.width to whole.height)
         // ...and the frame is that crop, mapped onto the whole page.
         assertRect(crop.within(whole.region, preview), "cropFrame")
-        // The page number below the text is cut off, and boxed (to the analysis' resolution).
+        // The footnote rule below the text is cut off, and boxed (to the analysis' resolution).
         val cut = composeRule.onAllNodesWithTag("cutInk").fetchSemanticsNodes().map { it.boundsInWindow }
-        val number = Region(290f, 760f, 20f, 20f).within(whole.region, preview)
+        val number = Region(120f, 730f, 360f, 20f).within(whole.region, preview)
         assertEquals("$cut", 1, cut.size)
         assertTrue("${cut.single()} vs $number", cut.single().overlaps(number))
         assertTrue("${cut.single()} vs $number", cut.single().top >= number.top - 5f)

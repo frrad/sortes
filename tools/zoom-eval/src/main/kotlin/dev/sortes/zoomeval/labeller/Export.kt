@@ -1,22 +1,16 @@
 package dev.sortes.zoomeval.labeller
 
-import dev.sortes.app.zoom.CropAnalysis
-import dev.sortes.app.zoom.CropModel
+import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModelWeights
-import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.Region
-import dev.sortes.app.zoom.analysisDensity
+import dev.sortes.app.zoom.ZoomScales
 import dev.sortes.app.zoom.cutInk
-import dev.sortes.app.zoom.maskSize
 import dev.sortes.app.zoom.padded
 import dev.sortes.app.zoom.regionOn
-import dev.sortes.zoomeval.Algorithm
 import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.Paper
-import dev.sortes.zoomeval.cropsFor
-import dev.sortes.app.zoom.CropConfig
-import dev.sortes.zoomeval.content.TextModel
 import dev.sortes.zoomeval.fit.centreOf
+import dev.sortes.zoomeval.readerCrops
 import org.json.JSONArray
 import org.json.JSONObject
 import java.awt.Color
@@ -38,25 +32,13 @@ suspend fun exportPaper(
     aspect: Float,
     commit: String,
     out: File,
-    config: CropConfig = CropConfig.READER,
-    /** An offline experiment's model instead of [config]'s ([TextModel.config] is its config). */
-    textModel: TextModel? = null,
+    config: CropConfig = CropConfig.DEFAULT,
 ): JSONObject {
-    @Suppress("NAME_SHADOWING") val config = textModel?.config ?: config
     val dir = File(out, paper.id).apply { mkdirs() }
-    val density = analysisDensity(pdf.pageSizes, aspect)
-    // The pages as the model sees them, which is also what its cut ink is counted on.
-    val rendered = pdf.pageSizes.indices.map { i ->
-        val (w, h) = maskSize(pdf.pageSizes[i], density)
-        pdf.renderMask(i, w, h)
-    }
-    val masks = config.prepare(rendered)
-    val crops: ModelCrops = if (textModel != null) {
-        val fine = rendered.indices.map { pdf.renderMask(it, rendered[it].width * textModel.factor, rendered[it].height * textModel.factor) }
-        textModel.crops(rendered, fine, aspect)
-    } else {
-        cropsFor(Algorithm.READER, masks, CropModel(aspect, config.weights))
-    }
+    // Exactly the reader's crops; the cut ink is counted on the masks the model saw.
+    val reader = readerCrops(pdf, aspect, config)
+    val crops = reader.crops
+    val masks = reader.masks
     val pages = JSONArray()
     for (i in masks.indices) {
         val size = pdf.pageSizes[i]
@@ -88,16 +70,16 @@ suspend fun exportPaper(
         .put("pageCount", masks.size)
         .put("labelledAgainst", LabelledAgainst(
             commit = commit,
-            algorithm = textModel?.name ?: config.name,
+            algorithm = config.name,
             weights = config.weights.toMap(),
             scale = crops.scale.toString().toDouble(),
             aspect = aspect.toDouble(),
-            centres = textModel?.let { masks.indices.map { i -> centreOf(crops.pages[i].window, pdf.pageSizes[i], aspect) } },
-            parameters = textModel?.parameters().orEmpty(),
+            centres = masks.indices.map { i -> centreOf(crops.pages[i].window, pdf.pageSizes[i], aspect) },
+            parameters = config.text.parameters(),
         ).toJson())
         .put("windows", crops.k)
         .put("cutPercent", crops.cutFraction * 100)
-        .put("scales", JSONArray(CropAnalysis.defaultScales().map { it.toString().toDouble() }))
+        .put("scales", JSONArray(ZoomScales.defaultScales().map { it.toString().toDouble() }))
         .put("pages", pages)
     File(dir, "paper.json").writeText(canonical(json) + "\n")
     return json
@@ -108,8 +90,7 @@ fun CropModelWeights.toMap(): Map<String, Double> = sortedMapOf(
     "alpha" to alpha, "beta" to beta, "epsilon" to epsilon, "allowance" to allowance,
     "gamma" to gamma, "delta" to delta, "delta2" to delta2, "maxWindows" to maxWindows.toDouble(),
     "kappa" to kappa, "blockGap" to blockGap.toDouble(), "splitInk" to splitInk, "zeta" to zeta,
-    "autoMaxLost" to autoMaxLost, "autoMargin" to autoMargin, "zoomIgnoredPages" to zoomIgnoredPages.toDouble(),
-    "autoMaxPageCut" to autoMaxPageCut,
+    "autoMargin" to autoMargin,
 )
 
 private fun Region.toJson(): JSONObject = JSONObject()
