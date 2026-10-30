@@ -32,23 +32,24 @@ class LabellerServerTest {
         root.deleteRecursively()
     }
 
-    private data class Response(val code: Int, val body: String)
+    private data class Response(val code: Int, val body: String, val revision: String? = null)
 
-    private fun request(method: String, path: String, body: String? = null): Response {
+    private fun request(method: String, path: String, body: String? = null, ifMatch: String? = null): Response {
         val c = URL("http://127.0.0.1:${server.port}$path").openConnection() as HttpURLConnection
         c.requestMethod = method
+        if (ifMatch != null) c.setRequestProperty("If-Match", ifMatch)
         if (body != null) {
             c.doOutput = true
             c.outputStream.use { it.write(body.toByteArray()) }
         }
         val code = c.responseCode
         val text = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
-        return Response(code, text)
+        return Response(code, text, c.getHeaderField(LabellerServer.REVISION_HEADER))
     }
 
     @Test
     fun servesThePageAndTheData() {
-        assertEquals(Response(200, "<html>labeller</html>"), request("GET", "/"))
+        assertEquals(Response(200, "<html>labeller</html>"), request("GET", "/").copy(revision = null))
         assertEquals(200, request("GET", "/data/1706.03762/paper.json").code)
         assertEquals(404, request("GET", "/data/nope.json").code)
     }
@@ -98,6 +99,27 @@ class LabellerServerTest {
         // Idempotent: a second identical save leaves the file the same.
         request("PUT", "/api/labels/1706.03762", labels.toText())
         assertTrue(bytes.contentEquals(file.readBytes()))
+    }
+
+    @Test
+    fun aSaveFromBehindIsRefusedWithTheCurrentLabels() {
+        val first = request("GET", "/api/labels/1706.03762")
+        assertEquals("none", first.revision)
+        // Tab A saves a comment, from the revision it loaded.
+        val a = PaperLabels("1706.03762", null, null, "", mapOf(1 to PageLabel(null, emptySet(), "from tab A", null)))
+        val savedA = request("PUT", "/api/labels/1706.03762", a.toText(), ifMatch = first.revision)
+        assertEquals(200, savedA.code)
+        assertTrue(savedA.revision != "none")
+        // Tab B loaded before A saved: its save, from the old revision, is refused...
+        val b = PaperLabels("1706.03762", null, null, "", mapOf(2 to PageLabel(null, emptySet(), "from tab B", null)))
+        val refused = request("PUT", "/api/labels/1706.03762", b.toText(), ifMatch = first.revision)
+        assertEquals(409, refused.code)
+        assertEquals(savedA.revision, refused.revision)
+        assertEquals(a, PaperLabels.fromText(refused.body))
+        // ...and A's comment is still there.
+        assertEquals(a, PaperLabels.fromText(request("GET", "/api/labels/1706.03762").body))
+        // From the current revision it goes through.
+        assertEquals(200, request("PUT", "/api/labels/1706.03762", b.toText(), ifMatch = refused.revision).code)
     }
 
     @Test

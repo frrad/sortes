@@ -12,8 +12,12 @@ import java.net.InetSocketAddress
  *
  * - `GET /` and `GET /<file>`: the page, from [web].
  * - `GET /data/<path>`: exported papers and images, from [data].
- * - `GET /api/labels/<paper>`: that paper's labels, or empty ones.
- * - `PUT /api/labels/<paper>`: validates and saves labels (canonical JSON), returns them as saved.
+ * - `GET /api/labels/<paper>`: that paper's labels, or empty ones, with their revision in
+ *   [REVISION_HEADER].
+ * - `PUT /api/labels/<paper>`: validates and saves labels (canonical JSON), returns them as saved
+ *   with their new revision. With `If-Match: <revision>`, it saves only if the labels are still at
+ *   that revision, and otherwise answers 409 with the current labels and revision, so a tab that
+ *   fell behind (another tab saved meanwhile) can merge its changes instead of overwriting.
  */
 class LabellerServer(
     private val web: File,
@@ -51,8 +55,10 @@ class LabellerServer(
                 val paper = path.removePrefix("/api/labels/")
                 if (!PaperLabels.PAPER_ID.matches(paper)) return send(exchange, 400, "text/plain", "Bad paper id".toByteArray())
                 when (method) {
-                    "GET" -> sendJson(exchange, 200, PaperLabels.load(labels, paper).toText())
-                    "PUT" -> {
+                    "GET" -> sendLabels(exchange, 200, paper)
+                    "PUT" -> synchronized(this) {
+                        val expected = exchange.requestHeaders.getFirst("If-Match")
+                        if (expected != null && expected != revision(paper)) return sendLabels(exchange, 409, paper)
                         val body = exchange.requestBody.readBytes().toString(Charsets.UTF_8)
                         val parsed = try {
                             PaperLabels.fromText(body)
@@ -63,7 +69,7 @@ class LabellerServer(
                         }
                         if (parsed.paper != paper) return send(exchange, 400, "text/plain", "Paper id mismatch".toByteArray())
                         parsed.save(labels)
-                        sendJson(exchange, 200, parsed.toText())
+                        sendLabels(exchange, 200, paper)
                     }
                     else -> send(exchange, 405, "text/plain", "Method not allowed".toByteArray())
                 }
@@ -72,6 +78,19 @@ class LabellerServer(
             path.startsWith("/data/") -> sendFile(exchange, data, path.removePrefix("/data/"))
             else -> sendFile(exchange, web, path.removePrefix("/").ifEmpty { "index.html" })
         }
+    }
+
+    /** The revision of [paper]'s saved labels: a hash of the file, or "none" before the first save. */
+    fun revision(paper: String): String {
+        val file = PaperLabels.fileFor(labels, paper)
+        if (!file.exists()) return "none"
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+        return digest.take(12).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun sendLabels(exchange: HttpExchange, code: Int, paper: String) {
+        exchange.responseHeaders.set(REVISION_HEADER, revision(paper))
+        sendJson(exchange, code, PaperLabels.load(labels, paper).toText())
     }
 
     private fun sendFile(exchange: HttpExchange, root: File, relative: String) {
@@ -111,5 +130,10 @@ class LabellerServer(
         exchange.responseHeaders.set("Content-Type", type)
         exchange.sendResponseHeaders(code, if (body.isEmpty()) -1 else body.size.toLong())
         if (body.isNotEmpty()) exchange.responseBody.use { it.write(body) }
+    }
+
+    companion object {
+        /** The response header carrying a paper's labels revision. */
+        const val REVISION_HEADER = "X-Labels-Revision"
     }
 }

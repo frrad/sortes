@@ -26,33 +26,122 @@ const state = {
   saving: null,  // the in-flight save, if any
   dirty: false,
   reviewed: {},  // paper id -> pages reviewed, for the tabs
+  revision: "none",  // the server's revision of these labels, as this tab last saw it
+  changes: { pages: [], paper: [] },  // what this tab changed and the server doesn't have yet
+  edits: 0,      // changes so far, to tell whether a save covered them all
+  failures: 0,   // saves failed in a row
+  failed: false, // the last save failed
 };
 
 // ---- Labels ----
+// The label logic is in labels.js (LabellerLabels), unit-tested. Saving must never lose work:
+//  - every change is also kept in this browser (localStorage) until the server has it, so a
+//    reload or a closed tab while the server is down loses nothing;
+//  - a failed save says NOT SAVED loudly and retries on its own;
+//  - saves carry the revision this tab last saw, and if another tab saved meanwhile the server
+//    refuses (409): this tab then merges its own unsaved changes onto the server's labels;
+//  - leaving the page sends any unsaved changes with a keepalive request.
+
+const L = LabellerLabels;
+const RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
 
 function emptyLabels(id) {
-  return { schema: 1, paper: id, labelledAgainst: null, idealScale: null, comment: "", pages: {} };
+  return L.emptyLabels(id);
 }
 
 function pageLabel(n) {
-  return state.labels.pages[String(n)] || { verdict: null, tags: [], comment: "", idealCentre: null };
+  return L.pageLabel(state.labels, n);
 }
 
 function isEmpty(label) {
-  return !label.verdict && label.tags.length === 0 && !label.comment && !label.idealCentre;
+  return L.isEmpty(label);
+}
+
+function modelCentreOf(n) {
+  const p = state.paper.pages.find((q) => q.number === n);
+  return p ? G.modelCentre(p) : null;
 }
 
 function setPageLabel(n, change) {
-  const label = Object.assign({}, pageLabel(n), change);
-  label.tags = [...new Set(label.tags)].sort();
-  if (isEmpty(label)) delete state.labels.pages[String(n)];
-  else state.labels.pages[String(n)] = label;
+  state.labels = L.withPage(state.labels, n, change, modelCentreOf(n));
+  state.changes = L.addChange(state.changes, "pages", n);
   changed();
+}
+
+function setPaperField(field, value) {
+  state.labels = Object.assign({}, state.labels, { [field]: value });
+  state.changes = L.addChange(state.changes, "paper", field);
+  changed();
+}
+
+// Backups are per tab (the id survives a reload of the tab), so two tabs can't overwrite or
+// clear each other's.
+const TAB_ID = (() => {
+  try {
+    let id = sessionStorage.getItem("sortes-labeller-tab");
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem("sortes-labeller-tab", id);
+    }
+    return id;
+  } catch (e) {
+    return Math.random().toString(36).slice(2, 10);
+  }
+})();
+
+function backupPrefix(id) {
+  return `sortes-labeller:${id}:`;
+}
+
+/** Keeps this tab's unsaved changes in the browser until the server has them. */
+function backUp() {
+  try {
+    localStorage.setItem(backupPrefix(state.labels.paper) + TAB_ID, JSON.stringify({
+      labels: state.labels, changes: state.changes, at: Date.now(),
+    }));
+  } catch (e) { /* storage full or disabled: the server copy is all there is */ }
+}
+
+function clearBackup(id, keys = [backupPrefix(id) + TAB_ID]) {
+  try { for (const k of keys) localStorage.removeItem(k); } catch (e) { /* nothing to clear */ }
+}
+
+/**
+ * Every backup of [id]'s labels in this browser (this tab's and any closed tab's), oldest first,
+ * with the keys they're under.
+ */
+function readBackups(id) {
+  const found = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(backupPrefix(id))) continue;
+      try {
+        const b = JSON.parse(localStorage.getItem(key));
+        if (b && b.labels && b.labels.paper === id && b.changes) found.push(Object.assign({ key }, b));
+      } catch (e) { /* unreadable: skip */ }
+    }
+  } catch (e) { /* storage disabled */ }
+  return found.sort((x, y) => x.at - y.at);
+}
+
+/** [server] labels with every backup's unsaved changes on top (later ones winning), and what they changed. */
+function withBackups(server, backups) {
+  let labels = server;
+  let changes = L.noChanges();
+  for (const b of backups) {
+    labels = L.merge(labels, b.labels, b.changes);
+    for (const n of b.changes.pages) changes = L.addChange(changes, "pages", n);
+    for (const f of b.changes.paper) changes = L.addChange(changes, "paper", f);
+  }
+  return { labels, changes };
 }
 
 function changed() {
   state.dirty = true;
-  setStatus("Unsaved changes…");
+  state.edits++;
+  backUp();
+  if (!state.failed) setStatus("Unsaved changes…");
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(save, SAVE_DELAY_MS);
   render();
@@ -60,24 +149,74 @@ function changed() {
 
 async function save() {
   clearTimeout(state.saveTimer);
-  if (!state.dirty || !state.labels) return;
+  if (!state.labels) return;
+  if (state.saving) {
+    // One save at a time; this one follows.
+    await state.saving;
+    if (state.dirty) return save();
+    return;
+  }
+  if (!state.dirty) return;
   // The crops these labels judge: the ones being shown.
-  state.labels.labelledAgainst = state.paper.labelledAgainst;
-  const body = JSON.stringify(state.labels);
-  state.dirty = false;
-  setStatus("Saving…");
+  state.labels = Object.assign({}, state.labels, { labelledAgainst: state.paper.labelledAgainst });
   const id = state.labels.paper;
-  state.saving = fetch(`/api/labels/${encodeURIComponent(id)}`, { method: "PUT", body })
-    .then(async (r) => {
-      if (!r.ok) throw new Error(await r.text());
-      setStatus(`Saved ✓ ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, false, true);
-    })
-    .catch((e) => {
-      state.dirty = true;
-      setStatus(`Not saved: ${e.message}. Retrying on your next change.`, true);
-    })
-    .finally(() => { state.saving = null; });
+  const edits = state.edits;
+  if (!state.failed) setStatus("Saving…");
+  state.saving = (async () => {
+    const r = await fetch(`/api/labels/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(state.labels),
+      headers: { "If-Match": state.revision },
+    });
+    if (r.status === 409) {
+      // Another tab saved since this one loaded: keep its work, put this tab's changes on top.
+      const server = await r.json();
+      state.revision = r.headers.get("X-Labels-Revision");
+      if (state.labels && state.labels.paper === id) {
+        state.labels = L.merge(server, state.labels, state.changes);
+        backUp();
+        render();
+      }
+      return "merged";
+    }
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    state.revision = r.headers.get("X-Labels-Revision");
+    return "saved";
+  })().then((outcome) => {
+    if (outcome === "saved" && state.edits === edits && state.labels.paper === id) {
+      state.dirty = false;
+      state.changes = L.noChanges();
+      clearBackup(id);
+    }
+    state.failures = 0;
+    setFailed(false);
+    if (outcome === "saved") setStatus(`Saved ✓ ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, false, true);
+  }).catch((e) => {
+    // Kept in this browser meanwhile; tried again shortly.
+    const delay = RETRY_DELAYS_MS[Math.min(state.failures, RETRY_DELAYS_MS.length - 1)];
+    state.failures++;
+    setFailed(true, `${e.message || e}`, delay);
+    clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(save, delay);
+  }).finally(() => {
+    state.saving = null;
+  });
   await state.saving;
+  // Changes made while that save was out (or a merge to send) go next.
+  if (state.dirty && !state.failed) await save();
+}
+
+/** Shows or hides the loud NOT SAVED banner. */
+function setFailed(failed, why = "", retryInMs = 0) {
+  state.failed = failed;
+  const banner = $("not-saved");
+  banner.hidden = !failed;
+  if (failed) {
+    $("not-saved-why").textContent =
+      `Your changes are kept in this browser, and saving is retried automatically (next in ${Math.round(retryInMs / 1000)} s). ` +
+      `Don't clear this browser's data. (${why})`;
+    setStatus("NOT SAVED", true);
+  }
 }
 
 async function flush() {
@@ -190,7 +329,10 @@ function renderPaperPanel() {
     : `${zoomText(modelScale())} (the model's)`;
   $("zoom-reset").disabled = !own;
   const comment = $("paper-comment");
-  if (document.activeElement !== comment) comment.value = state.labels.comment;
+  if (document.activeElement !== comment || comment.dataset.paper !== state.paper.id) {
+    comment.value = state.labels.comment;
+    comment.dataset.paper = state.paper.id;
+  }
 }
 
 function nearestIndex(scales, s) {
@@ -267,8 +409,16 @@ function renderSide(p) {
   $("good").classList.toggle("on", label.verdict === "good");
   $("bad").classList.toggle("on", label.verdict === "bad");
   for (const [tag] of TAGS) $(`tag-${tag}`).classList.toggle("on", label.tags.includes(tag));
+  // The box belongs to one page. Refresh it on a page change even while it has focus (on a Mac,
+  // clicking a button or thumbnail leaves the focus in the box): otherwise the old page's text
+  // would stay in it and the next keystroke would write it onto the new page.
   const comment = $("page-comment");
-  if (document.activeElement !== comment) comment.value = label.comment;
+  const owner = `${state.paper.id}#${p.number}`;
+  if (document.activeElement !== comment || comment.dataset.page !== owner) {
+    comment.value = label.comment;
+    comment.dataset.page = owner;
+    comment.dataset.number = p.number;
+  }
   const moved = label.idealCentre != null;
   $("window-state").textContent = moved
     ? `Your window: moved (centre ${label.idealCentre.x.toFixed(0)}, ${label.idealCentre.y.toFixed(0)} pt)`
@@ -380,19 +530,76 @@ function nextUnjudged() {
 async function loadPaper(id, pageNumber) {
   await flush();
   setStatus("Loading…");
-  const [paper, labels] = await Promise.all([
-    fetch(`/data/${encodeURIComponent(id)}/paper.json`).then((r) => r.json()),
-    fetch(`/api/labels/${encodeURIComponent(id)}`).then((r) => r.ok ? r.json() : emptyLabels(id)),
-  ]);
+  let paper;
+  let labels;
+  let revision;
+  try {
+    const [pr, lr] = await Promise.all([
+      fetch(`/data/${encodeURIComponent(id)}/paper.json`),
+      fetch(`/api/labels/${encodeURIComponent(id)}`, { cache: "no-store" }),
+    ]);
+    if (!pr.ok) throw new Error(`paper ${pr.status}`);
+    if (!lr.ok) throw new Error(`labels ${lr.status}`);
+    paper = await pr.json();
+    labels = await lr.json();
+    revision = lr.headers.get("X-Labels-Revision") || "none";
+  } catch (e) {
+    // Never start from empty labels: they'd look like nothing was ever said.
+    setStatus(`Couldn't load ${id} (${e.message || e}); retrying…`, true);
+    setTimeout(() => loadPaper(id, pageNumber), 3000);
+    return;
+  }
   state.paper = paper;
   state.labels = labels;
+  state.revision = revision;
+  state.changes = L.noChanges();
   state.dirty = false;
+  state.edits++;
+  // Changes made in this browser that never reached the server: put them back and save them.
+  const backups = readBackups(id);
+  const restored = withBackups(labels, backups);
+  const unsaved = restored.changes.pages.length + restored.changes.paper.length;
+  if (unsaved) {
+    state.labels = restored.labels;
+    state.changes = restored.changes;
+    state.dirty = true;
+    // This tab now holds them: one backup, under its own key.
+    clearBackup(id, backups.map((b) => b.key));
+    backUp();
+  }
   const index = paper.pages.findIndex((p) => p.number === pageNumber);
   const old = labels.labelledAgainst;
   setStatus(old && old.commit !== paper.labelledAgainst.commit
     ? `Labels were made against ${old.commit}; these crops are ${paper.labelledAgainst.commit}.`
     : "All saved ✓", false, !(old && old.commit !== paper.labelledAgainst.commit));
   goTo(index >= 0 ? index : 0);
+  if (unsaved) {
+    setStatus(`Restored ${unsaved} unsaved change${unsaved === 1 ? "" : "s"} from this browser; saving…`);
+    await save();
+  }
+}
+
+/** Saves a paper's changes left in this browser by an earlier visit, without opening it. */
+async function saveBackup(id) {
+  const backups = readBackups(id);
+  if (!backups.length) return;
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const lr = await fetch(`/api/labels/${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!lr.ok) return;
+      const merged = withBackups(await lr.json(), backups).labels;
+      const r = await fetch(`/api/labels/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(merged),
+        headers: { "If-Match": lr.headers.get("X-Labels-Revision") || "none" },
+      });
+      if (r.ok) {
+        clearBackup(id, backups.map((b) => b.key));
+        return;
+      }
+      if (r.status !== 409) return;
+    }
+  } catch (e) { /* kept for the next visit */ }
 }
 
 /** Done with this paper: the next one's first page. */
@@ -424,6 +631,8 @@ async function start() {
     ? set.map((id) => exported.find((p) => p.id === id)).filter(Boolean)
     : exported;
   renderPaperTabs();
+  // Anything left unsaved in this browser on an earlier visit goes to the server first.
+  for (const p of state.papers) await saveBackup(p.id);
   // Each paper's reviewed count, for the tabs.
   await Promise.all(state.papers.map(async (p) => {
     const labels = await fetch(`/api/labels/${encodeURIComponent(p.id)}`).then((r) => r.ok ? r.json() : emptyLabels(p.id));
@@ -496,10 +705,17 @@ $("next").addEventListener("click", () => goTo(state.page + 1));
 $("next-unjudged").addEventListener("click", nextUnjudged);
 $("done").addEventListener("click", nextPaper);
 $("reset-window").addEventListener("click", () => setPageLabel(state.paper.pages[state.page].number, { idealCentre: null }));
-$("page-comment").addEventListener("input", (e) => setPageLabel(state.paper.pages[state.page].number, { comment: e.target.value }));
-$("paper-comment").addEventListener("input", (e) => { state.labels.comment = e.target.value; changed(); });
-$("zoom").addEventListener("input", (e) => { state.labels.idealScale = state.paper.scales[Number(e.target.value)]; changed(); });
-$("zoom-reset").addEventListener("click", () => { state.labels.idealScale = null; changed(); });
+// Typing goes to the page (and paper) the box is showing, never another.
+$("page-comment").addEventListener("input", (e) => {
+  if (e.target.dataset.page !== `${state.paper.id}#${state.paper.pages[state.page].number}`) return;
+  setPageLabel(Number(e.target.dataset.number), { comment: e.target.value });
+});
+$("paper-comment").addEventListener("input", (e) => {
+  if (e.target.dataset.paper !== state.paper.id) return;
+  setPaperField("comment", e.target.value);
+});
+$("zoom").addEventListener("input", (e) => setPaperField("idealScale", state.paper.scales[Number(e.target.value)]));
+$("zoom-reset").addEventListener("click", () => setPaperField("idealScale", null));
 $("help-button").addEventListener("click", () => { $("help").hidden = false; });
 $("help-close").addEventListener("click", () => { $("help").hidden = true; });
 window.addEventListener("resize", render);
@@ -511,7 +727,18 @@ window.addEventListener("hashchange", () => {
   const i = state.paper.pages.findIndex((p) => p.number === Number(params.page));
   if (i >= 0 && i !== state.page) goTo(i);
 });
-window.addEventListener("beforeunload", (e) => { if (state.dirty || state.saving) { save(); e.preventDefault(); } });
+// Leaving with unsaved changes: send them in a request that outlives the page (they're also in
+// this browser's storage, restored on the next visit if this doesn't arrive), and ask to stay.
+window.addEventListener("beforeunload", (e) => {
+  if (!state.dirty || !state.labels) return;
+  const labels = Object.assign({}, state.labels, { labelledAgainst: state.paper.labelledAgainst });
+  fetch(`/api/labels/${encodeURIComponent(labels.paper)}`, {
+    method: "PUT", body: JSON.stringify(labels), headers: { "If-Match": state.revision }, keepalive: true,
+  }).catch(() => {});
+  e.preventDefault();
+});
+window.addEventListener("online", () => { if (state.dirty) save(); });
+window.addEventListener("focus", () => { if (state.dirty && state.failed) save(); });
 
 document.addEventListener("keydown", (e) => {
   const typing = ["TEXTAREA", "INPUT", "SELECT"].includes(e.target.tagName) && e.target.type !== "range";
