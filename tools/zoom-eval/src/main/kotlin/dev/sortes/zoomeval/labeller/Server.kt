@@ -90,8 +90,15 @@ class LabellerServer(
             "txt" -> "text/plain; charset=utf-8"
             else -> "application/octet-stream"
         }
-        // Labels change under the page; exports and the page itself only on re-export.
+        // Revalidated every time (a re-export or an edit to the page shows at once), but answered
+        // with 304 when unchanged, so the browser downloads each page image once.
+        val etag = "\"${file.lastModified().toString(16)}-${file.length().toString(16)}\""
         exchange.responseHeaders.add("Cache-Control", "no-cache")
+        exchange.responseHeaders.add("ETag", etag)
+        if (exchange.requestHeaders.getFirst("If-None-Match") == etag) {
+            exchange.sendResponseHeaders(304, -1)
+            return
+        }
         send(exchange, 200, type, file.readBytes())
     }
 
