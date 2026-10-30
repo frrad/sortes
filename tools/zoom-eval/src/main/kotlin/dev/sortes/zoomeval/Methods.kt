@@ -72,6 +72,9 @@ fun CropModelWeights.with(overrides: Map<String, String>): CropModelWeights {
             "delta" -> w.copy(delta = value.toDouble())
             "delta2" -> w.copy(delta2 = value.toDouble())
             "maxWindows" -> w.copy(maxWindows = value.toInt())
+            "autoMaxLost" -> w.copy(autoMaxLost = value.toDouble())
+            "autoMargin" -> w.copy(autoMargin = value.toDouble())
+            "zoomIgnoredPages" -> w.copy(zoomIgnoredPages = value.toInt())
             else -> throw IllegalArgumentException("Unknown weight $name")
         }
     }
@@ -79,7 +82,10 @@ fun CropModelWeights.with(overrides: Map<String, String>): CropModelWeights {
 }
 
 /** The names [with] understands. */
-val WEIGHT_NAMES = setOf("alpha", "beta", "epsilon", "allowance", "gamma", "delta", "delta2", "maxWindows")
+val WEIGHT_NAMES = setOf(
+    "alpha", "beta", "epsilon", "allowance", "gamma", "delta", "delta2", "maxWindows",
+    "autoMaxLost", "autoMargin", "zoomIgnoredPages",
+)
 
 /**
  * A column's crops for a paper whose pages (already stripped of ignorable ink) are [masks],

@@ -7,6 +7,7 @@ import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.maskSize
 import dev.sortes.app.zoom.withoutIgnorableInk
+import dev.sortes.zoomeval.fit.fitMain
 import dev.sortes.zoomeval.labeller.labellerExport
 import dev.sortes.zoomeval.labeller.labellerServe
 import kotlinx.coroutines.runBlocking
@@ -65,6 +66,7 @@ fun main(args: Array<String>) {
     when (args.firstOrNull()) {
         "labeller-export" -> return labellerExport(args.drop(1))
         "labeller-serve" -> return labellerServe(args.drop(1))
+        "fit" -> return fitMain(args.drop(1))
     }
     val opts = args.associate { arg ->
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg\n$USAGE" }
