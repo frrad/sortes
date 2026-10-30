@@ -112,8 +112,7 @@ class PageBlocksTest {
                     // (a sparse frame around other content).
                     val counts = box.overlaps(window) && cut > 0 && !(kept[b] == 0 && sparse && box.contains(window))
                     if (!counts) continue
-                    val u = minOf(unit, maxOf(1, blocks.inks[b] / 2))
-                    expected += minOf(1.0, cut.toDouble() / u)
+                    expected += minOf(1.0, cut.toDouble() / unit)
                 }
                 assertEquals(expected, padded.splitCost(x, y, w, h, gap, unit), 1e-9)
                 assertEquals(expectedSplit, padded.split(x, y, w, h, gap))
@@ -174,12 +173,11 @@ class PageBlocksTest {
     }
 
     @Test
-    fun aSmallBlockCostsAWholeSplitWhenCutInTwo() {
-        // An equation number of 12 cells: cutting 6 of them is a whole split even though the
-        // paper's unit is 100 cells.
+    fun aSmallBlocksCutIsAShareOfThePapersUnit() {
+        // An equation number of 12 cells: cutting 6 of them is 6/100 of a split at a unit of 100.
         val padded = PaddedPage(TestPage(60, 80).rect(10, 10, 48, 40).rect(54, 24, 58, 27).mask(), aspect)
-        assertEquals(1.0, padded.splitCost(0, 0, 56, 80, 2, 100), 1e-9)
-        assertEquals(3.0 / 6, padded.splitCost(0, 0, 57, 80, 2, 100), 1e-9)
+        assertEquals(6.0 / 100, padded.splitCost(0, 0, 56, 80, 2, 100), 1e-9)
+        assertEquals(3.0 / 100, padded.splitCost(0, 0, 57, 80, 2, 100), 1e-9)
     }
 
     @Test

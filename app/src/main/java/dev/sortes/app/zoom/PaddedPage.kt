@@ -120,11 +120,13 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     }
 
     /**
-     * The ink cut off one block at which it costs a whole split: [unit], or half the block's
-     * ink if that is less, so a small block (an equation number, a short heading) cut in two
-     * costs as much as a sliced paragraph, and at least one cell.
+     * The ink cut off one block at which it costs a whole split: [unit] for every block. (A
+     * per-block unit of half the block's ink, so that a small block cut in two cost a whole
+     * split, was tried and dropped: on a scan the small blocks are fragments and marks, and
+     * charging them whole moved Shannon's windows by a cell against the owner's labels.)
      */
-    private fun unitFor(b: Int, unit: Int): Int = minOf(unit, maxOf(1, blockInks[b] / 2))
+    @Suppress("UNUSED_PARAMETER")
+    private fun unitFor(b: Int, unit: Int): Int = unit
 
     /**
      * Block [b]'s share of a split for a window keeping [kept] of its ink: 0 if all of it or if

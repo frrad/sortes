@@ -55,8 +55,9 @@ of a text line). So:
 
 The cut is counted from each block's own cells (a summed-area table per block over its box),
 never from its box, so a frame around other content, or an L-shaped paragraph beside a figure,
-is charged only for its own ink. `splitInk` is capped at half the block's ink, so a small block
-(an equation number, a short heading) cut in two costs a whole split too.
+is charged only for its own ink. (Capping the unit at half the block's ink, so that a small
+block cut in two cost a whole split, was tried: it changed nothing on text papers and moved
+Shannon's windows by a cell, since a scan's small blocks are fragments and marks; dropped.)
 
 Costs for every window position (`PaddedPage.splitCosts`): a dense block (half its box or more
 inked: text) costs a whole split at every position whose window overlaps its box without
@@ -93,7 +94,8 @@ against the owner's zooms and 0 too tight.
 
 The search is local (`CropModel.autoByCost`): from the cut budget's own bound, steps of 0.01
 either way while the objective improves (allowing one worse step), then the scales either side
-of the best. Six to nine solves per paper, against the old search's two or three.
+of the best, then 0.01 either side of the best and 0.005 either side of the best of those. Ten
+solves per paper, against the old search's two or three.
 
 ### Two small things the labels asked for
 
@@ -183,19 +185,20 @@ window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 cha
 
 ### Runtime
 
-The block segmentation is one pass per page (cached per page), the split costs are linear in
-blocks and positions, and the cost-based zoom search solves 8–15 scales against 3–6 before.
-Host times for the analysis plus the automatic solve, not counting rendering (`summary.tsv`'s
-`millis`, `zoom-eval --columns` with a `config=tuned` column against the previous weights):
+`zoom-eval bench` (best of three, on the reader's sample of at most 60 pages, no rendering):
+the automatic zoom end to end, the number of scales it solves, one solve at a fixed scale, and
+the segmentation alone. "Before" is `TUNED` as it was before #36; "#36" the first block model;
+"now" this one.
 
-| paper | before | now |
-| --- | --- | --- |
-| Attention, 15 pages | 419 ms (first paper, warming up) | 357 ms |
-| GPT-3, 60 of 75 pages sampled | 93 ms | 470 ms |
-| Shannon, 45 pages | 79 ms | 330 ms |
-| PDLT, 60 of 237 pages sampled | 428 ms | 1178 ms |
+| paper | before: auto / solves / one solve | #36: auto / solves / one solve | now: auto / solves / one solve / segment |
+| --- | --- | --- | --- |
+| Attention, 15 pages | 33 ms / 2 / 6 ms | 161 ms / 11 / 39 ms | 79 ms / 10 / 16 ms / 5 ms |
+| GPT-3, 60 of 75 pages | 46 ms / 2 / 25 ms | 479 ms / 11 / 185 ms | 256 ms / 10 / 51 ms / 18 ms |
+| Shannon, 45 pages | 56 ms / 3 / 23 ms | 373 ms / 11 / 142 ms | 198 ms / 10 / 41 ms / 12 ms |
+| PDLT, 60 of 237 pages | 70 ms / 2 / 26 ms | 735 ms / 11 / 164 ms | 468 ms / 11 / 53 ms / 18 ms |
 
-So three to five times the previous solve, almost all of it the extra scales the zoom search
-visits. On the tablet, where PDLT's solve took 386 ms before, expect about a second on a long
-book, on top of the 0.6–0.8 s of rendering. If that matters, the coarse step of the zoom search
-is the knob (`CropModel.COARSE_STEP`).
+Half of #36. What remains over the old model is ten solves against two (the cost-based zoom
+has to look at the scales; the cut budget bisected on a cheap per-page bound) and about twice
+the work per solve (the block costs). On the tablet, where PDLT's solve took 386 ms before,
+expect about 1.5 s on a long book, on top of the 0.6–0.8 s of rendering; the zoom panel's curve
+is unaffected (it solves single scales).

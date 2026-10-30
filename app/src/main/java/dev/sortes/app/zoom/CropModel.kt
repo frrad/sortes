@@ -268,8 +268,9 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
      * only margins go, then climbs once windows cut and split the pages' blocks, with a step
      * wherever a page's blocks start to fit, so the search is a coarse grid rather than a walk:
      * every [COARSE_STEP]th scale (0.02) from [GRID_TIGHTER] steps (0.04) tighter than the cut
-     * budget's [Prepared.bound] to [GRID_LOOSER] steps (0.06) looser, then the scales either side
-     * of the best: eight solves. On the corpus the optimum is within 0.02 of the bound.
+     * budget's [Prepared.bound] to [GRID_LOOSER] steps (0.06) looser, then the scales 0.01 either
+     * side of the best, then 0.005 either side of the best of those: ten solves. On the corpus
+     * the optimum is within 0.02 of the bound.
      */
     private suspend fun Prepared.autoByCost(scales: FloatArray): ModelCrops {
         val solved = HashMap<Int, ModelCrops>()
@@ -287,9 +288,13 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         }
         // Tighter is a larger index.
         for (i in (bound - GRID_LOOSER)..(bound + GRID_TIGHTER) step COARSE_STEP) consider(i)
+        // Then halve the step twice around the best so far.
         val coarse = best
-        consider(coarse - 1)
-        consider(coarse + 1)
+        consider(coarse - 2)
+        consider(coarse + 2)
+        val fine = best
+        consider(fine - 1)
+        consider(fine + 1)
         val loosened = scales[best] + weights.autoMargin.toFloat()
         val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f }
             ?: if (loosened > scales[0]) 0 else scales.lastIndex
