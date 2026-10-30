@@ -1,5 +1,5 @@
 {
-  "comment": "Three windows with breaks in the pattern (4, 16, 18 on a third window; 6 on the odd pages' one): the margin notes make nibbles that move windows. Prefer the two-window alternation.",
+  "comment": "Three windows: the even pages' window and, 45 pt lower, one for pages 4, 16 and 18 whose margin figures hang below the body and would otherwise be cut through. Defensible; the alternation is broken only there. Page 6 shifts 60 pt right to keep its wide figure whole, leaving the text off-centre.",
   "idealScale": null,
   "labelledAgainst": {
     "algorithm": "tuned",
@@ -28,20 +28,16 @@
   "labeller": "agent",
   "pages": {
     "16": {
-      "comment": "third window",
+      "comment": "third window, as page 4",
       "idealCentre": null,
-      "tags": [
-        "window-jumped"
-      ],
-      "verdict": "bad"
+      "tags": [],
+      "verdict": null
     },
     "4": {
-      "comment": "third window; the margin figure is cut on the right",
+      "comment": "third window, 45 pt lower, keeps the margin figure whole",
       "idealCentre": null,
-      "tags": [
-        "window-jumped"
-      ],
-      "verdict": "bad"
+      "tags": [],
+      "verdict": null
     },
     "6": {
       "comment": "shifted 60 pt right to keep the wide figure whole; text off-centre",

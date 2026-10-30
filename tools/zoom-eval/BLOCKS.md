@@ -28,11 +28,15 @@ Two ideas, both general, no paper- or page-specific rules.
 
 ### Blocks: keep or drop whole things
 
-Each page is segmented into **blocks** (`PageBlocks`): connected pieces of ink, where ink
-within `blockGap` = 2 blank cells (about 6 pt) belongs together. At the analysis resolution
-(about 3 pt per cell) that joins the lines of a paragraph and the paragraphs of a section, and
-leaves headings, figures, captions, tables, footnotes and columns as blocks of their own. A block
-is its bounding box; a connected piece has ink in every row and column of its box.
+Each page is segmented into **blocks** (`PageBlocks`): runs of ink along a row with at most
+`blockGap` = 2 blank cells (about 6 pt) between them are one piece, and pieces in rows at most
+3 apart that come within 3 columns of each other are one block (a union-find over the runs: a
+few hundred microseconds a page). At the analysis resolution (about 3 pt per cell) that joins
+the lines of a paragraph and the paragraphs of a section, and leaves headings, figures,
+captions, tables, footnotes and columns as blocks of their own. A block of fewer than 8 cells
+(`MIN_BLOCK_INK`: a speck of scan dirt, a stray dot, about half a glyph) is ink to cut or keep
+but not a thing to keep whole; without that, Shannon's specks beside the text moved its windows
+by a cell.
 
 A window **splits** a block when it overlaps the block's box without containing it. Each split
 block costs
@@ -49,14 +53,30 @@ of a text line). So:
   saturation the first version of this model slid a whole paper's window 60 pt, or opened a
   second window, to avoid such nibbles.
 
-Costs for every window position come from each block's box in O(blocks + positions per block)
-(`PaddedPage.splitCosts`), so the solver's precompute barely changes. Kept ink of a block is
-counted over its box with the page's summed-area table, which under-counts the cut where two
-boxes overlap (an L-shaped paragraph beside a figure); that is rare and errs on the cheap side.
+The cut is counted from each block's own cells (a summed-area table per block over its box),
+never from its box, so a frame around other content, or an L-shaped paragraph beside a figure,
+is charged only for its own ink. (Capping the unit at half the block's ink, so that a small
+block cut in two cost a whole split, was tried: it changed nothing on text papers and moved
+Shannon's windows by a cell, since a scan's small blocks are fragments and marks; dropped.)
+
+Costs for every window position (`PaddedPage.splitCosts`): a dense block (half its box or more
+inked: text) costs a whole split at every position whose window overlaps its box without
+containing it, filled through a 2-D difference array, except in a thin ring around the
+containing positions where the window cuts fewer than the block's unit off one side and the
+share is computed exactly; a sparse block (a figure, a frame) is computed exactly at every
+overlapping position, row by row from a column profile, since a window inside its box can keep
+none of its cells. The work is about linear in the positions plus the blocks' rings, plus the
+sparse blocks' overlap rectangles.
 
 With blocks, the convex per-page term ε (which let a page losing a lot earn its own window) is
 redundant and off: a page earns its own window when the shared one would split its blocks by
 more than a window costs (γ + δ₂·2 + δ). That is exactly BatchNorm p11.
+
+Pages outside a long paper's 60-page sample (`SampledPaper.cropFor`) follow the same rule: the
+shared window is kept if it cuts at most the allowance *and* no block; otherwise the page's own
+best window takes over when its per-page cost plus γ is lower. Before, that gate was by cut ink
+alone, so a shared window slicing a line under the 1 % allowance was kept, and a clean own window
+that dropped a footer lost to a slicing shared one.
 
 ### Zoom from the same objective
 
@@ -72,9 +92,10 @@ Chinchilla p1), and a couple of sliced figures in 15 pages can't be (Adam). `aut
 then keeps the content a few points off the screen edge; 0.02 was consistently too loose
 against the owner's zooms and 0 too tight.
 
-The search is local (`CropModel.autoByCost`): from the cut budget's own bound, coarse steps of
-0.02 either way while the objective improves (allowing two worse steps), then every scale around
-the best. Eight to fifteen solves per paper, against the old search's three to six.
+The search is local (`CropModel.autoByCost`): from the cut budget's own bound, steps of 0.01
+either way while the objective improves (allowing one worse step), then the scales either side
+of the best, then 0.01 either side of the best and 0.005 either side of the best of those. Ten
+solves per paper, against the old search's two or three.
 
 ### Two small things the labels asked for
 
@@ -147,33 +168,37 @@ is no held-out round among them. Round 4 (six papers the owner is labelling on t
 | at the automatic zoom, `TUNED` before | 25 (Shannon 14, SuperGLUE 5, MMLU 2, Adam, Attention, GDL, NTK) |
 | at the automatic zoom, `TUNED` now | **0** |
 | at a manual zoom of 0.7, before | 491 |
-| at a manual zoom of 0.7, now | **286** |
+| at a manual zoom of 0.7, now | **279** |
 
 At 0.7 the body of a letter page doesn't fit, so some line must be sliced on most text pages;
 the block term puts the edge between paragraphs or sections where there is one to use (the
 "at-0.7" board shows both placements side by side).
 
 Zooms moved by at most 0.02 on any paper: tighter on 12, looser on 8, unchanged on 9. One-off windows
-appear on BatchNorm p11 (the table) and LDM p20 (a wide figure); GDL takes three windows
-instead of two (`labels/agent/`), the one visible regression. A dearer window doesn't fix it
-without losing what the owner asked for: γ 0.15 or 0.2 takes away BatchNorm p11's window (99 of
-107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 changes nothing there.
+appear on BatchNorm p11 (the table) and LDM p20 (a wide figure). GDL takes three windows
+instead of two: the third is the even pages' window 45 pt lower, for three pages (4, 16, 18)
+whose margin figures hang below the body and would be cut through by the even pages' window;
+the owner's round-2 complaint on GDL was exactly such cut content (pp. 4 and 8), so this is the
+model choosing the figure over staying put, as designed. A dearer window doesn't change it
+without losing what the owner asked for elsewhere: γ 0.15 or 0.2 takes away BatchNorm p11's
+window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 changes nothing.
 
 ### Runtime
 
-The block segmentation is one pass per page (cached per page), the split costs are linear in
-blocks and positions, and the cost-based zoom search solves 8–15 scales against 3–6 before.
-Host times for the analysis plus the automatic solve, not counting rendering (`summary.tsv`'s
-`millis`, `zoom-eval --columns` with a `config=tuned` column against the previous weights):
+`zoom-eval bench` (best of three, on the reader's sample of at most 60 pages, no rendering):
+the automatic zoom end to end, the number of scales it solves, one solve at a fixed scale, and
+the segmentation alone. "Before" is `TUNED` as it was before #36; "#36" the first block model;
+"now" this one.
 
-| paper | before | now |
-| --- | --- | --- |
-| Attention, 15 pages | 419 ms (first paper, warming up) | 357 ms |
-| GPT-3, 60 of 75 pages sampled | 93 ms | 470 ms |
-| Shannon, 45 pages | 79 ms | 330 ms |
-| PDLT, 60 of 237 pages sampled | 428 ms | 1178 ms |
+| paper | before: auto / solves / one solve | #36: auto / solves / one solve | now: auto / solves / one solve / segment |
+| --- | --- | --- | --- |
+| Attention, 15 pages | 33 ms / 2 / 6 ms | 161 ms / 11 / 39 ms | 79 ms / 10 / 16 ms / 5 ms |
+| GPT-3, 60 of 75 pages | 46 ms / 2 / 25 ms | 479 ms / 11 / 185 ms | 256 ms / 10 / 51 ms / 18 ms |
+| Shannon, 45 pages | 56 ms / 3 / 23 ms | 373 ms / 11 / 142 ms | 198 ms / 10 / 41 ms / 12 ms |
+| PDLT, 60 of 237 pages | 70 ms / 2 / 26 ms | 735 ms / 11 / 164 ms | 468 ms / 11 / 53 ms / 18 ms |
 
-So three to five times the previous solve, almost all of it the extra scales the zoom search
-visits. On the tablet, where PDLT's solve took 386 ms before, expect about a second on a long
-book, on top of the 0.6–0.8 s of rendering. If that matters, the coarse step of the zoom search
-is the knob (`CropModel.COARSE_STEP`).
+Half of #36. What remains over the old model is ten solves against two (the cost-based zoom
+has to look at the scales; the cut budget bisected on a cheap per-page bound) and about twice
+the work per solve (the block costs). On the tablet, where PDLT's solve took 386 ms before,
+expect about 1.5 s on a long book, on top of the 0.6–0.8 s of rendering; the zoom panel's curve
+is unaffected (it solves single scales).

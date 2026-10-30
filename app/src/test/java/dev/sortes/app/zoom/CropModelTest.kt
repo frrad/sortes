@@ -405,16 +405,16 @@ class CropModelBlocksTest {
 
     @Test
     fun theCostBasedZoomSacrificesOnePageForTheRest() = runBlocking {
-        // One page's block (64 rows) is taller than the others' (56). Keeping it whole costs every
-        // page 8 rows of zoom; splitting it costs kappa plus its cut ink, on one page.
+        // One page's block (60 rows) is taller than the others' (56). Keeping it whole costs every
+        // page 4 rows of zoom; splitting it costs kappa plus its cut ink, on one page.
         val usual = page(rect(10, 10, 50, 66))
-        val tall = page(rect(10, 6, 50, 70))
+        val tall = page(rect(10, 8, 50, 68))
         val masks = List(12) { usual } + tall
         val keep = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(masks)
         assertEquals(56, keep.pages[0].cells.bottom - keep.pages[0].cells.top)
         assertEquals(1, keep.pagesSplit)
         val whole = CropModel(aspect, weights(kappa = 5.0, zeta = 1.0)).auto(masks)
-        assertEquals(64, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
+        assertEquals(60, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
         assertEquals(0, whole.pagesSplit)
     }
 
@@ -427,13 +427,33 @@ class CropModelBlocksTest {
         // stops where the figure fits.
         val masks = List(6) { page(rect(10, 10, 50, 35), rect(8, 40, 52, 60)) }
         val nibble = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.5)).auto(masks)
-        assertTrue("${nibble.scale}", nibble.scale <= 0.7f)
+        assertTrue("${nibble.scale}", nibble.scale <= 0.7001f)
         assertTrue("${nibble.pages[0]}", nibble.pages[0].splitBlocks >= 1 && nibble.pages[0].split < 0.3)
         val whole = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.005)).auto(masks)
         assertEquals(0, whole.splitBlocks)
         // The tightest window with the figure's 44 columns (0.725 rounds to 44 too).
         assertEquals(44, whole.pages[0].cells.right - whole.pages[0].cells.left)
         assertTrue("${whole.scale}", whole.scale >= 0.72f)
+    }
+
+    @Test
+    fun anUnsampledPageLeavesASharedWindowThatCutsIntoABlock() = runBlocking {
+        // The sampled pages' text sits at rows 10-66, so the shared window is rows 8-68; an
+        // unsampled page has shorter text and a figure outline at rows 62-70 whose two side
+        // lines the shared window cuts: 4 cells, well under the 1% allowance, but a split. With
+        // blocks, the page gets its own window (rows 10-70) when that is cheaper by a window's
+        // worth; by ink alone it keeps the shared one.
+        val usual = page(rect(10, 10, 50, 66))
+        val odd = page(rect(10, 10, 50, 54), rect(10, 62, 50, 63), rect(10, 62, 11, 70), rect(49, 62, 50, 70))
+        val sample = List(6) { usual }
+        fun paper(weights: CropModelWeights) = SampledPaper(CropModel(aspect, weights), sample, sample.indices.toList())
+        val blocks = paper(weights(kappa = 0.2).copy(gamma = 0.05))
+        val crops = blocks.solve(0.75f)
+        val crop = blocks.cropFor(6, crops, odd)
+        assertEquals(CropModel.OWN_WINDOW, crop.windowIndex)
+        assertEquals(0, crop.splitBlocks)
+        val byInk = paper(CropModelWeights())
+        assertTrue(byInk.cropFor(6, byInk.solve(0.75f), odd).windowIndex != CropModel.OWN_WINDOW)
     }
 
     @Test

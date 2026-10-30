@@ -55,16 +55,21 @@ class SampledPaper(
      * Page [index]'s crop in [crops]: the model's own choice for a sampled page. A page outside
      * the sample, given its [mask] (without ignorable ink), takes the window that costs it least,
      * ties going to the window of the nearest sampled page on the same side. If even that window
-     * cuts more than [CropModelWeights.allowance] of its ink (a landscape table, an offset
-     * figure the sample didn't see), it gets its own best window at the same scale instead.
+     * cuts more than [CropModelWeights.allowance] of its ink, or (with blocks on) cuts into a
+     * block (a landscape table, an offset figure the sample didn't see), it may get its own best
+     * window at the same scale instead: with blocks, when that costs less by the model's own
+     * per-page cost plus a window's worth ([CropModelWeights.gamma]); without, when it cuts less.
      */
     fun cropFor(index: Int, crops: ModelCrops, mask: InkMask?): PageCrop {
         val analysed = sampled(index)
         if (analysed >= 0) return crops.pages[analysed]
         requireNotNull(mask) { "Page $index wasn't sampled: its mask is needed" }
+        val weights = model.weights
         val shared = model.assign(mask, crops, referenceInk, preferred = preferredWindow(index, crops))
-        if (shared.pageCut <= model.weights.allowance) return shared
-        return model.ownCrop(mask, crops.scale, referenceInk).takeIf { it.pageCut < shared.pageCut } ?: shared
+        if (shared.pageCut <= weights.allowance && shared.split == 0.0) return shared
+        val own = model.ownCrop(mask, crops.scale, referenceInk)
+        val better = if (weights.kappa > 0.0) model.pageCost(own) + weights.gamma < model.pageCost(shared) else own.pageCut < shared.pageCut
+        return if (better) own else shared
     }
 
     /** For a page that wasn't analysed: the window of the nearest analysed page on the same side. */
