@@ -1,0 +1,60 @@
+{
+  "comment": "crop was too loose, not well balanced. i fixed a few for you",
+  "idealScale": 0.795,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "f80ae4ffc214",
+    "scale": 0.845,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": {
+        "x": 158.6,
+        "y": 311.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 207.3,
+        "y": 306.6
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 158.6,
+        "y": 311.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": {
+        "x": 198.6,
+        "y": 296.9
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "shannon1948",
+  "schema": 1
+}

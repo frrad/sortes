@@ -1,0 +1,60 @@
+{
+  "comment": "overall zoom level looks good, but some misses on (primarily left-right) padding",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "f80ae4ffc214",
+    "scale": 0.855,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "padding uneven both lr and up -down",
+      "idealCentre": {
+        "x": 308.3,
+        "y": 385
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "11": {
+      "comment": "cut off some table unecessarily!",
+      "idealCentre": {
+        "x": 329.7,
+        "y": 378.6
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "5": {
+      "comment": "little off left-right",
+      "idealCentre": {
+        "x": 310.2,
+        "y": 379
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "8": {
+      "comment": "",
+      "idealCentre": {
+        "x": 307.2,
+        "y": 382
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "1502.03167",
+  "schema": 1
+}

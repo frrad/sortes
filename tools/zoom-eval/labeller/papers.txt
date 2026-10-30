@@ -1,7 +1,8 @@
 # The papers in the labelling set, one corpus.tsv id per line, in the order the labeller shows them.
-1706.03762
-2311.08105
-1502.03167
-2006.11239
+# Round 2. Round 1 (1706.03762, 2311.08105, 1502.03167, 2006.11239, shannon1948) is in labels/.
 2106.10165-p1-40
-shannon1948
+1810.04805
+1512.03385
+2003.08934
+2112.10752
+2104.13478-p20-49

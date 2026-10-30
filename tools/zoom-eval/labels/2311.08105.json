@@ -1,6 +1,6 @@
 {
   "comment": "",
-  "idealScale": 0.785,
+  "idealScale": 0.825,
   "labelledAgainst": {
     "algorithm": "reader",
     "aspect": 0.75,
@@ -19,22 +19,82 @@
   },
   "pages": {
     "1": {
-      "comment": "i hesitate to say this, but might not be tall enough? ideally we get both google and the full footnote. though mb ok to cut off google depending on how other pages look",
+      "comment": "i hesitate to say this, but might not be tall enough? ideally we get both google and the full footnote. though mb ok to cut off google depending on how other pages look. \n\nat this higher zoom level i really don't like that we lost taht footnote but if there are no more like this might be worth it",
       "idealCentre": {
-        "x": 302.6,
-        "y": 430.7
+        "x": 294.9,
+        "y": 424.2
       },
       "tags": [],
       "verdict": null
     },
-    "2": {
+    "10": {
       "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "11": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "12": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "13": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "14": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "15": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "16": {
+      "comment": "yea the 1st page makes me a lil sad but the rest looks really good at this zoom / box",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "2": {
+      "comment": "ok opposite here, i zoomed in much tighter. this page looks great at this zoom leve and I'm willing to sacrifice the 1st page a bit i think",
       "idealCentre": {
-        "x": 295.9,
-        "y": 434.7
+        "x": 295.6,
+        "y": 422.4
       },
       "tags": [],
       "verdict": null
+    },
+    "7": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "8": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "9": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
     }
   },
   "paper": "2311.08105",

@@ -22,7 +22,7 @@
       "comment": "ideally the red text at the top and the footnote at bottom woudl both be visible. ",
       "idealCentre": {
         "x": 312.3,
-        "y": 410.7
+        "y": 415.7
       },
       "tags": [],
       "verdict": null
@@ -30,7 +30,7 @@
     "2": {
       "comment": "this is good. could mb be slightly tighter, but good job cutting off that page number",
       "idealCentre": {
-        "x": 311.2,
+        "x": 306.2,
         "y": 397.8
       },
       "tags": [],
@@ -59,6 +59,15 @@
       "idealCentre": {
         "x": 307.5,
         "y": 396.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "6": {
+      "comment": "",
+      "idealCentre": {
+        "x": 306,
+        "y": 404
       },
       "tags": [],
       "verdict": null

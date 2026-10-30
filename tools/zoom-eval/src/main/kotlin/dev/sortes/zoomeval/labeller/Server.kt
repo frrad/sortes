@@ -87,6 +87,7 @@ class LabellerServer(
             "css" -> "text/css; charset=utf-8"
             "json" -> "application/json; charset=utf-8"
             "png" -> "image/png"
+            "txt" -> "text/plain; charset=utf-8"
             else -> "application/octet-stream"
         }
         // Labels change under the page; exports and the page itself only on re-export.

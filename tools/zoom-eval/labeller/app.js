@@ -408,7 +408,13 @@ async function start() {
     b.addEventListener("click", () => toggleTag(tag));
     return b;
   }));
-  state.papers = await fetch("/data/papers.json").then((r) => r.json());
+  // Exported papers, in the order of the labelling set (papers.txt); others aren't shown.
+  const exported = await fetch("/data/papers.json").then((r) => r.json());
+  const set = (await fetch("/papers.txt").then((r) => r.ok ? r.text() : ""))
+    .split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  state.papers = set.length
+    ? set.map((id) => exported.find((p) => p.id === id)).filter(Boolean)
+    : exported;
   renderPaperTabs();
   // Each paper's reviewed count, for the tabs.
   await Promise.all(state.papers.map(async (p) => {
