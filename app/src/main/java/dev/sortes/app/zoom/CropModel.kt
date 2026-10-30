@@ -3,12 +3,18 @@ package dev.sortes.app.zoom
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Weights of the crop model's cost. The cost of giving each page p one of K windows is
  *
- *     Σ_p [ alpha·cut_p + beta·off_p + epsilon·max(0, pageCut_p − allowance)² ]
+ *     Σ_p [ alpha·cut_p + beta·off_p + epsilon·max(0, pageCut_p − allowance)² + kappa·split_p ]
+ *
+ * where split_p sums, over the blocks the window cuts through, the ink cut off each as a share of
+ * [splitInk] of the paper's median page, capped at 1 per block,
  *         + gamma·(K − 1) + delta·switches + delta2·breaks
+ *
+ * and, when [zeta] is set, the automatic zoom minimises that cost per page plus zeta·scale.
  *
  * See tools/zoom-eval/SPEC.md for each term, and tools/zoom-eval/README.md for how to tune these
  * on the review board. The defaults here are what the reader uses.
@@ -36,6 +42,26 @@ data class CropModelWeights(
     val delta2: Double = 0.02,
     /** Most windows a paper may use. */
     val maxWindows: Int = 3,
+    /**
+     * Per block a window's edge cuts through (one the window overlaps but doesn't contain), in
+     * full once the ink cut off the block reaches [splitInk]. A whole block kept or dropped costs
+     * nothing here, only its ink; a figure, table or paragraph cut through costs this on top,
+     * and a nibble off a block's edge a share of it. 0 turns blocks off.
+     */
+    val kappa: Double = 0.0,
+    /** Blank cells that may separate the ink of one block ([PageBlocks]). */
+    val blockGap: Int = 2,
+    /**
+     * The ink cut off one block at which the cut costs the whole [kappa], as a share of the
+     * paper's median ink per page: 0.005 is about a quarter of a text line.
+     */
+    val splitInk: Double = 0.005,
+    /**
+     * The automatic zoom's legibility reward: when positive, the zoom is the scale minimising the
+     * cost per page plus zeta·scale, instead of the tightest scale within the cut budget
+     * ([autoMaxLost]). A tighter zoom then pays for itself in cut and split blocks.
+     */
+    val zeta: Double = 0.0,
     /** Share of the paper's ink the automatic zoom may cut off. */
     val autoMaxLost: Double = CropAnalysis.AUTO_MAX_LOST.toDouble(),
     /** How much looser (in scale) than the tightest acceptable scale the automatic zoom is. */
@@ -53,10 +79,12 @@ data class CropModelWeights(
     val autoMaxPageCut: Double = 1.0,
 ) {
     init {
-        require(listOf(alpha, beta, epsilon, allowance, gamma, delta, delta2).all { it >= 0.0 && it.isFinite() }) {
+        require(listOf(alpha, beta, epsilon, allowance, gamma, delta, delta2, kappa, zeta).all { it >= 0.0 && it.isFinite() }) {
             "Weights must be finite and non-negative: $this"
         }
         require(maxWindows >= 1) { "maxWindows must be at least 1: $maxWindows" }
+        require(blockGap >= 0) { "blockGap must not be negative: $blockGap" }
+        require(splitInk > 0.0 && splitInk.isFinite()) { "Bad splitInk: $splitInk" }
         require(autoMaxLost > 0.0 && autoMaxLost < 1.0) { "Bad autoMaxLost: $autoMaxLost" }
         require(autoMargin in -0.5..0.5) { "Bad autoMargin: $autoMargin" }
         require(zoomIgnoredPages >= 0) { "Bad zoomIgnoredPages: $zoomIgnoredPages" }
@@ -83,6 +111,10 @@ data class PageCrop(
     /** pageCut_p: cut cells / this page's ink (0 for a blank page). */
     val pageCut: Double,
     val offCentre: Double,
+    /** Blocks the window cuts through (0 unless [CropModelWeights.kappa] is set). */
+    val splitBlocks: Int = 0,
+    /** split_p: those blocks' cut shares, each capped at 1 (0 unless [CropModelWeights.kappa] is set). */
+    val split: Double = 0.0,
 )
 
 /** A paper's crops: one scale, a few windows, and each analysed page's window and costs. */
@@ -107,9 +139,19 @@ data class ModelCrops(
     val cutTerm: Double get() = weights.alpha * pages.sumOf { it.cut }
     val offTerm: Double get() = weights.beta * pages.sumOf { it.offCentre }
     val pageCutTerm: Double get() = pages.sumOf { weights.excess(it.pageCut) }
+    val splitTerm: Double get() = weights.kappa * pages.sumOf { it.split }
     val windowTerm: Double get() = weights.gamma * (k - 1)
     val switchTerm: Double get() = weights.delta * switches + weights.delta2 * breaks
-    val total: Double get() = cutTerm + offTerm + pageCutTerm + windowTerm + switchTerm
+    val total: Double get() = cutTerm + offTerm + pageCutTerm + splitTerm + windowTerm + switchTerm
+
+    /** Blocks cut through, over all pages. */
+    val splitBlocks: Int get() = pages.sumOf { it.splitBlocks }
+
+    /** Pages with a block cut through. */
+    val pagesSplit: Int get() = pages.count { it.splitBlocks > 0 }
+
+    /** What the automatic zoom minimises when [CropModelWeights.zeta] is set: cost per page plus zeta·scale. */
+    val zoomObjective: Double get() = total / pages.size + weights.zeta * scale
 }
 
 private fun CropModelWeights.excess(pageCut: Double): Double {
@@ -184,6 +226,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         suspend fun auto(scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops {
             require(scales.isNotEmpty() && scales.all { it > 0f && it <= 1f }) { "Bad scales" }
             if (totalInk == 0L) return solve(scales[0])
+            if (weights.zeta > 0.0) return autoByCost(scales)
             suspend fun fitsAt(i: Int) = withinBudget(solve(scales[i]).pages.map { it.cutCells.toLong() })
             // Index of the tightest scale known to fit (0, the whole page, always does), and of
             // the loosest known not to, if any.
@@ -211,6 +254,50 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
 
     /** [masks] prepared for solving at several scales. */
     fun prepare(masks: List<InkMask>): Prepared = Prepared(masks)
+
+    /**
+     * Crops at the scale minimising [ModelCrops.zoomObjective] over [scales] (loosest first),
+     * loosened by [CropModelWeights.autoMargin]. The objective falls as the zoom tightens while
+     * only margins go, then climbs once windows cut and split the pages' blocks, so the search is
+     * local: from the cut budget's [Prepared.bound] it walks in coarse steps ([COARSE_STEP]
+     * scales) whichever way improves, allowing [LOOKAHEAD] worse steps to get past a bump, then
+     * tries every scale around the best coarse one.
+     */
+    private suspend fun Prepared.autoByCost(scales: FloatArray): ModelCrops {
+        val solved = HashMap<Int, ModelCrops>()
+        suspend fun at(i: Int): ModelCrops = solved.getOrPut(i) { solve(scales[i]) }
+        suspend fun objective(i: Int) = at(i).zoomObjective
+        var best = bound(scales)
+        var bestValue = objective(best)
+        for (direction in intArrayOf(-1, 1)) {
+            var i = best
+            var worse = 0
+            while (worse < LOOKAHEAD) {
+                i += direction * COARSE_STEP
+                if (i !in scales.indices) break
+                val v = objective(i)
+                if (v < bestValue - EPS) {
+                    best = i
+                    bestValue = v
+                    worse = 0
+                } else {
+                    worse++
+                }
+            }
+        }
+        for (i in (best - COARSE_STEP + 1)..(best + COARSE_STEP - 1)) {
+            if (i !in scales.indices || i == best) continue
+            val v = objective(i)
+            if (v < bestValue - EPS) {
+                best = i
+                bestValue = v
+            }
+        }
+        val loosened = scales[best] + weights.autoMargin.toFloat()
+        val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f }
+            ?: if (loosened > scales[0]) 0 else scales.lastIndex
+        return at(chosen)
+    }
 
     /** Crops at the automatic scale; see [Prepared.auto]. */
     suspend fun auto(masks: List<InkMask>, scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops =
@@ -240,11 +327,13 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         val rows = page.height - h + 1
         val offCentres = DoubleArray(cols * rows)
         page.offCentres(w, h, offCentres)
+        val splits = DoubleArray(cols * rows)
+        if (weights.kappa > 0.0) page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), splits)
         var best = 0
         var bestCost = Double.MAX_VALUE
         for (pos in 0 until cols * rows) {
             val cut = page.inkCount - page.inside(pos % cols, pos / cols, w, h)
-            val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] +
+            val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] + weights.kappa * splits[pos] +
                 if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)
             if (c < bestCost - EPS) {
                 bestCost = c
@@ -278,7 +367,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
             val (x, y) = page.positionOf(crops.windows[j])
             pageCrop(page, referenceInk, j, x, y, crops.scale)
         }
-        fun cost(c: PageCrop) = weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut)
+        fun cost(c: PageCrop) = weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split
         return options.minWith(compareBy<PageCrop> { cost(it) }.thenBy { if (it.windowIndex == preferred) 0 else 1 })
     }
 
@@ -294,8 +383,13 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
             cut = cut / refInk,
             pageCut = if (page.inkCount == 0) 0.0 else cut.toDouble() / page.inkCount,
             offCentre = page.offCentre(x, y, w, h),
+            splitBlocks = if (weights.kappa > 0.0) page.split(x, y, w, h, weights.blockGap) else 0,
+            split = if (weights.kappa > 0.0) page.splitCost(x, y, w, h, weights.blockGap, splitUnit(refInk)) else 0.0,
         )
     }
+
+    /** Cells of ink cut off one block at which it costs the whole kappa. */
+    private fun splitUnit(refInk: Double): Int = (weights.splitInk * refInk).roundToInt().coerceAtLeast(1)
 
     /** Scratch space reused across solves at several scales, so they don't each allocate it. */
     internal class Buffer {
@@ -328,6 +422,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
 
         suspend fun precompute() {
             var offCentres = DoubleArray(0)
+            var splits = DoubleArray(0)
             for (p in pages.indices) {
                 currentCoroutineContext().ensureActive()
                 val page = pages[p]
@@ -342,6 +437,10 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                 val size = pageCols * (page.height - h + 1)
                 if (offCentres.size < size) offCentres = DoubleArray(size)
                 page.offCentres(w, h, offCentres)
+                if (weights.kappa > 0.0) {
+                    if (splits.size < size) splits = DoubleArray(size)
+                    page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits)
+                }
                 val reference = (page.maskWidth to page.maskHeight) == refSize
                 for (pos in 0 until positions) {
                     val x: Int
@@ -357,7 +456,8 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                     val cut = page.inkCount - page.inside(x, y, w, h)
                     cost[row + pos] = weights.alpha * cut / refInk +
                         weights.beta * offCentres[y * pageCols + x] +
-                        weights.excess(cut.toDouble() / page.inkCount)
+                        weights.excess(cut.toDouble() / page.inkCount) +
+                        (if (weights.kappa > 0.0) weights.kappa * splits[y * pageCols + x] else 0.0)
                 }
             }
         }
@@ -553,6 +653,8 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
 
     companion object {
         private const val MAX_ROUNDS = 20
+        private const val COARSE_STEP = 4
+        private const val LOOKAHEAD = 2
         private const val MAX_SEEDS = 6
         private const val EPS = 1e-12
 

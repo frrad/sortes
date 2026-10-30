@@ -31,15 +31,27 @@ data class CropConfig(
         val READER = CropConfig("reader", IGNORABLE_INK_RULES, furniture = false, CropModelWeights())
 
         /**
-         * Tuned on the owner's labels, rounds 1-3: ignore isolated marks and page furniture too,
-         * and make a second window cost more (gamma 0.1), so a half-empty page keeps the paper's
-         * window. See tools/zoom-eval/SPEC.md.
+         * Tuned on the owner's labels, rounds 1-3 (tools/zoom-eval/BLOCKS.md): ignores isolated
+         * marks and page furniture; the block-aware cost (kappa, splitInk) so windows keep or drop
+         * figures, tables and paragraphs whole rather than cut through them; the cost-based zoom
+         * (zeta) with a small margin; stronger centring (beta) and a dearer second window (gamma),
+         * so a half-empty page keeps the paper's window; a small cost per switch (delta) against
+         * jitter; no per-page convex term (epsilon), since blocks do its job.
          */
         val TUNED = CropConfig(
             "tuned",
             IGNORABLE_INK_RULES + IsolatedMarks,
             furniture = true,
-            CropModelWeights(gamma = 0.1),
+            CropModelWeights(
+                beta = 0.5,
+                epsilon = 0.0,
+                gamma = 0.1,
+                delta = 0.005,
+                kappa = 0.2,
+                splitInk = 0.005,
+                zeta = 0.5,
+                autoMargin = 0.01,
+            ),
         )
 
         val ALL = listOf(READER, TUNED)

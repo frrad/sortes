@@ -1,5 +1,6 @@
 package dev.sortes.zoomeval
 
+import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.CropModelWeights
 import dev.sortes.app.zoom.InkMask
@@ -56,7 +57,7 @@ class ColumnResult(
 }
 
 private val USAGE = """
-    Usage: zoom-eval labeller-export ... | labeller-serve ... (see labeller/README.md)
+    Usage: zoom-eval labeller-export ... | labeller-serve ... (see labeller/README.md) | fit ... | review ...
            zoom-eval [--corpus=corpus.tsv] [--columns=columns.tsv] [--pdfs=DIR] [--out=DIR]
                      [--aspect=W/H] [--scale=S] [--weights=FILE] [--<weight>=value ...] [--only=id,id]
     Weights: ${WEIGHT_NAMES.joinToString(", ")}
@@ -67,6 +68,7 @@ fun main(args: Array<String>) {
         "labeller-export" -> return labellerExport(args.drop(1))
         "labeller-serve" -> return labellerServe(args.drop(1))
         "fit" -> return fitMain(args.drop(1))
+        "review" -> return reviewMain(args.drop(1))
     }
     val opts = args.associate { arg ->
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg\n$USAGE" }
@@ -121,8 +123,10 @@ private suspend fun evaluate(
                 pdf.renderMask(i, w, h, column.threshold)
             }
         }
-        val masks = raw.map { it.withoutIgnorableInk() }
-        val w = weights.with(column.overrides)
+        // A column may name a CropConfig (config=tuned): its rules and weights, then its other overrides.
+        val config = column.overrides["config"]?.let { CropConfig.named(it) }
+        val masks = config?.prepare(raw) ?: raw.map { it.withoutIgnorableInk() }
+        val w = (config?.weights ?: weights).with(column.overrides - "config")
         val started = System.nanoTime()
         val crops = cropsFor(column.algorithm, masks, CropModel(aspect, w), scale)
         ColumnResult(column, w, crops, masks, raw, (System.nanoTime() - started) / 1_000_000)
@@ -150,12 +154,12 @@ class Report(private val out: File, private val aspect: Float, private val weigh
 
     /** Every page's window and terms under every column. */
     private fun pageTsv(results: List<ColumnResult>) = buildString {
-        appendLine("page\tcolumn\twindow\tleft\ttop\tcutCells\tcutPagesOfInk\tpageCut\toffCentre\tignoredCells\tsliceTop\tsliceBottom\tsliceLeft\tsliceRight")
+        appendLine("page\tcolumn\twindow\tleft\ttop\tcutCells\tcutPagesOfInk\tpageCut\toffCentre\tsplitBlocks\tsplit\tignoredCells\tsliceTop\tsliceBottom\tsliceLeft\tsliceRight")
         for (m in results) m.crops.pages.forEachIndexed { p, t ->
             val w = t.window
             appendLine(
                 listOf(p + 1, m.column.label, t.windowIndex + 1, "%.4f".format(w.left), "%.4f".format(w.top), t.cutCells,
-                    "%.4f".format(t.cut), "%.4f".format(t.pageCut), "%.4f".format(t.offCentre),
+                    "%.4f".format(t.cut), "%.4f".format(t.pageCut), "%.4f".format(t.offCentre), t.splitBlocks, "%.3f".format(t.split),
                     m.raw[p].inkCount - m.masks[p].inkCount, m.slices[p].top, m.slices[p].bottom, m.slices[p].left,
                     m.slices[p].right).joinToString("\t"),
             )
@@ -168,14 +172,14 @@ class Report(private val out: File, private val aspect: Float, private val weigh
     private fun maxPageCut(c: ModelCrops) = c.pages.maxOfOrNull { it.pageCut } ?: 0.0
 
     private fun tsv() = buildString {
-        appendLine("paper\tcategory\tpages\tcolumn\tscale\tK\tswitches\tbreaks\tcutPercent\tmaxPageCutPercent\tcutTerm\toffTerm\tpageCutTerm\twindowTerm\tswitchTerm\ttotal\tmillis\tassignment\tslicedLinePages\tslicedSidePages")
+        appendLine("paper\tcategory\tpages\tcolumn\tscale\tK\tswitches\tbreaks\tcutPercent\tmaxPageCutPercent\tcutTerm\toffTerm\tpageCutTerm\tsplitTerm\tpagesSplit\twindowTerm\tswitchTerm\ttotal\tmillis\tassignment\tslicedLinePages\tslicedSidePages")
         for (r in rows) for (m in r.results) {
             val c = m.crops
             appendLine(
                 listOf(
                     r.paper.id, r.paper.category, r.pages, m.column.label, "%.3f".format(c.scale), c.k, c.switches, c.breaks,
                     "%.4f".format(c.cutFraction * 100), "%.3f".format(maxPageCut(c) * 100), "%.4f".format(c.cutTerm),
-                    "%.4f".format(c.offTerm), "%.4f".format(c.pageCutTerm), "%.4f".format(c.windowTerm),
+                    "%.4f".format(c.offTerm), "%.4f".format(c.pageCutTerm), "%.4f".format(c.splitTerm), c.pagesSplit, "%.4f".format(c.windowTerm),
                     "%.4f".format(c.switchTerm), "%.4f".format(c.total), m.millis, assignment(c), m.slicedLinePages,
                     m.slicedSidePages,
                 ).joinToString("\t"),

@@ -35,6 +35,15 @@ class LabelsTest {
     }
 
     @Test
+    fun anAgentsLabelsSayWhoJudgedAndTheOwnersDoNot() {
+        val agent = labels.copy(labeller = "agent")
+        assertEquals(agent, PaperLabels.fromText(agent.toText()))
+        assertTrue(agent.toText().contains("\"labeller\": \"agent\""))
+        assertFalse(labels.toText().contains("labeller"))
+        assertEquals(null, PaperLabels.fromText(labels.toText()).labeller)
+    }
+
+    @Test
     fun savingIsIdempotent() {
         val once = labels.toText()
         val twice = PaperLabels.fromText(once).toText()

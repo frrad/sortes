@@ -167,6 +167,22 @@ class ScoreTest {
     }
 
     @Test
+    fun aGoodPageCostsNothingWithinItsTolerance() {
+        val centre = Point(30.0, 40.0)
+        val good = PaperTargets("p", 0.8, 1.0, listOf(PageTarget(1, centre, ScoreWeights.GOOD, centre, ScoreWeights.GOOD, "good", tolerance = ScoreWeights.GOOD_TOLERANCE)))
+        fun units(dx: Double): Double {
+            val window = windowAt(Point(30.0 + dx, 40.0), 0.6, size, aspect)
+            return score(good, crops(window, cellsOf(window, mask, aspect)), listOf(mask), listOf(size), aspect).pages.single().positionUnits
+        }
+        assertEquals(0.0, units(5.0), 1e-9)
+        assertEquals(ScoreWeights.GOOD * 2.0 / ScoreWeights.POINTS_PER_UNIT, units(10.0), 1e-6)
+        // The tolerance belongs to good verdicts: targets() sets it there and nowhere else.
+        val t = targets(labels(2 to label(comment = "good"), 1 to label(centre = Point(30.0, 60.0))), mapOf(2 to Interpretation(verdict = Verdict.GOOD)), 0.8, listOf(Point(30.0, 40.0), Point(30.0, 40.0)))
+        assertEquals(ScoreWeights.GOOD_TOLERANCE, t.pages.first { it.page == 2 }.tolerance, 0.0)
+        assertEquals(0.0, t.pages.first { it.page == 1 }.tolerance, 0.0)
+    }
+
+    @Test
     fun interpretationsParseAndRejectBadRows() {
         val dir = Files.createTempDirectory("interp").toFile()
         val file = dir.resolve("interpretation.tsv")

@@ -72,6 +72,10 @@ fun CropModelWeights.with(overrides: Map<String, String>): CropModelWeights {
             "delta" -> w.copy(delta = value.toDouble())
             "delta2" -> w.copy(delta2 = value.toDouble())
             "maxWindows" -> w.copy(maxWindows = value.toInt())
+            "kappa" -> w.copy(kappa = value.toDouble())
+            "blockGap" -> w.copy(blockGap = value.toInt())
+            "splitInk" -> w.copy(splitInk = value.toDouble())
+            "zeta" -> w.copy(zeta = value.toDouble())
             "autoMaxLost" -> w.copy(autoMaxLost = value.toDouble())
             "autoMargin" -> w.copy(autoMargin = value.toDouble())
             "zoomIgnoredPages" -> w.copy(zoomIgnoredPages = value.toInt())
@@ -85,6 +89,7 @@ fun CropModelWeights.with(overrides: Map<String, String>): CropModelWeights {
 /** The names [with] understands. */
 val WEIGHT_NAMES = setOf(
     "alpha", "beta", "epsilon", "allowance", "gamma", "delta", "delta2", "maxWindows",
+    "kappa", "blockGap", "splitInk", "zeta",
     "autoMaxLost", "autoMargin", "zoomIgnoredPages", "autoMaxPageCut",
 )
 

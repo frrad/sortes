@@ -19,6 +19,12 @@ data class PaperLabels(
     val comment: String,
     /** By page number, counting from 1. */
     val pages: Map<Int, PageLabel>,
+    /**
+     * Who judged: null for the owner (the files in `labels/`), or a name such as "agent" for
+     * labels made by an agent reviewing renders (`labels/agent/`), which score separately and
+     * never override the owner's.
+     */
+    val labeller: String? = null,
 ) {
     init {
         require(PAPER_ID.matches(paper)) { "Bad paper id: $paper" }
@@ -32,6 +38,7 @@ data class PaperLabels(
         .put("labelledAgainst", labelledAgainst?.toJson() ?: JSONObject.NULL)
         .put("idealScale", idealScale ?: JSONObject.NULL)
         .put("comment", comment)
+        .apply { labeller?.let { put("labeller", it) } }
         // Pages nothing has been said about are left out.
         .put("pages", JSONObject().apply { pages.forEach { (n, p) -> if (!p.isEmpty) put(n.toString(), p.toJson()) } })
 
@@ -57,6 +64,7 @@ data class PaperLabels(
                     val n = requireNotNull(key.toIntOrNull()) { "Bad page number $key" }
                     n to PageLabel.fromJson(pages.getJSONObject(key))
                 }.toSortedMap(),
+                labeller = json.optNullableString("labeller"),
             )
         }
 
