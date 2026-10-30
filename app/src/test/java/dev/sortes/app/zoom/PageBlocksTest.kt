@@ -9,6 +9,7 @@ import kotlin.random.Random
 
 class PageBlocksTest {
     private val aspect = 0.75f
+    private val scratch = BlockScratch()
 
     @Test
     fun inkWithinTheGapIsOneBlockAndBeyondItAnother() {
@@ -80,7 +81,70 @@ class PageBlocksTest {
     }
 
     /** Each block's ink inside the window, straight from the label map: the definition. */
-    private fun keptByLabels(blocks: PageBlocks, window: CellRect): IntArray = blocks.kept(window)
+    private fun keptByLabels(blocks: PageBlocks, window: CellRect): IntArray {
+        val labels = blocks.labels()
+        val kept = IntArray(blocks.boxes.size)
+        for (i in labels.indices) {
+            val b = labels[i]
+            if (b < 0) continue
+            val x = i % blocks.maskWidth
+            val y = i / blocks.maskWidth
+            if (x >= window.left && x < window.right && y >= window.top && y < window.bottom) kept[b]++
+        }
+        return kept
+    }
+
+    /**
+     * The reference segmentation: breadth-first search over inked cells, joining any two at
+     * most gap + 1 apart in both directions. Returns each block's box, ink and cells in order of
+     * first cell, as [PageBlocks] numbers them.
+     */
+    private fun bfsBlocks(mask: InkMask, gap: Int): Triple<List<CellRect>, IntArray, IntArray> {
+        val w = mask.width
+        val h = mask.height
+        val labels = IntArray(w * h) { -1 }
+        val boxes = mutableListOf<CellRect>()
+        val inks = mutableListOf<Int>()
+        val reach = gap + 1
+        for (start in 0 until w * h) {
+            if (labels[start] >= 0 || !mask[start % w, start / w]) continue
+            val b = boxes.size
+            val queue = ArrayDeque<Int>()
+            queue += start
+            labels[start] = b
+            var x0 = w; var y0 = h; var x1 = -1; var y1 = -1; var n = 0
+            while (queue.isNotEmpty()) {
+                val cell = queue.removeFirst()
+                val cx = cell % w
+                val cy = cell / w
+                n++
+                x0 = minOf(x0, cx); x1 = maxOf(x1, cx); y0 = minOf(y0, cy); y1 = maxOf(y1, cy)
+                for (ny in (cy - reach).coerceAtLeast(0)..(cy + reach).coerceAtMost(h - 1)) {
+                    for (nx in (cx - reach).coerceAtLeast(0)..(cx + reach).coerceAtMost(w - 1)) {
+                        val m = ny * w + nx
+                        if (labels[m] < 0 && mask[nx, ny]) { labels[m] = b; queue += m }
+                    }
+                }
+            }
+            boxes += CellRect(x0, y0, x1 + 1, y1 + 1)
+            inks += n
+        }
+        return Triple(boxes, inks.toIntArray(), labels)
+    }
+
+    @Test
+    fun runSegmentationMatchesABreadthFirstSearchOverCells() {
+        val random = Random(3)
+        repeat(40) {
+            val mask = randomPage(random).mask()
+            val gap = random.nextInt(0, 4)
+            val blocks = PageBlocks.of(mask, gap)
+            val (boxes, inks, labels) = bfsBlocks(mask, gap)
+            assertEquals("gap $gap", boxes, blocks.boxes)
+            assertArrayEquals(inks, blocks.inks)
+            assertArrayEquals(labels, blocks.labels())
+        }
+    }
 
     @Test
     fun theSplitCostFollowsEachBlocksOwnCellsNotItsBox() {
@@ -131,7 +195,7 @@ class PageBlocksTest {
             val unit = random.nextInt(1, 200)
             val cols = padded.width - w + 1
             val out = DoubleArray(cols * (padded.height - h + 1))
-            padded.splitCosts(w, h, gap, unit, out)
+            padded.splitCosts(w, h, gap, unit, out, scratch)
             for (i in out.indices) assertEquals("position $i of $cols cols, window $w x $h, gap $gap, unit $unit", padded.splitCost(i % cols, i / cols, w, h, gap, unit), out[i], 1e-9)
         }
     }
@@ -186,5 +250,25 @@ class PageBlocksTest {
         val padded = PaddedPage(TestPage(40, 80).rect(5, 10, 35, 20).mask(), aspect)
         assertEquals(10, padded.offX)
         assertEquals(listOf(CellRect(15, 10, 45, 20)), padded.blocks(2))
+    }
+}
+
+class BlockScratchTest {
+    @Test
+    fun aScratchSharedByTwoPagesGivesEachItsOwnAnswers() {
+        val scratch = BlockScratch()
+        val a = PaddedPage(TestPage(60, 80).rect(10, 10, 50, 40).mask(), 0.75f)
+        val b = PaddedPage(TestPage(60, 80).rect(5, 5, 55, 75).rect(20, 77, 40, 79).mask(), 0.75f)
+        fun costs(page: PaddedPage, s: BlockScratch): DoubleArray {
+            val out = DoubleArray((page.width - 40 + 1) * (page.height - 50 + 1))
+            page.splitCosts(40, 50, 2, 100, out, s)
+            return out
+        }
+        val ownA = costs(a, BlockScratch())
+        val ownB = costs(b, BlockScratch())
+        repeat(3) {
+            assertArrayEquals(ownA, costs(a, scratch), 0.0)
+            assertArrayEquals(ownB, costs(b, scratch), 0.0)
+        }
     }
 }

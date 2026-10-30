@@ -266,11 +266,12 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
      * Crops at the scale minimising [ModelCrops.zoomObjective] over [scales] (loosest first),
      * loosened by [CropModelWeights.autoMargin]. The objective falls as the zoom tightens while
      * only margins go, then climbs once windows cut and split the pages' blocks, with a step
-     * wherever a page's blocks start to fit, so the search is a coarse grid rather than a walk:
-     * every [COARSE_STEP]th scale (0.02) from [GRID_TIGHTER] steps (0.04) tighter than the cut
-     * budget's [Prepared.bound] to [GRID_LOOSER] steps (0.06) looser, then the scales 0.01 either
-     * side of the best, then 0.005 either side of the best of those: ten solves. On the corpus
-     * the optimum is within 0.02 of the bound.
+     * wherever a page's blocks start to fit. So: every [COARSE_STEP]th scale (0.02) from
+     * [GRID_TIGHTER] steps (0.04) tighter than the cut budget's [Prepared.bound] down to the
+     * bound, then looser in the same steps for as long as the objective improves, allowing
+     * [LOOKAHEAD] worse steps in a row (a page's blocks that fit a step or two later), then the
+     * scales 0.01 either side of the best, then 0.005 either side of the best of those. About
+     * ten solves; on the corpus the optimum is within 0.02 of the bound.
      */
     private suspend fun Prepared.autoByCost(scales: FloatArray): ModelCrops {
         val solved = HashMap<Int, ModelCrops>()
@@ -286,8 +287,19 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                 bestValue = v
             }
         }
-        // Tighter is a larger index.
-        for (i in (bound - GRID_LOOSER)..(bound + GRID_TIGHTER) step COARSE_STEP) consider(i)
+        // Tighter is a larger index. The tighter side is a short grid; the looser side a walk
+        // that goes on while the objective improves, allowing LOOKAHEAD worse coarse steps to get
+        // past a bump (a page's blocks fitting a step or two later).
+        for (i in (bound + GRID_TIGHTER) downTo bound step COARSE_STEP) consider(i)
+        var i = bound
+        var worse = 0
+        while (worse <= LOOKAHEAD && i - COARSE_STEP >= 0) {
+            i -= COARSE_STEP
+            val before = best
+            consider(i)
+            worse = if (best == i) 0 else worse + 1
+            if (before == best && worse > LOOKAHEAD) break
+        }
         // Then halve the step twice around the best so far.
         val coarse = best
         consider(coarse - 2)
@@ -329,7 +341,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         val rows = page.height - h + 1
         val offCentres = DoubleArray(cols * rows)
         page.offCentres(w, h, offCentres)
-        val splits = if (weights.kappa > 0.0) DoubleArray(cols * rows).also { page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), it) } else null
+        val splits = if (weights.kappa > 0.0) DoubleArray(cols * rows).also { page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), it, scratch.blocks) } else null
         var best = 0
         var bestCost = Double.MAX_VALUE
         for (pos in 0 until cols * rows) {
@@ -341,7 +353,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                 best = pos
             }
         }
-        return pageCrop(page, referenceInk, OWN_WINDOW, best % cols, best / cols, scale)
+        return pageCrop(page, referenceInk, OWN_WINDOW, best % cols, best / cols, scale, scratch)
     }
 
     /** Scores given per-page windows (e.g. another method's) with this model's cost. */
@@ -352,7 +364,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         val distinct = perPage.distinct()
         val terms = pages.indices.map { p ->
             val (x, y) = pages[p].positionOf(perPage[p])
-            pageCrop(pages[p], refInk, distinct.indexOf(perPage[p]), x, y, perPage[p].scale)
+            pageCrop(pages[p], refInk, distinct.indexOf(perPage[p]), x, y, perPage[p].scale, scratch)
         }
         return ModelCrops(perPage.first().scale, distinct, terms, weights, pages.sumOf { it.inkCount.toLong() })
     }
@@ -366,7 +378,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         val page = PaddedPage(mask, aspect)
         val options = crops.windows.indices.map { j ->
             val (x, y) = page.positionOf(crops.windows[j])
-            pageCrop(page, referenceInk, j, x, y, crops.scale)
+            pageCrop(page, referenceInk, j, x, y, crops.scale, scratch)
         }
         return options.minWith(compareBy<PageCrop> { pageCost(it) }.thenBy { if (it.windowIndex == preferred) 0 else 1 })
     }
@@ -375,7 +387,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     fun pageCost(c: PageCrop): Double =
         weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split
 
-    private fun pageCrop(page: PaddedPage, refInk: Double, window: Int, x: Int, y: Int, scale: Float): PageCrop {
+    private fun pageCrop(page: PaddedPage, refInk: Double, window: Int, x: Int, y: Int, scale: Float, buffer: Buffer): PageCrop {
         val w = page.windowWidth(scale)
         val h = page.windowHeight(scale)
         val cut = page.inkCount - page.inside(x, y, w, h)
@@ -399,13 +411,20 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     internal class Buffer {
         private var array = DoubleArray(0)
 
+        /** Scratch for the pages' block costs, shared across pages and scales. */
+        val blocks = BlockScratch()
+
         fun get(size: Int): DoubleArray {
             if (array.size < size) array = DoubleArray(size)
             return array
         }
     }
 
-    internal inner class Solver(private val pages: List<PaddedPage>, private val scale: Float, buffer: Buffer) {
+    // Scratch for the entry points outside a [Prepared] solve (ownCrop, assign, score), which
+    // callers serialise like solves.
+    private val scratch = Buffer()
+
+    internal inner class Solver(private val pages: List<PaddedPage>, private val scale: Float, private val buffer: Buffer) {
         private val refInk = referenceInkOf(pages.map { it.inkCount })
 
         // Windows are positions on a reference page (the most common mask size); other pages take
@@ -443,7 +462,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                 page.offCentres(w, h, offCentres)
                 if (weights.kappa > 0.0) {
                     if (splits.size < size) splits = DoubleArray(size)
-                    page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits)
+                    page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits, buffer.blocks)
                 }
                 val reference = (page.maskWidth to page.maskHeight) == refSize
                 for (pos in 0 until positions) {
@@ -649,7 +668,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
             val crops = pages.indices.map { p ->
                 val page = pages[p]
                 val (x, y) = mapped(page, bestWindows[bestAssignment[p]])
-                pageCrop(page, refInk, order.indexOf(bestAssignment[p]), x, y, scale)
+                pageCrop(page, refInk, order.indexOf(bestAssignment[p]), x, y, scale, buffer)
             }
             return ModelCrops(scale, windows, crops, weights, pages.sumOf { it.inkCount.toLong() })
         }
@@ -659,7 +678,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         private const val MAX_ROUNDS = 20
         private const val COARSE_STEP = 4
         private const val GRID_TIGHTER = 8
-        private const val GRID_LOOSER = 12
+        private const val LOOKAHEAD = 2
         private const val MAX_SEEDS = 6
         private const val EPS = 1e-12
 

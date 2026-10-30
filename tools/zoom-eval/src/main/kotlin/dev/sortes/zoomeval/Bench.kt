@@ -3,6 +3,7 @@ package dev.sortes.zoomeval
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.MAX_ANALYZED_PAGES
+import dev.sortes.app.zoom.PaddedPage
 import dev.sortes.app.zoom.PageBlocks
 import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.maskSize
@@ -64,8 +65,15 @@ fun benchMain(args: List<String>) {
             val gap = spec.config.weights.blockGap
             val segment = time { masks.forEach { PageBlocks.of(it, gap) } }
             val sizes = IntArray(8)
-            for (m in masks) for (ink in PageBlocks.of(m, gap).inks) sizes[minOf(7, 32 - Integer.numberOfLeadingZeros(ink))]++
-            println("${paper.id}\t${masks.size}\t${spec.label}\t$auto\t$solves\t${"%.3f".format(chosen)}\t$solve\tsegment $segment ms\tblocks by ink 1,2-3,4-7,8-15,16-31,32-63,64-127,128+: ${sizes.joinToString(",")}")
+            var bytes = 0L
+            for (m in masks) {
+                val blocks = PageBlocks.of(m, gap)
+                // Bucket by floor(log2(ink)): 1, 2-3, 4-7, ...
+                for (ink in blocks.inks) sizes[minOf(7, 31 - Integer.numberOfLeadingZeros(ink))]++
+                // What a padded page keeps for its blocks: runs, boxes and the capped ink tables.
+                bytes += PaddedPage(m, aspect).also { it.blocks(gap) }.blockBytes()
+            }
+            println("${paper.id}\t${masks.size}\t${spec.label}\t$auto\t$solves\t${"%.3f".format(chosen)}\t$solve\tsegment $segment ms\tblocks ${bytes / masks.size} bytes/page\tblocks by ink 1,2-3,4-7,8-15,16-31,32-63,64-127,128+: ${sizes.joinToString(",")}")
         }
     }
 }

@@ -59,6 +59,10 @@ class SampledPaper(
      * block (a landscape table, an offset figure the sample didn't see), it may get its own best
      * window at the same scale instead: with blocks, when that costs less by the model's own
      * per-page cost plus a window's worth ([CropModelWeights.gamma]); without, when it cuts less.
+     * So with blocks an own window that cuts less can still lose, if what it saves (in cut,
+     * centring and split blocks) is worth less than a window: the same trade-off the solver
+     * makes for the sampled pages, deliberately, so an unsampled page is treated like its
+     * neighbours rather than by a stricter rule.
      */
     fun cropFor(index: Int, crops: ModelCrops, mask: InkMask?): PageCrop {
         val analysed = sampled(index)
