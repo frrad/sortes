@@ -3,6 +3,7 @@ package dev.sortes.zoomeval
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.MAX_ANALYZED_PAGES
+import dev.sortes.app.zoom.BlockScratch
 import dev.sortes.app.zoom.PaddedPage
 import dev.sortes.app.zoom.PageBlocks
 import dev.sortes.app.zoom.analysisDensity
@@ -61,6 +62,41 @@ fun benchMain(args: List<String>) {
                 solves = p.solves
             }
             val solve = time { model.prepare(masks).solve(scale) }
+            // Where one solve's time goes, after the pages are prepared.
+            val prepared = model.prepare(masks)
+            runBlocking { prepared.solve(scale) }
+            val profile = runBlocking {
+                val t0 = System.nanoTime()
+                val solver = model.solver(masks, scale)
+                val t1 = System.nanoTime()
+                solver.best()
+                val t2 = System.nanoTime()
+                "precompute %d ms (off-centres %d, splits %d), windows %d ms (seed %d, refine %d), pruned at K=%d".format(
+                    solver.precomputeNanos / 1_000_000, solver.offNanos / 1_000_000, solver.splitNanos / 1_000_000, (t2 - t1) / 1_000_000, solver.seedNanos / 1_000_000, solver.refineNanos / 1_000_000, solver.prunedAt)
+            }
+            println("  $profile")
+            // splitCosts and offCentres alone, on warm pages, per solve over the sample.
+            if (spec.config.weights.kappa > 0.0) {
+                val pages = masks.map { PaddedPage(it, aspect).also { p -> p.blocks(spec.config.weights.blockGap) } }
+                val scratch = BlockScratch()
+                val unit = (spec.config.weights.splitInk * CropModel.referenceInk(masks)).toInt().coerceAtLeast(1)
+                fun warm(block: () -> Unit): Long { block(); return (1..3).minOf { val t = System.nanoTime(); block(); (System.nanoTime() - t) / 1_000 } }
+                for (sc in floatArrayOf(0.8f, 0.72f)) {
+                    val splitMicros = warm {
+                        for (page in pages) {
+                            val w = page.windowWidth(sc); val h = page.windowHeight(sc)
+                            page.splitCosts(w, h, spec.config.weights.blockGap, unit, DoubleArray((page.width - w + 1) * (page.height - h + 1)), scratch)
+                        }
+                    }
+                    val offMicros = warm {
+                        for (page in pages) {
+                            val w = page.windowWidth(sc); val h = page.windowHeight(sc)
+                            page.offCentres(w, h, DoubleArray((page.width - w + 1) * (page.height - h + 1)))
+                        }
+                    }
+                    println("  at %.2f: splitCosts %d us, offCentres %d us over ${pages.size} pages".format(sc, splitMicros, offMicros))
+                }
+            }
             // Segmentation alone, and the sizes of the blocks it finds.
             val gap = spec.config.weights.blockGap
             val segment = time { masks.forEach { PageBlocks.of(it, gap) } }

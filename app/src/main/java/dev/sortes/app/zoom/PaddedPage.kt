@@ -180,10 +180,15 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
      * [splitCost] for every position of a [w] x [h] window at once, into [out] at
      * `y * (width - w + 1) + x`, using [s] for scratch. Each block costs a whole split at every
      * position whose window overlaps its box without containing it, filled through a 2-D
-     * difference array, except where the share is computed exactly from the block's cells: a
-     * ring of positions around those containing it, where the window cuts fewer than [unit]
-     * cells off one side (a few cells wide, so the work is about linear in the blocks plus the
-     * positions), and, for a sparse block, the positions whose window lies inside its box.
+     * difference array, except in a ring of positions around those containing it, where the
+     * window cuts fewer than [unit] cells off one side. Along the ring's four strips the window
+     * still spans the block in the other direction, so the cut depends on one coordinate only
+     * and each strip is a few more lines in the difference array; only the ring's corners are
+     * looked up one by one. A block the window can't contain in either direction is looked up
+     * at every overlapping position (there are at most a few such blocks: the body at a tight
+     * zoom, a big figure), which is also where a window inside a sparse block's box can keep
+     * none of its cells and counts nothing. So the work is about linear in the positions plus
+     * the blocks' ring strips.
      */
     fun splitCosts(w: Int, h: Int, gap: Int, unit: Int, out: DoubleArray, s: BlockScratch) {
         val cols = width - w + 1
@@ -194,50 +199,84 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         val diff = s.diff(stride * (rows + 1))
         diff.fill(0.0, 0, stride * (rows + 1))
         fun add(x0: Int, y0: Int, x1: Int, y1: Int, v: Double) {
-            if (x0 > x1 || y0 > y1) return
+            if (x0 > x1 || y0 > y1 || v == 0.0) return
             diff[y0 * stride + x0] += v
             diff[y0 * stride + x1 + 1] -= v
             diff[(y1 + 1) * stride + x0] -= v
             diff[(y1 + 1) * stride + x1 + 1] += v
         }
-        // Per block, two rects of positions handled exactly after the fill: the ring (with the
-        // containing positions inside it, which cost nothing), and the inside-the-box positions.
-        val exact = IntArray(boxes.size * 12)
+        // Positions to look up one by one after the fill, per block: up to five rects (four
+        // corners, or one whole overlap), as (x0, y0, x1, y1).
+        val exact = IntArray(boxes.size * 20)
+        val counts = IntArray(boxes.size)
+        fun lookup(b: Int, x0: Int, y0: Int, x1: Int, y1: Int) {
+            if (x0 > x1 || y0 > y1) return
+            val o = b * 20 + counts[b] * 4
+            exact[o] = x0; exact[o + 1] = y0; exact[o + 2] = x1; exact[o + 3] = y1
+            counts[b]++
+        }
         for (b in boxes.indices) {
-            val o = b * 12
-            exact[o] = 1; exact[o + 2] = 0; exact[o + 8] = 1; exact[o + 10] = 0
             if (f!!.inks[b] < PageBlocks.MIN_BLOCK_INK) continue
             val box = boxes[b]
+            // Positions whose window overlaps the block's box.
             val ox0 = (box.left - w + 1).coerceAtLeast(0)
             val ox1 = (box.right - 1).coerceAtMost(cols - 1)
             val oy0 = (box.top - h + 1).coerceAtLeast(0)
             val oy1 = (box.bottom - 1).coerceAtMost(rows - 1)
             if (ox0 > ox1 || oy0 > oy1) continue
-            val cx0 = box.right - w
-            val cx1 = box.left
-            val cy0 = box.bottom - h
-            val cy1 = box.top
-            val rx0 = if (cx0 <= cx1) maxOf(ox0, cx0 - edgeRun(b, unit, side = 1)) else ox0
-            val rx1 = if (cx0 <= cx1) minOf(ox1, cx1 + edgeRun(b, unit, side = 0)) else ox1
-            val ry0 = if (cy0 <= cy1) maxOf(oy0, cy0 - edgeRun(b, unit, side = 3)) else oy0
-            val ry1 = if (cy0 <= cy1) minOf(oy1, cy1 + edgeRun(b, unit, side = 2)) else oy1
+            // ...and those whose window contains it, on each axis.
+            val cx0 = maxOf(box.right - w, ox0)
+            val cx1 = minOf(box.left, ox1)
+            val cy0 = maxOf(box.bottom - h, oy0)
+            val cy1 = minOf(box.top, oy1)
+            val spansX = cx0 <= cx1
+            val spansY = cy0 <= cy1
+            if (!spansX && !spansY) {
+                // Bigger than the window both ways. A dense block then loses at least its
+                // emptiest bw - w columns (or bh - h rows) at every position: if that alone is a
+                // whole unit, every position costs 1 and none needs looking up. A sparse block
+                // is looked up, since a window inside its box may keep none of its cells.
+                if (!blockSparse[b] && leastCut(b, w, h) >= unit) add(ox0, oy0, ox1, oy1, 1.0)
+                else lookup(b, ox0, oy0, ox1, oy1)
+                continue
+            }
             add(ox0, oy0, ox1, oy1, 1.0)
-            add(rx0, ry0, rx1, ry1, -1.0)
-            exact[o] = rx0; exact[o + 1] = ry0; exact[o + 2] = rx1; exact[o + 3] = ry1
-            exact[o + 4] = maxOf(cx0, rx0); exact[o + 5] = maxOf(cy0, ry0)
-            exact[o + 6] = minOf(cx1, rx1); exact[o + 7] = minOf(cy1, ry1)
-            if (blockSparse[b]) {
-                // Windows inside the box: left at or past the box's left, right at or before its right.
-                val ix0 = maxOf(box.left, ox0)
-                val ix1 = minOf(box.right - w, ox1)
-                val iy0 = maxOf(box.top, oy0)
-                val iy1 = minOf(box.bottom - h, oy1)
-                if (ix0 <= ix1 && iy0 <= iy1) {
-                    add(ix0, iy0, ix1, iy1, -1.0)
-                    // Where the two exact rects overlap, one was taken off twice: put one back.
-                    add(maxOf(ix0, rx0), maxOf(iy0, ry0), minOf(ix1, rx1), minOf(iy1, ry1), 1.0)
-                    exact[o + 8] = ix0; exact[o + 9] = iy0; exact[o + 10] = ix1; exact[o + 11] = iy1
-                }
+            if (spansX && spansY) {
+                // The ring: how far past containment the window may go on each side before it
+                // cuts a whole unit.
+                val rx0 = maxOf(ox0, cx0 - edgeRun(b, unit, side = 1))
+                val rx1 = minOf(ox1, cx1 + edgeRun(b, unit, side = 0))
+                val ry0 = maxOf(oy0, cy0 - edgeRun(b, unit, side = 3))
+                val ry1 = minOf(oy1, cy1 + edgeRun(b, unit, side = 2))
+                add(rx0, ry0, rx1, ry1, -1.0)
+                // Side strips: the window spans the block vertically, the cut depends on x.
+                for (x in rx0 until cx0) add(x, cy0, x, cy1, share(b, blockInside(b, x, box.top, x + w, box.bottom), unit))
+                for (x in cx1 + 1..rx1) add(x, cy0, x, cy1, share(b, blockInside(b, x, box.top, x + w, box.bottom), unit))
+                // Top and bottom strips: the cut depends on y.
+                for (y in ry0 until cy0) add(cx0, y, cx1, y, share(b, blockInside(b, box.left, y, box.right, y + h), unit))
+                for (y in cy1 + 1..ry1) add(cx0, y, cx1, y, share(b, blockInside(b, box.left, y, box.right, y + h), unit))
+                // Corners, one by one.
+                lookup(b, rx0, ry0, cx0 - 1, cy0 - 1)
+                lookup(b, cx1 + 1, ry0, rx1, cy0 - 1)
+                lookup(b, rx0, cy1 + 1, cx0 - 1, ry1)
+                lookup(b, cx1 + 1, cy1 + 1, rx1, ry1)
+            } else if (spansY) {
+                // Wider than the window: where it spans the block vertically the cut depends on
+                // x alone, at every x; the rows above and below within the ring are looked up.
+                val ry0 = maxOf(oy0, cy0 - edgeRun(b, unit, side = 3))
+                val ry1 = minOf(oy1, cy1 + edgeRun(b, unit, side = 2))
+                add(ox0, ry0, ox1, ry1, -1.0)
+                for (x in ox0..ox1) add(x, cy0, x, cy1, share(b, blockInside(b, x, box.top, x + w, box.bottom), unit))
+                lookup(b, ox0, ry0, ox1, cy0 - 1)
+                lookup(b, ox0, cy1 + 1, ox1, ry1)
+            } else {
+                // Taller than the window: likewise with the axes swapped.
+                val rx0 = maxOf(ox0, cx0 - edgeRun(b, unit, side = 1))
+                val rx1 = minOf(ox1, cx1 + edgeRun(b, unit, side = 0))
+                add(rx0, oy0, rx1, oy1, -1.0)
+                for (y in oy0..oy1) add(cx0, y, cx1, y, share(b, blockInside(b, box.left, y, box.right, y + h), unit))
+                lookup(b, rx0, oy0, cx0 - 1, oy1)
+                lookup(b, cx1 + 1, oy0, rx1, oy1)
             }
         }
         for (y in 0 until rows) {
@@ -247,23 +286,33 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
                 out[y * cols + x] = (if (y == 0) 0.0 else out[(y - 1) * cols + x]) + run
             }
         }
-        for (b in boxes.indices) {
-            val o = b * 12
-            val x0 = exact[o]; val y0 = exact[o + 1]; val x1 = exact[o + 2]; val y1 = exact[o + 3]
-            val cx0 = exact[o + 4]; val cy0 = exact[o + 5]; val cx1 = exact[o + 6]; val cy1 = exact[o + 7]
-            val ix0 = exact[o + 8]; val iy0 = exact[o + 9]; val ix1 = exact[o + 10]; val iy1 = exact[o + 11]
-            for (y in y0..y1) {
-                val containsY = y in cy0..cy1
-                for (x in x0..x1) {
-                    if (containsY && x in cx0..cx1) continue
-                    out[y * cols + x] += exactShare(b, x, y, w, h, unit)
-                }
-            }
-            for (y in iy0..iy1) for (x in ix0..ix1) {
-                if (x in x0..x1 && y in y0..y1) continue
+        for (b in boxes.indices) for (r in 0 until counts[b]) {
+            val o = b * 20 + r * 4
+            for (y in exact[o + 1]..exact[o + 3]) for (x in exact[o]..exact[o + 2]) {
                 out[y * cols + x] += exactShare(b, x, y, w, h, unit)
             }
         }
+    }
+
+    /**
+     * The least ink a [w] x [h] window can cut off block [b] when the block is wider and taller
+     * than the window: the sum of its emptiest bw - w columns, or of its emptiest bh - h rows,
+     * whichever is more. A lower bound, since a window leaves out at least that many whole
+     * columns and rows.
+     */
+    private fun leastCut(b: Int, w: Int, h: Int): Int {
+        val box = blocksFor[b]
+        val bw = box.right - box.left
+        val bh = box.bottom - box.top
+        val columns = IntArray(bw) { blockInside(b, box.left + it, box.top, box.left + it + 1, box.bottom) }
+        columns.sort()
+        var byColumns = 0
+        for (i in 0 until bw - w) byColumns += columns[i]
+        val rowInks = IntArray(bh) { blockInside(b, box.left, box.top + it, box.right, box.top + it + 1) }
+        rowInks.sort()
+        var byRows = 0
+        for (i in 0 until bh - h) byRows += rowInks[i]
+        return maxOf(byColumns, byRows)
     }
 
     /**
@@ -348,12 +397,15 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         // Vertical: for each window column x, the rows with ink across [x, x + w).
         val next = IntArray(maxOf(width, height) + 1)
         val prev = IntArray(maxOf(width, height))
+        val inked = BooleanArray(maxOf(width, height))
         for (x in 0 until cols) {
+            // One table lookup per row, then the next and previous inked row from it.
+            for (r in 0 until height) inked[r] = inside(x, r, w, 1) > 0
             next[height] = height
-            for (r in height - 1 downTo 0) next[r] = if (inside(x, r, w, 1) > 0) r else next[r + 1]
+            for (r in height - 1 downTo 0) next[r] = if (inked[r]) r else next[r + 1]
             var last = -1
             for (r in 0 until height) {
-                if (inside(x, r, w, 1) > 0) last = r
+                if (inked[r]) last = r
                 prev[r] = last
             }
             for (y in 0 until rows) {
@@ -366,11 +418,12 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         }
         // Horizontal: for each window row y, the columns with ink across [y, y + h).
         for (y in 0 until rows) {
+            for (c in 0 until width) inked[c] = inside(c, y, 1, h) > 0
             next[width] = width
-            for (c in width - 1 downTo 0) next[c] = if (inside(c, y, 1, h) > 0) c else next[c + 1]
+            for (c in width - 1 downTo 0) next[c] = if (inked[c]) c else next[c + 1]
             var last = -1
             for (c in 0 until width) {
-                if (inside(c, y, 1, h) > 0) last = c
+                if (inked[c]) last = c
                 prev[c] = last
             }
             for (x in 0 until cols) {

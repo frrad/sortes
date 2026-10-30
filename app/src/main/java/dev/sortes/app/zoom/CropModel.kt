@@ -267,11 +267,12 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
      * loosened by [CropModelWeights.autoMargin]. The objective falls as the zoom tightens while
      * only margins go, then climbs once windows cut and split the pages' blocks, with a step
      * wherever a page's blocks start to fit. So: every [COARSE_STEP]th scale (0.02) from
-     * [GRID_TIGHTER] steps (0.04) tighter than the cut budget's [Prepared.bound] down to the
+     * [GRID_TIGHTER] steps (0.02) tighter than the cut budget's [Prepared.bound] down to the
      * bound, then looser in the same steps for as long as the objective improves, allowing
-     * [LOOKAHEAD] worse steps in a row (a page's blocks that fit a step or two later), then the
-     * scales 0.01 either side of the best, then 0.005 either side of the best of those. About
-     * ten solves; on the corpus the optimum is within 0.02 of the bound.
+     * [LOOKAHEAD] worse step (a page's blocks that fit a step later), then the scales 0.01
+     * either side of the best, then 0.005 either side of the best of those. Seven or eight
+     * solves; on the corpus the optimum is within 0.02 of the bound, and the refinement can
+     * still reach 0.03 tighter.
      */
     private suspend fun Prepared.autoByCost(scales: FloatArray): ModelCrops {
         val solved = HashMap<Int, ModelCrops>()
@@ -438,12 +439,22 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         /** Number of window positions on the reference page. */
         val positions = cols * rows
 
+        /** Nanoseconds spent in [precompute], in seeding the extra windows, and in refining them, for measuring. */
+        var precomputeNanos = 0L
+        var splitNanos = 0L
+        var offNanos = 0L
+        var seedNanos = 0L
+        var refineNanos = 0L
+        /** Whether the search for a second window was skipped because it couldn't pay for itself. */
+        var prunedAt = 0
+
         // cost[p * positions + pos]: page p's cost with the window at reference position
         // pos = y * cols + x.
         private val cost = buffer.get(pages.size * positions)
         private val sums = DoubleArray(positions)
 
         suspend fun precompute() {
+            val started = System.nanoTime()
             var offCentres = DoubleArray(0)
             var splits = DoubleArray(0)
             for (p in pages.indices) {
@@ -459,10 +470,14 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                 val pageCols = page.width - w + 1
                 val size = pageCols * (page.height - h + 1)
                 if (offCentres.size < size) offCentres = DoubleArray(size)
+                val offStart = System.nanoTime()
                 page.offCentres(w, h, offCentres)
+                offNanos += System.nanoTime() - offStart
                 if (weights.kappa > 0.0) {
                     if (splits.size < size) splits = DoubleArray(size)
+                    val splitStart = System.nanoTime()
                     page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits, buffer.blocks)
+                    splitNanos += System.nanoTime() - splitStart
                 }
                 val reference = (page.maskWidth to page.maskHeight) == refSize
                 for (pos in 0 until positions) {
@@ -483,6 +498,15 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                         (if (weights.kappa > 0.0) weights.kappa * splits[y * pageCols + x] else 0.0)
                 }
             }
+            precomputeNanos += System.nanoTime() - started
+        }
+
+        /** The least any page can cost at any position: a lower bound on what any windows can achieve. */
+        private fun minimum(p: Int): Double {
+            val row = p * positions
+            var m = Double.MAX_VALUE
+            for (pos in 0 until positions) if (cost[row + pos] < m) m = cost[row + pos]
+            return m
         }
 
         private fun cost(p: Int, pos: Int) = cost[p * positions + pos]
@@ -641,9 +665,19 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
             var bestCost = total(bestWindows, bestAssignment)
             var previous = bestWindows
             // Each page's own best position seeds candidates for an extra window.
+            val seedStart = System.nanoTime()
             val seeds = if (weights.maxWindows > 1) pages.indices.map { bestFor(listOf(it)) }.distinct() else emptyList()
+            // What more windows could save at most: every page at its own cheapest position. If
+            // that doesn't cover one more window's price, no extra window can pay for itself.
+            val floor = if (weights.maxWindows > 1) pages.indices.sumOf { minimum(it) } else 0.0
+            seedNanos += System.nanoTime() - seedStart
             for (k in 2..weights.maxWindows) {
+                if (bestCost - floor <= weights.gamma * (k - 1) + EPS) {
+                    prunedAt = k
+                    break
+                }
                 // Refining is the expensive part: only from the seeds that help most at once.
+                val refineStart = System.nanoTime()
                 val starts = seeds.map { previous + it }
                     .sortedBy { total(it, assign(it)) }
                     .take(MAX_SEEDS)
@@ -654,6 +688,7 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                 }
                 if (starts.isEmpty()) break
                 val (windows, assignment) = starts.map { refine(it) }.minBy { total(it.first, it.second) }
+                refineNanos += System.nanoTime() - refineStart
                 previous = windows
                 val c = total(windows, assignment)
                 if (c < bestCost - EPS) {
@@ -677,8 +712,8 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     companion object {
         private const val MAX_ROUNDS = 20
         private const val COARSE_STEP = 4
-        private const val GRID_TIGHTER = 8
-        private const val LOOKAHEAD = 2
+        private const val GRID_TIGHTER = 4
+        private const val LOOKAHEAD = 1
         private const val MAX_SEEDS = 6
         private const val EPS = 1e-12
 
