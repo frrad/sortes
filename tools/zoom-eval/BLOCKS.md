@@ -155,7 +155,9 @@ the block term puts the edge between paragraphs or sections where there is one t
 
 Zooms moved by at most 0.02 on any paper: tighter on 12, looser on 8, unchanged on 9. One-off windows
 appear on BatchNorm p11 (the table) and LDM p20 (a wide figure); GDL takes three windows
-instead of two (`labels/agent/`), the one visible regression.
+instead of two (`labels/agent/`), the one visible regression. A dearer window doesn't fix it
+without losing what the owner asked for: γ 0.15 or 0.2 takes away BatchNorm p11's window (99 of
+107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 changes nothing there.
 
 ### Runtime
 
