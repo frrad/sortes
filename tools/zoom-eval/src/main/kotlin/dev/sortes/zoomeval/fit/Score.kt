@@ -49,10 +49,16 @@ object ScoreWeights {
 /** One row of labels/interpretation.tsv. */
 data class Interpretation(
     val move: String? = null,
+    /** The page whose judged crop this page should have instead ("high@10": like page 10's). */
+    val like: Int? = null,
+    /** Only the move's horizontal part counts ("medium/x"): its vertical part kept ink the owner drops. */
+    val horizontal: Boolean = false,
     val keep: Boolean = false,
     val verdict: Verdict? = null,
     val zoom: String? = null,
 )
+
+private val MOVE = Regex("(high|medium|low|none)(?:@([0-9]+))?(/x)?")
 
 /** Reads labels/interpretation.tsv: paper to page (0 for the paper's row) to its reading. */
 fun readInterpretations(file: File): Map<String, Map<Int, Interpretation>> {
@@ -63,11 +69,14 @@ fun readInterpretations(file: File): Map<String, Map<Int, Interpretation>> {
         val f = line.split('\t').map { it.trim() }
         require(f.size >= 6) { "Bad interpretation line: $line" }
         fun dash(s: String) = s.takeIf { it != "-" && it.isNotEmpty() }
-        val move = dash(f[2])?.also { require(it in setOf("high", "medium", "low", "none")) { "Bad move $it: $line" } }
-        val zoom = dash(f[5])?.also { require(it in setOf("affirmed", "tighter", "looser")) { "Bad zoom $it: $line" } }
+        // high, medium, low or none; then @<page> ("like that page") and /x ("horizontally") as needed.
+        val moveField = dash(f[2])?.let { requireNotNull(MOVE.matchEntire(it)) { "Bad move $it: $line" } }
+        val move = moveField?.groupValues?.get(1)
+        val like = moveField?.groupValues?.get(2)?.ifEmpty { null }?.toInt()
+        val zoom = dash(f[5])?.also { require(it in setOf("affirmed", "tighter", "looser", "unset")) { "Bad zoom $it: $line" } }
         require(f[3] in setOf("yes", "no", "-")) { "Bad keep ${f[3]}: $line" }
         out.getOrPut(f[0]) { HashMap() }[if (f[1] == "*") 0 else f[1].toInt()] =
-            Interpretation(move, f[3] == "yes", dash(f[4])?.let { Verdict.of(it) }, zoom)
+            Interpretation(move, like, moveField?.groupValues?.get(3) == "/x", f[3] == "yes", dash(f[4])?.let { Verdict.of(it) }, zoom)
     }
     return out
 }
@@ -82,6 +91,8 @@ data class PageTarget(
     val keepCentre: Point,
     val keepWeight: Double,
     val why: String,
+    /** Only the horizontal distance from [centre] counts. */
+    val horizontalOnly: Boolean = false,
 )
 
 /** What a labelled paper asks of the model. */
@@ -106,8 +117,10 @@ fun targets(
     val zoomVotes = (listOf(paperReading) + labels.pages.keys.map { interpretation[it] })
         .sumOf { r -> when (r?.zoom) { "tighter" -> -1.0; "looser" -> 1.0; else -> 0.0 } }
     val affirmed = (listOf(paperReading) + labels.pages.keys.map { interpretation[it] }).any { it?.zoom == "affirmed" }
+    // "unset": the owner's zoom answered something the labels now read otherwise; it doesn't count.
+    val idealScale = labels.idealScale?.takeIf { paperReading?.zoom != "unset" }
     val (scale, scaleWeight) = when {
-        labels.idealScale != null -> labels.idealScale to 1.0
+        idealScale != null -> idealScale to 1.0
         affirmed -> judgedScale to 1.0
         else -> judgedScale + ScoreWeights.ZOOM_VOTE * zoomVotes to ScoreWeights.IMPLICIT_ZOOM
     }
@@ -115,7 +128,9 @@ fun targets(
         if (n > judgedCentres.size) return@mapNotNull null
         val reading = interpretation[n]
         val judged = judgedCentres[n - 1]
-        val moved = label.idealCentre?.takeIf { hypot(it.x - judged.x, it.y - judged.y) > 0.05 }
+        // A page that should have another page's crop ("like page 10") targets that crop's centre.
+        val like = reading?.like?.takeIf { it in 1..judgedCentres.size }?.let { judgedCentres[it - 1] }
+        val moved = (like ?: label.idealCentre)?.takeIf { hypot(it.x - judged.x, it.y - judged.y) > 0.05 }
         val confidence = when (reading?.move) {
             "high" -> ScoreWeights.HIGH
             "medium" -> ScoreWeights.MEDIUM
@@ -130,7 +145,10 @@ fun targets(
         when {
             moved != null && confidence > 0 -> PageTarget(
                 n, moved, confidence, moved, if (keep) 1.0 else confidence,
-                "moved (${"%.0f".format(confidence * 100)}%)" + if (keep) ", keep" else "",
+                (if (like != null) "like p${reading.like}" else "moved") +
+                    (if (reading?.horizontal == true) " across" else "") +
+                    " (${"%.0f".format(confidence * 100)}%)" + if (keep) ", keep" else "",
+                horizontalOnly = reading?.horizontal == true,
             )
             good -> PageTarget(n, judged, ScoreWeights.GOOD, judged, if (keep) 1.0 else ScoreWeights.GOOD, "good: stay put")
             keep -> PageTarget(n, null, 0.0, judged, 1.0, "keep")
@@ -205,7 +223,7 @@ fun score(targets: PaperTargets, crops: ModelCrops, masks: List<InkMask>, sizes:
         val i = t.page - 1
         val crop = crops.pages[i]
         val centre = centreOf(crop.window, sizes[i], aspect)
-        val error = t.centre?.let { hypot(centre.x - it.x, centre.y - it.y) }
+        val error = t.centre?.let { if (t.horizontalOnly) kotlin.math.abs(centre.x - it.x) else hypot(centre.x - it.x, centre.y - it.y) }
         // The ideal crop: at the paper's target zoom, centred where the owner wants it.
         val ideal = cellsOf(windowAt(t.keepCentre, targets.scale, sizes[i], aspect), masks[i], aspect)
         val ink = masks[i].inkCount

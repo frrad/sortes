@@ -1,0 +1,100 @@
+{
+  "comment": "",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader+furniture+marks",
+    "aspect": 0.75,
+    "commit": "37d755c5c48c",
+    "scale": 0.815,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.019999999552965164,
+      "autoMaxLost": 0.004999999888241291,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "don't love this page, but the rest of them are great. nothing better we can do here with this crop window.",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": null
+    },
+    "10": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "11": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "12": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "13": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "14": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "5": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "6": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "7": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "8": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    }
+  },
+  "paper": "2203.15556",
+  "schema": 1
+}
