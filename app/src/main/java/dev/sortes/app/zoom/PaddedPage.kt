@@ -8,6 +8,11 @@ import kotlin.math.roundToInt
  * summed-area table for counting the ink in any window. Shared by [CropAnalysis] and [CropModel].
  */
 internal class PaddedPage(mask: InkMask, private val aspect: Float) {
+    private companion object {
+        /** Most frames' worth of cells the blocks' ink tables may take per page: about 200 KB. */
+        const val SAT_AREAS = 1
+    }
+
     val width: Int
     val height: Int
     val maskWidth = mask.width
@@ -46,55 +51,59 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
 
     private val mask = mask
     private var blocksGap = -1
+    private var found: PageBlocks? = null
     private var blocksFor: List<CellRect> = emptyList()
-    private var blockInks = IntArray(0)
     // Whether each block is sparse: under half its box inked (a figure, a frame). A window
-    // overlapping a sparse block's box may keep none of its cells, so its share is always from
-    // its cells; a dense block (text) is charged for any overlap of its box short of containing
-    // it, which lets most positions be filled in one go.
+    // inside a sparse block's box may keep none of its cells.
     private var blockSparse = BooleanArray(0)
-    // Each block's own summed-area table over its box: sums[i][(y + 1) * (bw + 1) + x + 1] for
-    // the block's cells above and left of (x, y) within the box.
-    private var blockSums: Array<IntArray> = emptyArray()
+    // The blocks' summed-area tables, largest boxes first until they would take over SAT_AREAS
+    // frames' worth of cells (so a page of heavily overlapping boxes stays bounded); the rest,
+    // and blocks too small to count, are counted from their runs, which for small blocks is as
+    // fast. tableOffsets[b] is a block's table's start in tableSums, or -1.
+    private var tableOffsets = IntArray(0)
+    private var tableSums = IntArray(0)
 
     /**
-     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept (with each
-     * block's own ink table) for the last gap asked for.
+     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept with their
+     * tables for the last gap asked for.
      */
     fun blocks(gap: Int): List<CellRect> {
         if (gap != blocksGap) {
-            if (inkCount == 0) {
-                blocksFor = emptyList()
-                blockInks = IntArray(0)
-                blockSparse = BooleanArray(0)
-                blockSums = emptyArray()
-            } else {
-                val found = PageBlocks.of(mask, gap)
-                blocksFor = found.boxes.map { CellRect(it.left + offX, it.top + offY, it.right + offX, it.bottom + offY) }
-                blockInks = found.inks
-                blockSparse = BooleanArray(found.boxes.size) { b ->
-                    val box = found.boxes[b]
-                    found.inks[b] * 2 < (box.right - box.left) * (box.bottom - box.top)
-                }
-                blockSums = Array(found.boxes.size) { b ->
-                    val box = found.boxes[b]
-                    val bw = box.right - box.left
-                    val bh = box.bottom - box.top
-                    val stride = bw + 1
-                    val sums = IntArray(stride * (bh + 1))
-                    for (y in 0 until bh) {
-                        var row = 0
-                        for (x in 0 until bw) {
-                            if (found.labels[(box.top + y) * found.maskWidth + box.left + x] == b) row++
-                            sums[(y + 1) * stride + x + 1] = sums[y * stride + x + 1] + row
-                        }
-                    }
-                    sums
-                }
+            val f = if (inkCount == 0) null else PageBlocks.of(mask, gap)
+            found = f
+            blocksFor = f?.boxes?.map { CellRect(it.left + offX, it.top + offY, it.right + offX, it.bottom + offY) } ?: emptyList()
+            blockSparse = BooleanArray(blocksFor.size) { b ->
+                val box = blocksFor[b]
+                f!!.inks[b] * 2 < (box.right - box.left) * (box.bottom - box.top)
             }
+            tables(f)
             blocksGap = gap
         }
         return blocksFor
+    }
+
+    /** Bytes the cached blocks and their tables take, for measuring. */
+    fun blockBytes(): Int = (found?.bytes ?: 0) + blocksFor.size * 28 + tableSums.size * 4
+
+    private fun tables(f: PageBlocks?) {
+        tableOffsets = IntArray(blocksFor.size) { -1 }
+        if (f == null) {
+            tableSums = IntArray(0)
+            return
+        }
+        val order = blocksFor.indices.filter { f.inks[it] >= PageBlocks.MIN_BLOCK_INK }
+            .sortedByDescending { (blocksFor[it].right - blocksFor[it].left) * (blocksFor[it].bottom - blocksFor[it].top) }
+        var total = 0
+        val cap = SAT_AREAS * width * height
+        for (b in order) {
+            val box = blocksFor[b]
+            val size = (box.right - box.left + 1) * (box.bottom - box.top + 1)
+            if (total + size > cap) break
+            tableOffsets[b] = total
+            total += size
+        }
+        tableSums = IntArray(total)
+        for (b in order) if (tableOffsets[b] >= 0) f.table(b, tableSums, tableOffsets[b])
     }
 
     /** Block [b]'s own ink within frame cells [l, r) x [t, bt) (clipped to its box). */
@@ -105,50 +114,49 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         val x1 = minOf(r, box.right) - box.left
         val y1 = minOf(bt, box.bottom) - box.top
         if (x1 <= x0 || y1 <= y0) return 0
+        val offset = tableOffsets[b]
+        if (offset < 0) return found!!.inkIn(b, x0 + box.left - offX, y0 + box.top - offY, x1 + box.left - offX, y1 + box.top - offY)
         val stride = box.right - box.left + 1
-        val sums = blockSums[b]
-        return sums[y1 * stride + x1] - sums[y0 * stride + x1] - sums[y1 * stride + x0] + sums[y0 * stride + x0]
+        val sums = tableSums
+        return sums[offset + y1 * stride + x1] - sums[offset + y0 * stride + x1] - sums[offset + y1 * stride + x0] + sums[offset + y0 * stride + x0]
     }
 
-    /** How many blocks (with [gap]) a [w] x [h] window at ([x], [y]) cuts into: some ink in, some out. */
+    /**
+     * How many blocks (with [gap]) of at least [PageBlocks.MIN_BLOCK_INK] cells a [w] x [h]
+     * window at ([x], [y]) cuts into: some ink in, some out.
+     */
     fun split(x: Int, y: Int, w: Int, h: Int, gap: Int): Int {
         val boxes = blocks(gap)
+        val f = found ?: return 0
         return boxes.indices.count { b ->
             val kept = blockInside(b, x, y, x + w, y + h)
-            blockInks[b] >= PageBlocks.MIN_BLOCK_INK && kept > 0 && kept < blockInks[b]
+            f.inks[b] >= PageBlocks.MIN_BLOCK_INK && kept > 0 && kept < f.inks[b]
         }
     }
 
     /**
-     * The ink cut off one block at which it costs a whole split: [unit] for every block. (A
-     * per-block unit of half the block's ink, so that a small block cut in two cost a whole
-     * split, was tried and dropped: on a scan the small blocks are fragments and marks, and
-     * charging them whole moved Shannon's windows by a cell against the owner's labels.)
-     */
-    @Suppress("UNUSED_PARAMETER")
-    private fun unitFor(b: Int, unit: Int): Int = unit
-
-    /**
      * Block [b]'s share of a split for a window keeping [kept] of its ink: 0 if all of it or if
-     * the block is too small to count; else the cut as a share of the block's unit, capped at 1.
-     * A window keeping none of a block's cells still counts here; [exactShare] makes the one
+     * the block is too small to count; else the cut as a share of [unit] cells, capped at 1. A
+     * window keeping none of a block's cells still counts here; [exactShare] makes the one
      * exception (inside a sparse block's box), and a window sticking out of the box yet keeping
      * nothing (an L-shaped block's empty corner) is charged, which is what lets [splitCosts]
      * fill most positions without looking at them.
      */
     private fun share(b: Int, kept: Int, unit: Int): Double {
-        val ink = blockInks[b]
+        val ink = found!!.inks[b]
         val cut = ink - kept
         if (cut <= 0 || ink < PageBlocks.MIN_BLOCK_INK) return 0.0
-        val u = unitFor(b, unit)
-        return if (cut >= u) 1.0 else cut.toDouble() / u
+        return if (cut >= unit) 1.0 else cut.toDouble() / unit
     }
 
     /**
      * How badly a [w] x [h] window at ([x], [y]) cuts into the page's blocks (with [gap]): for
-     * each block it cuts into, the ink cut off that block as a share of [unit] cells (or of half
-     * the block, if smaller), capped at 1, summed. A nibble off a block's edge counts little; a
-     * sliced title, line or table row counts a whole block.
+     * each block whose box it overlaps without containing, the ink cut off that block as a
+     * share of [unit] cells, capped at 1, summed. A nibble off a block's edge counts little; a
+     * sliced title, line or table row counts a whole block. A window inside a sparse block's
+     * box keeping none of its cells (inside a frame) counts nothing for it; one sticking out of
+     * a block's box yet keeping none of its cells (an L-shaped block's empty corner) counts as
+     * if it cut the block, so this can exceed [split]'s count of blocks with ink on both sides.
      */
     fun splitCost(x: Int, y: Int, w: Int, h: Int, gap: Int, unit: Int): Double {
         val boxes = blocks(gap)
@@ -161,25 +169,29 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         return cost
     }
 
+    /** [splitCost]'s share of block [b] for one window: a clean drop when inside a sparse box with none of its cells. */
+    private fun exactShare(b: Int, x: Int, y: Int, w: Int, h: Int, unit: Int): Double {
+        val kept = blockInside(b, x, y, x + w, y + h)
+        if (kept == 0 && blockSparse[b] && blocksFor[b].contains(CellRect(x, y, x + w, y + h))) return 0.0
+        return share(b, kept, unit)
+    }
+
     /**
      * [splitCost] for every position of a [w] x [h] window at once, into [out] at
-     * `y * (width - w + 1) + x`. Each block costs a whole split at every position whose window
-     * overlaps its box without containing it, filled through a 2-D difference array, except in a
-     * ring of positions around those containing it, where the window cuts fewer than the block's
-     * unit of cells off one side and the share is computed exactly from the block's own ink
-     * table. The ring is a few cells wide, so that is about linear in the blocks plus the
-     * positions. A window that lies entirely inside a sparse block's box (inside a frame, in a
-     * figure's white) may keep none of its cells; those positions are computed exactly too, so a
-     * frame around other content isn't charged for it. What remains approximate is a window that
-     * sticks out of a block's box yet keeps none of its cells (the empty corner of an L-shaped
-     * block): it is charged as if it cut the block, as [splitCost] does.
+     * `y * (width - w + 1) + x`, using [s] for scratch. Each block costs a whole split at every
+     * position whose window overlaps its box without containing it, filled through a 2-D
+     * difference array, except where the share is computed exactly from the block's cells: a
+     * ring of positions around those containing it, where the window cuts fewer than [unit]
+     * cells off one side (a few cells wide, so the work is about linear in the blocks plus the
+     * positions), and, for a sparse block, the positions whose window lies inside its box.
      */
-    fun splitCosts(w: Int, h: Int, gap: Int, unit: Int, out: DoubleArray) {
+    fun splitCosts(w: Int, h: Int, gap: Int, unit: Int, out: DoubleArray, s: BlockScratch) {
         val cols = width - w + 1
         val rows = height - h + 1
         val boxes = blocks(gap)
+        val f = found
         val stride = cols + 1
-        val diff = diffBuffer(stride * (rows + 1))
+        val diff = s.diff(stride * (rows + 1))
         diff.fill(0.0, 0, stride * (rows + 1))
         fun add(x0: Int, y0: Int, x1: Int, y1: Int, v: Double) {
             if (x0 > x1 || y0 > y1) return
@@ -194,9 +206,8 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         for (b in boxes.indices) {
             val o = b * 12
             exact[o] = 1; exact[o + 2] = 0; exact[o + 8] = 1; exact[o + 10] = 0
-            if (blockInks[b] < PageBlocks.MIN_BLOCK_INK) continue
+            if (f!!.inks[b] < PageBlocks.MIN_BLOCK_INK) continue
             val box = boxes[b]
-            val u = unitFor(b, unit)
             val ox0 = (box.left - w + 1).coerceAtLeast(0)
             val ox1 = (box.right - 1).coerceAtMost(cols - 1)
             val oy0 = (box.top - h + 1).coerceAtLeast(0)
@@ -206,10 +217,10 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
             val cx1 = box.left
             val cy0 = box.bottom - h
             val cy1 = box.top
-            val rx0 = if (cx0 <= cx1) maxOf(ox0, cx0 - edgeRun(b, u, side = 1)) else ox0
-            val rx1 = if (cx0 <= cx1) minOf(ox1, cx1 + edgeRun(b, u, side = 0)) else ox1
-            val ry0 = if (cy0 <= cy1) maxOf(oy0, cy0 - edgeRun(b, u, side = 3)) else oy0
-            val ry1 = if (cy0 <= cy1) minOf(oy1, cy1 + edgeRun(b, u, side = 2)) else oy1
+            val rx0 = if (cx0 <= cx1) maxOf(ox0, cx0 - edgeRun(b, unit, side = 1)) else ox0
+            val rx1 = if (cx0 <= cx1) minOf(ox1, cx1 + edgeRun(b, unit, side = 0)) else ox1
+            val ry0 = if (cy0 <= cy1) maxOf(oy0, cy0 - edgeRun(b, unit, side = 3)) else oy0
+            val ry1 = if (cy0 <= cy1) minOf(oy1, cy1 + edgeRun(b, unit, side = 2)) else oy1
             add(ox0, oy0, ox1, oy1, 1.0)
             add(rx0, ry0, rx1, ry1, -1.0)
             exact[o] = rx0; exact[o + 1] = ry0; exact[o + 2] = rx1; exact[o + 3] = ry1
@@ -255,13 +266,6 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         }
     }
 
-    /** [splitCost]'s share of block [b] for one window: a clean drop when inside a sparse box with none of its cells. */
-    private fun exactShare(b: Int, x: Int, y: Int, w: Int, h: Int, unit: Int): Double {
-        val kept = blockInside(b, x, y, x + w, y + h)
-        if (kept == 0 && blockSparse[b] && blocksFor[b].contains(CellRect(x, y, x + w, y + h))) return 0.0
-        return share(b, kept, unit)
-    }
-
     /**
      * How many columns (sides 0 left, 1 right) or rows (2 top, 3 bottom) of block [b], taken
      * from that edge inwards, hold fewer than [u] of its cells: how far a window edge may move
@@ -283,12 +287,6 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
             if (ink >= u) return n
             n = next
         }
-    }
-
-    private var diff = DoubleArray(0)
-    private fun diffBuffer(size: Int): DoubleArray {
-        if (diff.size < size) diff = DoubleArray(size)
-        return diff
     }
 
     fun windowWidth(scale: Float) = (scale * width).roundToInt().coerceIn(1, width)

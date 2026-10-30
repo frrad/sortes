@@ -405,16 +405,18 @@ class CropModelBlocksTest {
 
     @Test
     fun theCostBasedZoomSacrificesOnePageForTheRest() = runBlocking {
-        // One page's block (60 rows) is taller than the others' (56). Keeping it whole costs every
-        // page 4 rows of zoom; splitting it costs kappa plus its cut ink, on one page.
+        // One page's block (64 rows) is taller than the others' (56). Keeping it whole costs every
+        // page 8 rows of zoom; splitting it costs kappa plus its cut ink, on one page. The whole
+        // case needs the search to go on loosening past scales that are worse while the tall
+        // page is still split.
         val usual = page(rect(10, 10, 50, 66))
-        val tall = page(rect(10, 8, 50, 68))
+        val tall = page(rect(10, 6, 50, 70))
         val masks = List(12) { usual } + tall
         val keep = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(masks)
         assertEquals(56, keep.pages[0].cells.bottom - keep.pages[0].cells.top)
         assertEquals(1, keep.pagesSplit)
         val whole = CropModel(aspect, weights(kappa = 5.0, zeta = 1.0)).auto(masks)
-        assertEquals(60, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
+        assertEquals(64, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
         assertEquals(0, whole.pagesSplit)
     }
 

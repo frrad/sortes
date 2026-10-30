@@ -38,8 +38,8 @@ captions, tables, footnotes and columns as blocks of their own. A block of fewer
 but not a thing to keep whole; without that, Shannon's specks beside the text moved its windows
 by a cell.
 
-A window **splits** a block when it overlaps the block's box without containing it. Each split
-block costs
+A window **splits** a block when it keeps some of the block's ink and cuts off the rest. Each
+split block costs
 
     kappa · min(1, cut ink of the block / (splitInk · median page ink))
 
@@ -53,20 +53,28 @@ of a text line). So:
   saturation the first version of this model slid a whole paper's window 60 pt, or opened a
   second window, to avoid such nibbles.
 
-The cut is counted from each block's own cells (a summed-area table per block over its box),
-never from its box, so a frame around other content, or an L-shaped paragraph beside a figure,
-is charged only for its own ink. (Capping the unit at half the block's ink, so that a small
-block cut in two cost a whole split, was tried: it changed nothing on text papers and moved
-Shannon's windows by a cell, since a scan's small blocks are fragments and marks; dropped.)
+The cut is counted from each block's own cells, never from its box, so a frame around other
+content, or an L-shaped paragraph beside a figure, is charged only for its own ink. (Capping
+the unit at half the block's ink, so that a small block cut in two cost a whole split, was
+tried: it changed nothing on text papers and moved Shannon's windows by a cell, since a scan's
+small blocks are fragments and marks; dropped.) A block of fewer than 8 cells (`MIN_BLOCK_INK`)
+never counts.
 
-Costs for every window position (`PaddedPage.splitCosts`): a dense block (half its box or more
-inked: text) costs a whole split at every position whose window overlaps its box without
-containing it, filled through a 2-D difference array, except in a thin ring around the
-containing positions where the window cuts fewer than the block's unit off one side and the
-share is computed exactly; a sparse block (a figure, a frame) is computed exactly at every
-overlapping position, row by row from a column profile, since a window inside its box can keep
-none of its cells. The work is about linear in the positions plus the blocks' rings, plus the
-sparse blocks' overlap rectangles.
+Costs for every window position (`PaddedPage.splitCosts`): every block costs a whole split at
+every position whose window overlaps its box without containing it, filled through a 2-D
+difference array, except where the share is computed exactly from the block's cells: a thin
+ring around the containing positions, where the window cuts fewer than the unit off one side,
+and, for a sparse block (under half its box inked: a figure, a frame), the positions whose
+window lies inside its box, where it may keep none of the block's cells (inside a frame) and
+then costs nothing. One approximation is left, the same for the solver and the report: a
+window that sticks out of a block's box yet keeps none of its cells (the empty corner of an
+L-shaped block) is charged as if it cut the block, so `PageCrop.split` can exceed
+`PageCrop.splitBlocks`, which counts only blocks with ink on both sides. The work is about
+linear in the positions plus the blocks' rings and the sparse blocks' insides.
+
+Memory: a page keeps its blocks as boxes and runs (a few kilobytes); the blocks' summed-area
+tables are rebuilt for each solve into scratch shared by all pages, largest boxes first up to
+three frames' worth of cells, and the rest are counted from their runs.
 
 With blocks, the convex per-page term ε (which let a page losing a lot earn its own window) is
 redundant and off: a page earns its own window when the shared one would split its blocks by
@@ -76,7 +84,9 @@ Pages outside a long paper's 60-page sample (`SampledPaper.cropFor`) follow the 
 shared window is kept if it cuts at most the allowance *and* no block; otherwise the page's own
 best window takes over when its per-page cost plus γ is lower. Before, that gate was by cut ink
 alone, so a shared window slicing a line under the 1 % allowance was kept, and a clean own window
-that dropped a footer lost to a slicing shared one.
+that dropped a footer lost to a slicing shared one. The new gate no longer promises the own
+window whenever it cuts less: it has to be worth a window, as it would for a sampled page.
+That is deliberate, so an unsampled page is treated like its neighbours.
 
 ### Zoom from the same objective
 
@@ -92,10 +102,11 @@ Chinchilla p1), and a couple of sliced figures in 15 pages can't be (Adam). `aut
 then keeps the content a few points off the screen edge; 0.02 was consistently too loose
 against the owner's zooms and 0 too tight.
 
-The search is local (`CropModel.autoByCost`): from the cut budget's own bound, steps of 0.01
-either way while the objective improves (allowing one worse step), then the scales either side
-of the best, then 0.01 either side of the best and 0.005 either side of the best of those. Ten
-solves per paper, against the old search's two or three.
+The search (`CropModel.autoByCost`): a short grid on the tighter side of the cut budget's own
+bound (0.04 tighter to the bound, in steps of 0.02), then looser in the same steps for as long
+as the objective improves, allowing two worse steps in a row (a page's blocks fitting a step or
+two later), then 0.01 either side of the best and 0.005 either side of the best of those. About
+ten solves per paper, against the old search's two or three.
 
 ### Two small things the labels asked for
 
@@ -183,7 +194,7 @@ model choosing the figure over staying put, as designed. A dearer window doesn't
 without losing what the owner asked for elsewhere: γ 0.15 or 0.2 takes away BatchNorm p11's
 window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 changes nothing.
 
-### Runtime
+### Runtime and memory
 
 `zoom-eval bench` (best of three, on the reader's sample of at most 60 pages, no rendering):
 the automatic zoom end to end, the number of scales it solves, one solve at a fixed scale, and
@@ -192,13 +203,45 @@ the segmentation alone. "Before" is `TUNED` as it was before #36; "#36" the firs
 
 | paper | before: auto / solves / one solve | #36: auto / solves / one solve | now: auto / solves / one solve / segment |
 | --- | --- | --- | --- |
-| Attention, 15 pages | 33 ms / 2 / 6 ms | 161 ms / 11 / 39 ms | 79 ms / 10 / 16 ms / 5 ms |
-| GPT-3, 60 of 75 pages | 46 ms / 2 / 25 ms | 479 ms / 11 / 185 ms | 256 ms / 10 / 51 ms / 18 ms |
-| Shannon, 45 pages | 56 ms / 3 / 23 ms | 373 ms / 11 / 142 ms | 198 ms / 10 / 41 ms / 12 ms |
-| PDLT, 60 of 237 pages | 70 ms / 2 / 26 ms | 735 ms / 11 / 164 ms | 468 ms / 11 / 53 ms / 18 ms |
+| Attention, 15 pages | 45 ms / 2 / 14 ms | 161 ms / 11 / 39 ms | 109 ms / 11 / 25 ms / 4 ms |
+| GPT-3, 60 of 75 pages | 58 ms / 2 / 27 ms | 479 ms / 11 / 185 ms | 288 ms / 11 / 55 ms / 16 ms |
+| Shannon, 45 pages | 63 ms / 3 / 26 ms | 373 ms / 11 / 142 ms | 222 ms / 11 / 43 ms / 10 ms |
+| PDLT, 60 of 237 pages | 80 ms / 2 / 31 ms | 735 ms / 11 / 164 ms | 508 ms / 12 / 54 ms / 15 ms |
 
-Half of #36. What remains over the old model is ten solves against two (the cost-based zoom
-has to look at the scales; the cut budget bisected on a cheap per-page bound) and about twice
-the work per solve (the block costs). On the tablet, where PDLT's solve took 386 ms before,
-expect about 1.5 s on a long book, on top of the 0.6–0.8 s of rendering; the zoom panel's curve
-is unaffected (it solves single scales).
+Well under #36. What remains over the old model is eleven solves against two (the cost-based
+zoom has to look at the scales; the cut budget bisected on a cheap per-page bound) and about
+twice the work per solve (the block costs). On the tablet, where PDLT's solve took 386 ms
+before, expect about 1.5 s on a long book, on top of the 0.6–0.8 s of rendering; the zoom
+panel's curve is unaffected (it solves single scales).
+
+A page keeps about 7–8 KB of runs and boxes for its blocks (`bench`'s bytes/page), plus the
+blocks' ink tables, capped at one frame's worth of cells (about 200 KB); the position scratch
+is shared by all pages. The whole 60-page sample stays under about 12 MB.
+
+## Final status
+
+**Very good:** the model keeps or drops whole things. Over the corpus (29 papers, 718 pages)
+no window edge passes through a line of text at the automatic zoom (25 before), and at a
+manual 0.7 the number of such pages is down by 40 %. It agrees with the owner on 103 of 107
+labelled pages and 15 of 16 zooms, every explicit move or zoom the owner gave except GDL p6,
+and every "good" page. Adam's figures are whole at 0.785, BatchNorm's table gets its own
+window, Shannon alternates cleanly with no sliced lines, half-empty pages stay on the paper's
+window, and two-sided books keep their two windows. Long papers' unsampled pages follow the
+same rule as the rest. READER is untouched.
+
+**Deliberate pushback**, left as is and documented above:
+
+- Title pages (Attention p1, DDPM p1): the owner slices the title to keep the footer; the
+  model drops a whole block instead. No rule short of "titles don't count" gives the owner's
+  crop, and that would be a special case.
+- LDM's zoom, 0.845 against the owner's 0.825: three pages' figures are wider than the 0.825
+  window, and the model loosens rather than cut them; the owner judged four pages at 0.825.
+- GDL's third window: it keeps three pages' margin figures whole instead of cutting through
+  them, which is the complaint the owner had on this book; a dearer window removes it only by
+  also removing BatchNorm p11's.
+
+**Numbers** (against `TUNED` before #36): pages agreeing 99 → 103 of 107; zooms agreeing
+14 → 15 of 16; sliced-line pages 25 → 0 at the automatic zoom and 491 → 279 at 0.7; the
+automatic solve about four times the old model's and half of #36's (GPT-3's 60-page sample
+288 ms on the host). Round 4, labelled by the owner on these crops, is the held-out test still
+to come.
