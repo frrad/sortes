@@ -27,6 +27,14 @@ class CropConfigTest {
     }
 
     @Test
+    fun theTunedConfigUsesBlocksAndTheCostBasedZoom() {
+        val w = CropConfig.TUNED.weights
+        assertTrue(w.kappa > 0.0 && w.zeta > 0.0)
+        assertEquals(0.0, w.epsilon, 0.0)
+        assertEquals(CropModelWeights(beta = 0.5, epsilon = 0.0, gamma = 0.1, delta = 0.005, kappa = 0.2, splitInk = 0.005, zeta = 0.5, autoMargin = 0.01), w)
+    }
+
+    @Test
     fun withoutFurnitureThePaperRuleChangesNothing() {
         val page = body().mask()
         assertSame(page, CropConfig.READER.paperRule(listOf(page)).strip(page))

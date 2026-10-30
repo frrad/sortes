@@ -53,7 +53,7 @@ class MutoolTest {
             readWeights(weights, mapOf("gamma" to "0.3")),
         )
         assertEquals(CropModelWeights(), readWeights(File(dir, "missing"), emptyMap()))
-        assertThrows(IllegalArgumentException::class.java) { CropModelWeights().with(mapOf("zeta" to "1")) }
+        assertThrows(IllegalArgumentException::class.java) { CropModelWeights().with(mapOf("omega" to "1")) }
         val columns = File(dir, "columns.tsv").apply {
             writeText("# label\talgorithm\tthreshold\toverrides\nold\tanchor\t224\t-\nkeep\tmodel\tdefault\tepsilon=0, gamma=0.1\n")
         }

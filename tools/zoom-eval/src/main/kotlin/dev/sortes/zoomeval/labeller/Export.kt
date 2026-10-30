@@ -94,6 +94,7 @@ suspend fun exportPaper(
 fun CropModelWeights.toMap(): Map<String, Double> = sortedMapOf(
     "alpha" to alpha, "beta" to beta, "epsilon" to epsilon, "allowance" to allowance,
     "gamma" to gamma, "delta" to delta, "delta2" to delta2, "maxWindows" to maxWindows.toDouble(),
+    "kappa" to kappa, "blockGap" to blockGap.toDouble(), "splitInk" to splitInk, "zeta" to zeta,
     "autoMaxLost" to autoMaxLost, "autoMargin" to autoMargin, "zoomIgnoredPages" to zoomIgnoredPages.toDouble(),
     "autoMaxPageCut" to autoMaxPageCut,
 )

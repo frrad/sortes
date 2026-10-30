@@ -36,6 +36,14 @@ object ScoreWeights {
     /** Weight of a good page's own crop as a target: it should stay put. */
     const val GOOD = 0.5
 
+    /**
+     * How far (points) a good page's window may move before it costs anything. A "good" verdict
+     * accepts the crop the owner saw; it doesn't say a crop a few points away would be worse, and
+     * most such verdicts were given on one config's own crops, which would otherwise be favoured
+     * over any model that moves a window at all. The same 8 pt as agreement in principle.
+     */
+    const val GOOD_TOLERANCE = 8.0
+
     /** Weight of a zoom target the owner didn't set or affirm (the zoom they saw and left). */
     const val IMPLICIT_ZOOM = 0.5
 
@@ -93,6 +101,8 @@ data class PageTarget(
     val why: String,
     /** Only the horizontal distance from [centre] counts. */
     val horizontalOnly: Boolean = false,
+    /** Distance from [centre] (points) that costs nothing: a good verdict's tolerance. */
+    val tolerance: Double = 0.0,
 )
 
 /** What a labelled paper asks of the model. */
@@ -150,7 +160,7 @@ fun targets(
                     " (${"%.0f".format(confidence * 100)}%)" + if (keep) ", keep" else "",
                 horizontalOnly = reading?.horizontal == true,
             )
-            good -> PageTarget(n, judged, ScoreWeights.GOOD, judged, if (keep) 1.0 else ScoreWeights.GOOD, "good: stay put")
+            good -> PageTarget(n, judged, ScoreWeights.GOOD, judged, if (keep) 1.0 else ScoreWeights.GOOD, "good: stay put", tolerance = ScoreWeights.GOOD_TOLERANCE)
             keep -> PageTarget(n, null, 0.0, judged, 1.0, "keep")
             else -> null
         }
@@ -233,7 +243,7 @@ fun score(targets: PaperTargets, crops: ModelCrops, masks: List<InkMask>, sizes:
             why = t.why,
             centreError = error,
             keepCutPercent = cutPercent,
-            positionUnits = if (error == null) 0.0 else t.centreWeight * error / ScoreWeights.POINTS_PER_UNIT,
+            positionUnits = if (error == null) 0.0 else t.centreWeight * (error - t.tolerance).coerceAtLeast(0.0) / ScoreWeights.POINTS_PER_UNIT,
             keepUnits = t.keepWeight * cutPercent * ScoreWeights.KEEP_UNITS_PER_PERCENT,
         )
     }

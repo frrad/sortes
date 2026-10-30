@@ -101,7 +101,7 @@ suspend fun labelledPaper(
     }
     // The crops the owner judged: the model at the weights the labels record.
     val judgedWeights = CropModelWeights().with(labels.labelledAgainst?.weights.orEmpty().mapValues { (k, v) ->
-        if (k in setOf("maxWindows", "zoomIgnoredPages")) v.toInt().toString() else v.toString()
+        if (k in setOf("maxWindows", "zoomIgnoredPages", "blockGap")) v.toInt().toString() else v.toString()
     })
     // ...and the rules ("reader", "tuned", or "reader+furniture+marks" for a variant's crops).
     val judgedVariant = Variant.parse(labels.labelledAgainst?.algorithm ?: "reader")
@@ -127,6 +127,10 @@ fun sampleWeights(random: Random, base: CropModelWeights = CropModelWeights()): 
         allowance = random.nextDouble(0.0, 0.03),
         gamma = logUniform(0.005, 0.5),
         delta2 = random.nextDouble(0.0, 0.1),
+        kappa = if (random.nextDouble() < 0.2) 0.0 else logUniform(0.01, 1.0),
+        blockGap = random.nextInt(1, 4),
+        splitInk = logUniform(0.001, 0.03),
+        zeta = if (random.nextDouble() < 0.3) 0.0 else logUniform(0.05, 5.0),
         autoMaxLost = logUniform(0.002, 0.03),
         autoMargin = random.nextDouble(-0.02, 0.04),
         zoomIgnoredPages = random.nextInt(0, 3),

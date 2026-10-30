@@ -43,7 +43,7 @@ K windows W₁…W_K.
 
 For a scale s, windows W₁…W_K and an assignment k(p) of pages to windows:
 
-    cost = Σ_p [ α·cut_p + β·off_p + ε·max(0, pageCut_p − a)² ]  +  γ·(K − 1)  +  δ·switches  +  δ₂·breaks
+    cost = Σ_p [ α·cut_p + β·off_p + ε·max(0, pageCut_p − a)² + κ·split_p ]  +  γ·(K − 1)  +  δ·switches  +  δ₂·breaks
 
 - **cut_p**: the ink cells on page p outside its window, divided by the paper's median ink per
   page (over pages with any ink). The unit is "pages of ink", so a cell costs the same on every
@@ -65,6 +65,10 @@ For a scale s, windows W₁…W_K and an assignment k(p) of pages to windows:
   centre from the window's centre, in screen widths plus screen heights. It is 0 when centred
   (or when nothing is kept) and at most 1. It uses the bounding box rather than the centroid
   because what reads as lopsided is the white space at the edges.
+- **split_p**: how badly the window cuts into the page's blocks (`PageBlocks`: connected ink,
+  joined across `blockGap` blank cells). For each block the window overlaps without containing,
+  the ink cut off it as a share of `splitInk` of the median page's ink, capped at 1. Keeping or
+  dropping a whole block costs nothing here. See `BLOCKS.md`. Off (κ = 0) in `READER`.
 - **K − 1**: windows beyond the first.
 - **switches**: page turns where the window changes, i.e. k(p) ≠ k(p−1).
 - **breaks**: pages whose window differs from the one two pages back, i.e. k(p) ≠ k(p−2).
@@ -83,8 +87,9 @@ below scale 1 gets a centred window.
 
 ## Scale
 
-The scale is fixed per paper. It uses the same rule as the reader's auto zoom, applied to the
-crops the model will actually use. That is the tightest scale on `CropAnalysis.defaultScales()`
+The scale is fixed per paper. With ζ > 0 (`TUNED`) it is the scale minimising the cost per page
+plus ζ·scale, a legibility reward; see `BLOCKS.md`. Otherwise (`READER`) it uses the same rule as
+the reader's auto zoom, applied to the crops the model will actually use. That is the tightest scale on `CropAnalysis.defaultScales()`
 at which the model's solved crops cut at most `AUTO_MAX_LOST` (0.5%) of the paper's ink,
 loosened by `AUTO_MARGIN` (+0.02). The reader's own curve gives a lower bound on the scale,
 because each page's best window loses least. The search starts there and steps looser,
@@ -183,6 +188,8 @@ fills in within about 10 s on PDLT.
 | δ₂ | 0.02 | One-off windows and jitter cost 2·δ₂ per excursion on top of γ. At 0.02 (and at 0.05), K > 1 survives only on the two two-sided books, with exact parity. At 0 it also fired on Latent Diffusion (jitter), and on BatchNorm without the stamp rule (to keep the stamp). |
 | ε | 300 | With this, Attention p1 gets its own window and keeps its two-line permission notice. With ε = 0 (the board's "stay put" column), p1 stays on the shared window and loses 3% of its ink. The owner chooses. |
 | a | 0.01 | A page may lose 1% of its own ink (a page number, a stray mark) at no extra cost. |
+| κ, `splitInk`, `blockGap` | 0, 0.005, 2 | The block term, off in the reader; `TUNED` sets κ 0.2 (`BLOCKS.md`). |
+| ζ | 0 | The legibility reward, off in the reader: the zoom comes from the cut budget. `TUNED` sets 0.5. |
 
 **Reading of γ (confirmed by the owner).** Cutting one page's page number beats giving that
 page its own window: α·0.004 ≪ γ.
@@ -233,8 +240,9 @@ The fit found no robust gain from these, so they stay at their old values (off).
 
 ### `CropConfig`: the tuned set, kept out of the reader for now
 
-`CropConfig.TUNED` holds the proposal: the furniture and marks rules, and γ 0.05 → 0.1. The
-harness, fit and labeller use it now.
+`CropConfig.TUNED` holds the proposal. After round 3 it was the furniture and marks rules and
+γ 0.05 → 0.1; it is now the block-aware model of `BLOCKS.md` on top of those. The harness, fit
+and labeller use it.
 
 After round 2 it had β 0.1 → 0.5 instead. Round 3, held out, refuted that (labels/ROUND-3.md):
 

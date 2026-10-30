@@ -32,7 +32,23 @@ Options:
 | `--only=` | every paper; or a comma-separated list of ids |
 
 Any weight can be set directly: `--alpha= --beta= --epsilon= --allowance= --gamma= --delta=
---delta2= --maxWindows=`. Papers run one at a time in a 768 MB heap.
+--delta2= --maxWindows= --kappa= --blockGap= --splitInk= --zeta= --autoMargin=` and the rest of
+`WEIGHT_NAMES`. Papers run one at a time in a 768 MB heap.
+
+A column's overrides may name a config, `config=tuned`: its rules and weights, then the other
+overrides on top.
+
+### Reviewing crops by eye
+
+    flock /tmp/sortes-gradle.lock ./gradlew :zoom-eval:run \
+        --args="review --configs=reader,tuned,tuned:kappa=0.5;zeta=1 --only=1412.6980 --blocks=2"
+
+writes, to `~/sortes-review/model/fable` by default, one readable (360 px) image per page and
+config: the page in its frame, the window outlined, what's off screen shaded, cut ink boxed in
+red and, with `--blocks=`, the blocks outlined in blue; plus a grid per paper and an index with
+each config's zoom, windows, cut and sliced-line pages. A config is a `CropConfig` name with
+optional `weight=value` overrides separated by semicolons. `--scale=` renders every paper at one
+fixed zoom (e.g. 0.7, to see what slices at a tight zoom).
 
 ## Columns
 
@@ -113,6 +129,10 @@ PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-co
   happy to lose them.
 - **Zoom:** each paper's distance from the owner's zoom (or the zoom they saw and left, at half
   weight), at 2 units per 0.01 of scale.
+- **Good verdicts** are tolerant: a crop the owner called good costs nothing until the model's
+  window is more than 8 pt from it (the agreement threshold). Most good verdicts were given on
+  one config's own crops, so without the tolerance any model that moves a window at all would
+  score worse than the one labelled.
 - **Unlabelled pages:** no opinion. They aren't scored.
 - **Readings** (`interpretation.tsv`): a page can ask for another page's crop (`high@10`, for
   "same as the rest" on a page judged bad), or count only the horizontal part of its move
@@ -128,6 +148,8 @@ PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-co
 - `--split=id,…` adds a held-out test between that group and the rest (e.g. round 1 against
   round 2).
 - `--out=` is the report folder, by default `~/sortes-review/fit`.
+- `--labels=` scores other labels, e.g. `labels/agent` (an agent's own review of renders, kept
+  apart from the owner's; see `labels/agent/README.md`).
 
 **Report** (`report.md`):
 - the best set and per-paper scores before and after;

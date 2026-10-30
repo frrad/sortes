@@ -342,3 +342,104 @@ class CropModelTest {
         assertEquals(0.75f, own.window.scale)
     }
 }
+
+class CropModelBlocksTest {
+    private val aspect = 0.75f
+
+    private fun page(vararg rects: IntArray): InkMask {
+        val p = TestPage(60, 80)
+        for ((l, t, r, b) in rects) p.rect(l, t, r, b)
+        return p.mask()
+    }
+
+    private fun rect(l: Int, t: Int, r: Int, b: Int) = intArrayOf(l, t, r, b)
+
+    private fun solve(masks: List<InkMask>, scale: Float, weights: CropModelWeights) =
+        runBlocking { CropModel(aspect, weights).solve(masks, scale) }
+
+    // The per-page convex term is off here, so the trade-offs are cut ink against blocks alone.
+    private fun weights(kappa: Double, zeta: Double = 0.0) = CropModelWeights(epsilon = 0.0, kappa = kappa, zeta = zeta, autoMargin = 0.0)
+
+    /** Text at rows 10-50, a sparse figure (an outline) at rows 54-66, and a dense footnote at 70-76: 66 rows in all. */
+    private val figurePage = page(rect(10, 10, 50, 50), rect(10, 54, 50, 55), rect(10, 54, 11, 66), rect(49, 54, 50, 66), rect(10, 65, 50, 66), rect(10, 70, 50, 76))
+
+    @Test
+    fun cuttingThroughABlockCostsMoreThanDroppingAWholeOne() {
+        // A 60-row window can't hold all 66. By ink alone it cuts two rows off the text and two
+        // off the footnote (160 cells) rather than drop the whole footnote (240); with kappa it
+        // keeps the text and figure whole and drops the footnote cleanly.
+        val byInk = solve(listOf(figurePage), 0.75f, weights(kappa = 0.0))
+        assertTrue("${byInk.pages[0]}", byInk.pages[0].cells.top > 10)
+        val byBlocks = solve(listOf(figurePage), 0.75f, weights(kappa = 0.2))
+        val crop = byBlocks.pages[0]
+        assertEquals("$crop", 0, crop.splitBlocks)
+        // Text and figure whole, and centred in the window: rows 8-67.
+        assertTrue("$crop", crop.cells.top <= 10 && crop.cells.bottom >= 66)
+        assertEquals(240, crop.cutCells)
+    }
+
+    @Test
+    fun theSplitTermIsPartOfTheTotal() {
+        val weights = weights(kappa = 0.2, zeta = 1.0)
+        // A 48-row window must cut through the 40-row text or more.
+        val crops = solve(listOf(figurePage), 0.6f, weights)
+        assertTrue(crops.splitBlocks >= 1)
+        assertEquals(0.2 * crops.pages.sumOf { it.split }, crops.splitTerm, 1e-12)
+        assertTrue(crops.pages[0].split > 0.0 && crops.pages[0].split <= crops.splitBlocks)
+        assertEquals(crops.cutTerm + crops.offTerm + crops.pageCutTerm + crops.splitTerm + crops.windowTerm + crops.switchTerm, crops.total, 1e-9)
+        assertEquals(crops.total / 1 + 1.0 * 0.6, crops.zoomObjective, 1e-6)
+    }
+
+    @Test
+    fun theCostBasedZoomTightensUntilBlocksSplit() = runBlocking {
+        // Every page: a text block of rows 10-70, 60 of the frame's 80 rows. Tightening past it
+        // splits the text on every page, so the zoom stops at the tightest scale whose window
+        // still has 60 rows.
+        val masks = List(6) { page(rect(10, 10, 50, 70)) }
+        val crops = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(masks)
+        assertEquals(0, crops.splitBlocks)
+        assertEquals(0L, crops.cutCells)
+        assertEquals(60, crops.pages[0].cells.bottom - crops.pages[0].cells.top)
+        assertTrue("${crops.scale}", crops.scale <= 0.75f)
+    }
+
+    @Test
+    fun theCostBasedZoomSacrificesOnePageForTheRest() = runBlocking {
+        // One page's block (64 rows) is taller than the others' (56). Keeping it whole costs every
+        // page 8 rows of zoom; splitting it costs kappa plus its cut ink, on one page.
+        val usual = page(rect(10, 10, 50, 66))
+        val tall = page(rect(10, 6, 50, 70))
+        val masks = List(12) { usual } + tall
+        val keep = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(masks)
+        assertEquals(56, keep.pages[0].cells.bottom - keep.pages[0].cells.top)
+        assertEquals(1, keep.pagesSplit)
+        val whole = CropModel(aspect, weights(kappa = 5.0, zeta = 1.0)).auto(masks)
+        assertEquals(64, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
+        assertEquals(0, whole.pagesSplit)
+    }
+
+    @Test
+    fun aNibbleOffABlockIsCheaperThanAWholeSplit() = runBlocking {
+        // Every page: a 40-wide text block and a 44-wide figure. The figure fits a window of 44
+        // columns (scale 0.735); a tighter zoom nibbles a few of its columns. With a large
+        // splitInk the nibble is a small share of a split, so the legibility reward wins and the
+        // zoom tightens past the figure; with a small one every cut is a whole split, so the zoom
+        // stops where the figure fits.
+        val masks = List(6) { page(rect(10, 10, 50, 35), rect(8, 40, 52, 60)) }
+        val nibble = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.5)).auto(masks)
+        assertTrue("${nibble.scale}", nibble.scale <= 0.7f)
+        assertTrue("${nibble.pages[0]}", nibble.pages[0].splitBlocks >= 1 && nibble.pages[0].split < 0.3)
+        val whole = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.005)).auto(masks)
+        assertEquals(0, whole.splitBlocks)
+        // The tightest window with the figure's 44 columns (0.725 rounds to 44 too).
+        assertEquals(44, whole.pages[0].cells.right - whole.pages[0].cells.left)
+        assertTrue("${whole.scale}", whole.scale >= 0.72f)
+    }
+
+    @Test
+    fun readerWeightsIgnoreBlocks() {
+        val crops = solve(listOf(figurePage), 0.6f, CropModelWeights())
+        assertEquals(0, crops.splitBlocks)
+        assertEquals(0.0, crops.splitTerm, 0.0)
+    }
+}

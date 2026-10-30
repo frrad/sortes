@@ -44,6 +44,137 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         }
     }
 
+    private val mask = mask
+    private var blocksGap = -1
+    private var blocksFor: List<CellRect> = emptyList()
+    private var blockInks = IntArray(0)
+
+    /**
+     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept for the last gap
+     * asked for.
+     */
+    fun blocks(gap: Int): List<CellRect> {
+        if (gap != blocksGap) {
+            if (inkCount == 0) {
+                blocksFor = emptyList()
+                blockInks = IntArray(0)
+            } else {
+                val found = PageBlocks.of(mask, gap)
+                blocksFor = found.boxes.map { CellRect(it.left + offX, it.top + offY, it.right + offX, it.bottom + offY) }
+                blockInks = found.inks
+            }
+            blocksGap = gap
+        }
+        return blocksFor
+    }
+
+    /** How many blocks (with [gap]) a [w] x [h] window at ([x], [y]) passes through. */
+    fun split(x: Int, y: Int, w: Int, h: Int, gap: Int): Int {
+        val window = CellRect(x, y, x + w, y + h)
+        return blocks(gap).count { it.overlaps(window) && !window.contains(it) }
+    }
+
+    /**
+     * How badly a [w] x [h] window at ([x], [y]) cuts into the page's blocks (with [gap]): for
+     * each block it passes through, the ink it cuts off that block as a share of [unit] cells,
+     * capped at 1, summed. A nibble off a block's edge counts little; a sliced title, line or
+     * table row counts a whole block. The ink kept of a block is counted over its box, so where
+     * two blocks' boxes overlap (an L-shaped paragraph beside a figure) the cut is underestimated.
+     */
+    fun splitCost(x: Int, y: Int, w: Int, h: Int, gap: Int, unit: Int): Double {
+        val window = CellRect(x, y, x + w, y + h)
+        var cost = 0.0
+        val boxes = blocks(gap)
+        for (i in boxes.indices) {
+            val b = boxes[i]
+            if (!b.overlaps(window) || window.contains(b)) continue
+            cost += cutShare(b, blockInks[i], window, unit)
+        }
+        return cost
+    }
+
+    private fun cutShare(b: CellRect, ink: Int, window: CellRect, unit: Int): Double {
+        val l = maxOf(b.left, window.left)
+        val t = maxOf(b.top, window.top)
+        val r = minOf(b.right, window.right)
+        val bt = minOf(b.bottom, window.bottom)
+        val kept = inside(l, t, r - l, bt - t)
+        val cut = (ink - kept).coerceAtLeast(0)
+        return if (cut >= unit) 1.0 else cut.toDouble() / unit
+    }
+
+    /**
+     * [splitCost] for every position of a [w] x [h] window at once, into [out] at
+     * `y * (width - w + 1) + x`. Each block adds its share over the positions that overlap but
+     * don't contain it; the rest cost nothing.
+     */
+    fun splitCosts(w: Int, h: Int, gap: Int, unit: Int, out: DoubleArray) {
+        val cols = width - w + 1
+        val rows = height - h + 1
+        out.fill(0.0, 0, cols * rows)
+        val boxes = blocks(gap)
+        for (i in boxes.indices) {
+            val b = boxes[i]
+            val ink = blockInks[i]
+            // Positions overlapping the block.
+            val x0 = (b.left - w + 1).coerceAtLeast(0)
+            val x1 = (b.right - 1).coerceAtMost(cols - 1)
+            val y0 = (b.top - h + 1).coerceAtLeast(0)
+            val y1 = (b.bottom - 1).coerceAtMost(rows - 1)
+            // ...of which these contain it.
+            val cx0 = b.right - w
+            val cx1 = b.left
+            val cy0 = b.bottom - h
+            val cy1 = b.top
+            for (y in y0..y1) {
+                val containsY = y in cy0..cy1
+                for (x in x0..x1) {
+                    if (containsY && x in cx0..cx1) continue
+                    out[y * cols + x] += cutShare(b, ink, CellRect(x, y, x + w, y + h), unit)
+                }
+            }
+        }
+    }
+
+    /**
+     * [split] for every position of a [w] x [h] window at once, into [out] at
+     * `y * (width - w + 1) + x`: each block adds one over the positions that overlap it and takes
+     * one off those that contain it, through a 2-D difference array, so the work is linear in the
+     * blocks plus the positions.
+     */
+    fun splits(w: Int, h: Int, gap: Int, out: IntArray) {
+        val cols = width - w + 1
+        val rows = height - h + 1
+        val stride = cols + 1
+        val diff = IntArray(stride * (rows + 1))
+        fun add(x0: Int, y0: Int, x1: Int, y1: Int, v: Int) {
+            // Positions x0..x1, y0..y1 inclusive, clipped to the grid.
+            val l = x0.coerceAtLeast(0)
+            val t = y0.coerceAtLeast(0)
+            val r = x1.coerceAtMost(cols - 1)
+            val b = y1.coerceAtMost(rows - 1)
+            if (l > r || t > b) return
+            diff[t * stride + l] += v
+            diff[t * stride + r + 1] -= v
+            diff[(b + 1) * stride + l] -= v
+            diff[(b + 1) * stride + r + 1] += v
+        }
+        for (block in blocks(gap)) {
+            // Overlapping: the window's left is at most the block's last column, its right past the block's first.
+            add(block.left - w + 1, block.top - h + 1, block.right - 1, block.bottom - 1, 1)
+            // Containing: the window's left at most the block's left, its right at least the block's right.
+            add(block.right - w, block.bottom - h, block.left, block.top, -1)
+        }
+        for (y in 0 until rows) {
+            var run = 0
+            for (x in 0 until cols) {
+                run += diff[y * stride + x]
+                val above = if (y == 0) 0 else out[(y - 1) * cols + x]
+                out[y * cols + x] = above + run
+            }
+        }
+    }
+
     fun windowWidth(scale: Float) = (scale * width).roundToInt().coerceIn(1, width)
     fun windowHeight(scale: Float) = (scale * height).roundToInt().coerceIn(1, height)
 

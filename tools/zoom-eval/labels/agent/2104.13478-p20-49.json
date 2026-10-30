@@ -1,0 +1,63 @@
+{
+  "comment": "Three windows with breaks in the pattern (4, 16, 18 on a third window; 6 on the odd pages' one): the margin notes make nibbles that move windows. Prefer the two-window alternation.",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "tuned",
+    "aspect": 0.75,
+    "commit": "7acac7a7f0a7",
+    "scale": 0.8,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.01,
+      "autoMaxLost": 0.005,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "blockGap": 2,
+      "delta": 0.005,
+      "delta2": 0.02,
+      "epsilon": 0,
+      "gamma": 0.1,
+      "kappa": 0.2,
+      "maxWindows": 3,
+      "splitInk": 0.005,
+      "zeta": 0.5,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "labeller": "agent",
+  "pages": {
+    "16": {
+      "comment": "third window",
+      "idealCentre": null,
+      "tags": [
+        "window-jumped"
+      ],
+      "verdict": "bad"
+    },
+    "4": {
+      "comment": "third window; the margin figure is cut on the right",
+      "idealCentre": null,
+      "tags": [
+        "window-jumped"
+      ],
+      "verdict": "bad"
+    },
+    "6": {
+      "comment": "shifted 60 pt right to keep the wide figure whole; text off-centre",
+      "idealCentre": null,
+      "tags": [
+        "off-centre"
+      ],
+      "verdict": "bad"
+    },
+    "8": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    }
+  },
+  "paper": "2104.13478-p20-49",
+  "schema": 1
+}
