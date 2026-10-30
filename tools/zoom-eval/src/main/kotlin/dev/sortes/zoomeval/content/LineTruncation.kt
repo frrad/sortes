@@ -44,12 +44,27 @@ class LineTruncation private constructor(
         return left[l * s + b] - left[l * s + t] + right[r * s + b] - right[r * s + t]
     }
 
-    /** Segments [cells] truncates at its left or right edge (for reporting). */
-    fun truncated(cells: CellRect): Int = segments.indices.count { i ->
-        if (segmentRow[i] !in cells.top until cells.bottom) return@count false
+    /** How many segments [cells] truncates at its left or right edge (for reporting). */
+    fun truncated(cells: CellRect): Int = truncatedSegments(cells).size
+
+    /** The segments [cells] truncates at its left or right edge, by index. */
+    fun truncatedSegments(cells: CellRect): Set<Int> = segments.indices.filterTo(HashSet()) { i ->
+        if (segmentRow[i] !in cells.top until cells.bottom) return@filterTo false
         val members = segments[i]
         val kept = members.count { cl[it] >= cells.left && cr[it] <= cells.right }
         kept in 1 until members.size
+    }
+
+    /**
+     * Segments [shown] truncates that [ideal] keeps whole: lines the owner's crop shows in full
+     * and the model's clips. A line [ideal] leaves out entirely, or clips too, doesn't count.
+     */
+    fun clippedAgainst(shown: CellRect, ideal: CellRect): Int {
+        val idealCut = truncatedSegments(ideal)
+        return truncatedSegments(shown).count { i ->
+            i !in idealCut && segmentRow[i] in ideal.top until ideal.bottom &&
+                segments[i].all { cl[it] >= ideal.left && cr[it] <= ideal.right }
+        }
     }
 
     companion object {

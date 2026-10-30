@@ -105,6 +105,15 @@ data class LabelledAgainst(
     val scale: Double,
     /** The screen's width / height the crops were made for. */
     val aspect: Double,
+    /**
+     * Each page's window centre as shown, in page points, by page index; null for older labels,
+     * whose crops are rebuilt from [algorithm] and [weights]. Recorded for models that aren't
+     * a [dev.sortes.app.zoom.CropConfig] (offline experiments), and so later code changes
+     * can't move what was judged.
+     */
+    val centres: List<Point>? = null,
+    /** Any model parameters besides [weights] (an experiment's), by name. */
+    val parameters: Map<String, Double> = emptyMap(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("commit", commit)
@@ -112,6 +121,8 @@ data class LabelledAgainst(
         .put("weights", JSONObject().apply { weights.forEach { (k, v) -> put(k, v) } })
         .put("scale", scale)
         .put("aspect", aspect)
+        .apply { centres?.let { c -> put("centres", JSONArray(c.map { JSONObject().put("x", it.x).put("y", it.y) })) } }
+        .apply { if (parameters.isNotEmpty()) put("parameters", JSONObject().apply { parameters.forEach { (k, v) -> put(k, v) } }) }
 
     companion object {
         fun fromJson(json: JSONObject) = LabelledAgainst(
@@ -120,6 +131,11 @@ data class LabelledAgainst(
             weights = json.getJSONObject("weights").let { w -> w.keySet().associateWith { w.getDouble(it) }.toSortedMap() },
             scale = json.getDouble("scale"),
             aspect = json.getDouble("aspect"),
+            centres = json.optJSONArray("centres")?.let { a ->
+                (0 until a.length()).map { a.getJSONObject(it).let { p -> Point(p.getDouble("x"), p.getDouble("y")) } }
+            },
+            parameters = json.optJSONObject("parameters")?.let { w -> w.keySet().associateWith { w.getDouble(it) }.toSortedMap() }
+                ?: emptyMap(),
         )
     }
 }

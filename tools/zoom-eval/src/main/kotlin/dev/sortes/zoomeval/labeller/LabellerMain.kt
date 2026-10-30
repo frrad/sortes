@@ -4,6 +4,7 @@ import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.zoomeval.WEIGHT_NAMES
 import dev.sortes.zoomeval.fit.Variant
+import dev.sortes.zoomeval.content.TextModel
 import dev.sortes.zoomeval.readCorpus
 import dev.sortes.zoomeval.readWeights
 import kotlinx.coroutines.runBlocking
@@ -27,14 +28,17 @@ private val home = System.getProperty("user.home")
 val DEFAULT_LABELLER_DATA = "$home/sortes-review/labeller/data"
 
 /**
- * `labeller-export --papers=id,id [--config=reader|tuned] [--variant=furniture|marks|furniture+marks]
+ * `labeller-export --papers=id,id [--config=reader|tuned|tuned+text] [--variant=furniture|marks|furniture+marks]
  * [--corpus=] [--pdfs=] [--out=] [--aspect=] [--weights=] [--<weight>=]`: renders the papers (ids
  * from the corpus) with a [CropConfig]'s crops (the reader's by default) for the labeller, and lists
  * them in `<out>/papers.json`. `--variant=` swaps the config's rules; weights override its weights.
  */
 fun labellerExport(args: List<String>) {
     val opts = options(args, WEIGHT_NAMES + setOf("papers", "corpus", "pdfs", "out", "aspect", "weights", "variant", "config"))
-    val base = CropConfig.named(opts["config"] ?: "reader")
+    // "tuned+text": the offline experiment (TextModel), not a CropConfig.
+    val textModel = if (opts["config"] == "tuned+text") TextModel() else null
+    require(textModel == null || (opts.keys.none { it in WEIGHT_NAMES || it == "variant" })) { "tuned+text takes no weight or variant overrides" }
+    val base = textModel?.config ?: CropConfig.named(opts["config"] ?: "reader")
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv")).associateBy { it.id }
     val ids = requireNotNull(opts["papers"]) { "--papers=id,id is required" }.split(',').map { it.trim() }
     val pdfs = File(opts["pdfs"] ?: "$home/.cache/sortes-zoom-eval/pdf")
@@ -52,7 +56,7 @@ fun labellerExport(args: List<String>) {
     for (id in ids) {
         val paper = requireNotNull(corpus[id]) { "$id isn't in the corpus" }
         val started = System.currentTimeMillis()
-        val json = runBlocking { exportPaper(paper, MutoolPdf(File(pdfs, paper.file)), aspect, commit, out, config) }
+        val json = runBlocking { exportPaper(paper, MutoolPdf(File(pdfs, paper.file)), aspect, commit, out, config, textModel) }
         entries[id] = JSONObject()
             .put("id", id)
             .put("title", paper.title)

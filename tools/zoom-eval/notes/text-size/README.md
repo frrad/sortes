@@ -67,9 +67,9 @@ shows them too. The floor makes no difference in this grid. T 26–28 with n 16�
 20/21; T26 n16 joint and T24 n8 put Perelman at 0.765–0.775. The only zoom miss left is Latent
 Diffusion (0.845 against 0.825), which the owner accepts.
 
-Perelman pp. 15–16 at 0.755 keep 0.0–0.1% less ink than the owner's crop (down from 0.4–0.5%),
-but their centres still miss by 11–13 pt, so they don't count as agreeing. The content is right
-and the window sits differently.
+At 0.755 without the line cost, Perelman pp. 15–16 still clip the end of an equation
+("dτ" on p15). The owner pointed this out. The ink is too small for the 0.25% tolerance, but it
+is the line cost's job (below). With the line cost at 0.1, both pages agree.
 
 ## Truncated lines
 
@@ -80,11 +80,29 @@ a segment when it keeps some of its components and loses others. Each truncated 
 `min(1, lost components / 2)`. A whole segment dropped is not a truncation (the component
 cost counts that). Per-edge prefix tables make it O(1) per window.
 
-At 0.02 (placed), it changes only YOLO. At TUNED's 0.82, every YOLO page clips the last
-character or two of each right-column line. The page targets don't catch this: the owner
-judged 0.825, and the clip is under the 0.25% ink tolerance. The line cost shifts the window
-to keep both columns whole. Agreement is unchanged. In the joint zoom search, line weights
-0.02–0.1 instead pull Perelman to a two-window 0.725 and loosen GDL, so for now they are used
+At TUNED's 0.82, five YOLO pages clip the last character or two of each right-column line.
+The owner judged 0.825 crops that show these lines whole, so the labels are right. The scorer
+missed it because the clip is under the 0.25% ink tolerance.
+
+**Stricter agreement.** `zoom-experiment` now also reports `strictAgree`: as before, and no
+line segment clipped that the owner's crop (target zoom and centre) shows whole
+(`LineTruncation.clippedAgainst`). It needs the fine render, so the `fit` scorer doesn't use it yet.
+
+Placement only, at the text-size zoom (`final.tsv`):
+
+| line weight | pages | strict | zooms | lines clipped vs owner |
+| --- | --- | --- | --- | --- |
+| TUNED | 137 | 132 | 19 | 8 |
+| 0 | 140 | 135 | 20 | 8 |
+| 0.02 | 140 | – | 20 | – |
+| **0.1** | **140** | **140** | **20** | **0** |
+| 0.2–0.5 | 138 | – | 20 | – |
+
+At 0.1, YOLO keeps whole lines (3/8 → 8/8 strict) and Perelman's equation endings stay in view
+(6/8 → 8/8; it now uses a second window for the equation-heavy pages). Geometric Deep Learning
+pp. 2 and 8 move to 8.15 pt from low-confidence horizontal targets (8 pt tolerance), and p6
+was already off. No other paper's windows change. In the joint zoom search, line weights
+0.02–0.1 instead pull Perelman to a two-window 0.725 and loosen GDL, so the line cost is used
 for placement only.
 
 ## Worst-page emphasis (empirical answer)
@@ -107,6 +125,14 @@ build/install/zoom-eval/bin/zoom-eval zoom-experiment --elements=0,0.01 --lines=
 
 The full grid (`grid.tsv`) added `--lines=0,0.02,0.05,0.1 --T=22..32 --n=2,4,8,16
 --floor=0,0.05,0.1,0.2 --risks=0,1`.
+
+## Round 5
+
+The labeller exports the experiment as `--config=tuned+text` (`TextModel`: T 28, n 16, floor
+0.1, component weight 0.01, line weight 0.1). Every page is solved (no sampling). Labels record
+the shown windows' centres and the model's parameters in `labelledAgainst`, so scoring uses
+the crops as shown rather than rebuilding them. Six new papers (`labeller/papers.txt`): two old-style
+math papers (Witten, Green–Tao), VAE, the LIGO PRL, GAN and Scaling Laws.
 
 ## Before the reader
 

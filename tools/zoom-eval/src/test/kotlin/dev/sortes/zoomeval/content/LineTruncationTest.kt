@@ -52,4 +52,15 @@ class LineTruncationTest {
         val t = LineTruncation.of(line, coarse, none, gap = 1.0, saturation = 2.0)
         assertEquals(0.0, t.cost(CellRect(0, 0, 7, 2)), 1e-12)
     }
+
+    @Test fun `clipped against the ideal counts only lines the ideal shows whole`() {
+        val t = LineTruncation.of(line, line, line, gap = 1.0, saturation = 2.0)
+        // The ideal shows the whole line; the model clips it.
+        assertEquals(1, t.clippedAgainst(CellRect(0, 0, 14, 4), CellRect(0, 0, 16, 4)))
+        // The ideal clips it too, or leaves it out: not the model's fault.
+        assertEquals(0, t.clippedAgainst(CellRect(0, 0, 14, 4), CellRect(0, 0, 12, 4)))
+        assertEquals(0, t.clippedAgainst(CellRect(0, 0, 14, 4), CellRect(0, 3, 16, 4)))
+        // Both whole.
+        assertEquals(0, t.clippedAgainst(CellRect(0, 0, 16, 4), CellRect(0, 0, 26, 4)))
+    }
 }

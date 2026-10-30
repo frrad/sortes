@@ -52,9 +52,9 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
     val base = CropConfig.TUNED
     val margin = base.weights.autoMargin.toFloat()
 
-    val summary = StringBuilder("paper\telements\tlines\tlegibility\trisk\tscale\ttargetScale\tagree\ttargets\tzoomAgrees\tscore\tK\tslicedLinePages\tnewIgnoredPages\ttruncatedLines\n")
+    val summary = StringBuilder("paper\telements\tlines\tlegibility\trisk\tscale\ttargetScale\tagree\ttargets\tzoomAgrees\tscore\tK\tslicedLinePages\tnewIgnoredPages\ttruncatedLines\tstrictAgree\tclippedLines\n")
     val paperInfo = StringBuilder("paper\tglyphPxAtScale1\tbaselineScale\ttargetScale\ttextPxAtTarget\ttextPxAtBaseline\n")
-    val pageRows = StringBuilder("paper\tconfig\tpage\terrorPt\tkeptInkCutPercent\tverdict\n")
+    val pageRows = StringBuilder("paper\tconfig\tpage\terrorPt\tkeptInkCutPercent\tverdict\tclippedLines\n")
     val links = mutableListOf<String>()
     for (file in labels.listFiles { f -> f.extension == "json" }.orEmpty().sortedBy { it.name }) {
         val l = PaperLabels.fromText(file.readText())
@@ -91,13 +91,21 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
         fun record(eta: Double, lambda: Double, spec: String, risk: Double, c: ModelCrops) {
             val s = p.score(c)
             val agree = s.pages.count { (it.centreError ?: 0.0) <= 8.0 && it.keepCutPercent <= 0.25 }
+            // Stricter: also no line clipped that the owner's crop shows whole (the ink tolerance
+            // lets a clipped last character through).
+            val clipped = p.targets.pages.associate { t ->
+                val i = t.page - 1
+                val ideal = cellsOf(windowAt(t.keepCentre, p.targets.scale, p.sizes[i], p.aspect), masks[i], p.aspect)
+                t.page to lines[i].clippedAgainst(c.pages[i].cells, ideal)
+            }
+            val strict = s.pages.count { (it.centreError ?: 0.0) <= 8.0 && it.keepCutPercent <= 0.25 && clipped.getValue(it.page) == 0 }
             val sliced = c.pages.indices.count { edgeSlices(masks[it], c.pages[it].cells).slicesLine() }
             val newIgnored = c.pages.indices.count { ignoredInside(it, c.pages[it].cells) > baselineIgnored[it] }
             val truncated = c.pages.indices.sumOf { lines[it].truncated(c.pages[it].cells) }
             summary.appendLine(listOf(paper.id, eta, lambda, spec, risk, c.scale, s.targetScale, agree, s.pages.size,
-                abs(s.scale - s.targetScale) <= 0.015 + 1e-9, s.units, c.k, sliced, newIgnored, truncated).joinToString("\t"))
+                abs(s.scale - s.targetScale) <= 0.015 + 1e-9, s.units, c.k, sliced, newIgnored, truncated, strict, clipped.values.sum()).joinToString("\t"))
             val name = "e$eta-l$lambda-$spec-r$risk"
-            for (page in s.pages) pageRows.appendLine(listOf(paper.id, name, page.page, page.centreError, page.keepCutPercent, page.why).joinToString("\t"))
+            for (page in s.pages) pageRows.appendLine(listOf(paper.id, name, page.page, page.centreError, page.keepCutPercent, page.why, clipped.getValue(page.page)).joinToString("\t"))
         }
         record(0.0, 0.0, "baseline", 0.0, baseline)
         // Each spec's zoom from the plain model (no extra page costs): the extra costs can then

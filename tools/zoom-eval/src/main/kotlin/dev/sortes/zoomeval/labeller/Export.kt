@@ -15,6 +15,8 @@ import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.Paper
 import dev.sortes.zoomeval.cropsFor
 import dev.sortes.app.zoom.CropConfig
+import dev.sortes.zoomeval.content.TextModel
+import dev.sortes.zoomeval.fit.centreOf
 import org.json.JSONArray
 import org.json.JSONObject
 import java.awt.Color
@@ -37,15 +39,24 @@ suspend fun exportPaper(
     commit: String,
     out: File,
     config: CropConfig = CropConfig.READER,
+    /** An offline experiment's model instead of [config]'s ([TextModel.config] is its config). */
+    textModel: TextModel? = null,
 ): JSONObject {
+    @Suppress("NAME_SHADOWING") val config = textModel?.config ?: config
     val dir = File(out, paper.id).apply { mkdirs() }
     val density = analysisDensity(pdf.pageSizes, aspect)
     // The pages as the model sees them, which is also what its cut ink is counted on.
-    val masks = config.prepare(pdf.pageSizes.indices.map { i ->
+    val rendered = pdf.pageSizes.indices.map { i ->
         val (w, h) = maskSize(pdf.pageSizes[i], density)
         pdf.renderMask(i, w, h)
-    })
-    val crops: ModelCrops = cropsFor(Algorithm.READER, masks, CropModel(aspect, config.weights))
+    }
+    val masks = config.prepare(rendered)
+    val crops: ModelCrops = if (textModel != null) {
+        val fine = rendered.indices.map { pdf.renderMask(it, rendered[it].width * textModel.factor, rendered[it].height * textModel.factor) }
+        textModel.crops(rendered, fine, aspect)
+    } else {
+        cropsFor(Algorithm.READER, masks, CropModel(aspect, config.weights))
+    }
     val pages = JSONArray()
     for (i in masks.indices) {
         val size = pdf.pageSizes[i]
@@ -77,10 +88,12 @@ suspend fun exportPaper(
         .put("pageCount", masks.size)
         .put("labelledAgainst", LabelledAgainst(
             commit = commit,
-            algorithm = config.name,
+            algorithm = textModel?.name ?: config.name,
             weights = config.weights.toMap(),
             scale = crops.scale.toString().toDouble(),
             aspect = aspect.toDouble(),
+            centres = textModel?.let { masks.indices.map { i -> centreOf(crops.pages[i].window, pdf.pageSizes[i], aspect) } },
+            parameters = textModel?.parameters().orEmpty(),
         ).toJson())
         .put("windows", crops.k)
         .put("cutPercent", crops.cutFraction * 100)
