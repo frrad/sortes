@@ -28,3 +28,15 @@ application {
     // The host is short of memory: papers are processed one at a time in a small heap.
     applicationDefaultJvmArgs = listOf("-Xmx768m", "-Djava.awt.headless=true")
 }
+
+// The labeller's JavaScript geometry, unit-tested with Node's built-in runner.
+val labellerJsTest by tasks.registering(Exec::class) {
+    description = "Runs the labeller's JavaScript unit tests (node --test)."
+    workingDir = projectDir
+    commandLine("node", "--test", "labeller/geometry.test.js")
+    inputs.files(fileTree("labeller") { include("*.js") })
+}
+
+tasks.test {
+    dependsOn(labellerJsTest)
+}
