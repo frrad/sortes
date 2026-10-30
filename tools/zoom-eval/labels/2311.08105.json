@@ -1,0 +1,42 @@
+{
+  "comment": "",
+  "idealScale": 0.785,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "f80ae4ffc214",
+    "scale": 0.885,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "i hesitate to say this, but might not be tall enough? ideally we get both google and the full footnote. though mb ok to cut off google depending on how other pages look",
+      "idealCentre": {
+        "x": 302.6,
+        "y": 430.7
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 295.9,
+        "y": 434.7
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2311.08105",
+  "schema": 1
+}
