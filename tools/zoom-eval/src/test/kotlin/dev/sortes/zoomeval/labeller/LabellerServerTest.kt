@@ -54,6 +54,22 @@ class LabellerServerTest {
     }
 
     @Test
+    fun unchangedFilesAreAnswered304() {
+        val first = URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection() as HttpURLConnection
+        assertEquals(200, first.responseCode)
+        val etag = first.getHeaderField("ETag")
+        assertTrue(etag != null && etag.startsWith("\""))
+        val again = URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection() as HttpURLConnection
+        again.setRequestProperty("If-None-Match", etag)
+        assertEquals(304, again.responseCode)
+        // Changed: served afresh.
+        File(root, "data/1706.03762/paper.json").writeText("{\"id\": \"1706.03762\", \"changed\": true}")
+        val changed = URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection() as HttpURLConnection
+        changed.setRequestProperty("If-None-Match", etag)
+        assertEquals(200, changed.responseCode)
+    }
+
+    @Test
     fun nothingOutsideItsFoldersIsServed() {
         assertEquals(404, request("GET", "/../secret.txt").code)
         assertEquals(404, request("GET", "/data/../secret.txt").code)

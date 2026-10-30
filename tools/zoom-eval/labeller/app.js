@@ -93,10 +93,12 @@ function setStatus(text, error = false, saved = false) {
 }
 
 // ---- Geometry: everything in page points; the overlay's viewBox is the padded frame. ----
+// The maths is in geometry.js (LabellerGeometry), shared with the preview and unit-tested.
+
+const G = LabellerGeometry;
 
 function geometry(p) {
-  const pad = { x: (p.frame.width - p.page.width) / 2, y: (p.frame.height - p.page.height) / 2 };
-  return { frame: p.frame, pad };
+  return { frame: p.frame, pad: G.padding(p) };
 }
 
 function modelScale() {
@@ -107,38 +109,18 @@ function idealScale() {
   return state.labels.idealScale ?? modelScale();
 }
 
-function modelCentre(p) {
-  const r = p.region;
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-}
-
-/** The owner's window on page [p]: its centre (page points), size from the paper's zoom, kept in the frame. */
+/** The owner's window on page [p]: the drawn dashed window and the preview both use exactly this. */
 function myWindow(p) {
-  const { frame, pad } = geometry(p);
-  const scale = idealScale();
-  const w = scale * frame.width;
-  const h = scale * frame.height;
-  const label = pageLabel(p.number);
-  const centre = label.idealCentre || modelCentre(p);
-  const cx = clamp(centre.x + pad.x, w / 2, frame.width - w / 2);
-  const cy = clamp(centre.y + pad.y, h / 2, frame.height - h / 2);
-  return { left: cx - w / 2 - pad.x, top: cy - h / 2 - pad.y, width: w, height: h, centre: { x: cx - pad.x, y: cy - pad.y } };
+  return G.windowFor(p, pageLabel(p.number).idealCentre, idealScale());
 }
 
-function clamp(v, lo, hi) {
-  return hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
-}
+const clamp = G.clamp;
 
 const round1 = (v) => Math.round(v * 10) / 10;
 
 function setCentre(p, x, y) {
-  const { frame, pad } = geometry(p);
-  const scale = idealScale();
-  const w = scale * frame.width;
-  const h = scale * frame.height;
-  const cx = clamp(x + pad.x, w / 2, frame.width - w / 2) - pad.x;
-  const cy = clamp(y + pad.y, h / 2, frame.height - h / 2) - pad.y;
-  setPageLabel(p.number, { idealCentre: { x: round1(cx), y: round1(cy) } });
+  const c = G.windowFor(p, { x, y }, idealScale()).centre;
+  setPageLabel(p.number, { idealCentre: { x: round1(c.x), y: round1(c.y) } });
 }
 
 // ---- Rendering ----
@@ -295,7 +277,27 @@ function renderSide(p) {
   renderPreview(p, moved || state.labels.idealScale != null);
 }
 
-/** The crop as the tablet would show it: yours if you've changed it, else the model's. */
+// Page images, loaded once each, independent of the <img> on the page: browsers differ in what
+// an <img> reports while its src is changing (Safari can still report the previous image as
+// complete), which once left the preview showing a stale crop until the window was nudged.
+const images = new Map();
+
+function loadImage(src) {
+  if (!images.has(src)) {
+    const img = new Image();
+    img.src = src;
+    images.set(src, img.decode().then(() => img, (e) => { images.delete(src); throw e; }));
+  }
+  return images.get(src);
+}
+
+let previewToken = 0;
+
+/**
+ * The crop as the tablet would show it: exactly the dashed window drawn on the page (the owner's
+ * if they moved it or set a zoom, which is otherwise the model's crop). Redrawn on every render;
+ * if the page image is still loading, it's drawn when it arrives, unless the state has moved on.
+ */
 function renderPreview(p, mine) {
   const canvas = $("preview");
   const aspect = state.paper.labelledAgainst.aspect;
@@ -303,23 +305,29 @@ function renderPreview(p, mine) {
   const cssHeight = Math.min(window.innerHeight * 0.36, ($("side").clientWidth - 32) / aspect);
   const cssWidth = cssHeight * aspect;
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(cssWidth * dpr);
-  canvas.height = Math.round(cssHeight * dpr);
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${cssHeight}px`;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const img = $("page-image");
-  const draw = () => {
-    const { frame, pad } = geometry(p);
-    const k = img.naturalWidth / frame.width;
-    const r = mine ? myWindow(p) : p.region;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, (r.left + pad.x) * k, (r.top + pad.y) * k, r.width * k, r.height * k, 0, 0, canvas.width, canvas.height);
-  };
-  if (img.complete && img.naturalWidth) draw(); else img.onload = draw;
+  const width = Math.round(cssWidth * dpr);
+  const height = Math.round(cssHeight * dpr);
+  const rect = myWindow(p);
+  const src = `/data/${encodeURIComponent(state.paper.id)}/${p.image}`;
+  const token = ++previewToken;
   $("preview-which").textContent = mine ? "your window" : "the model's crop";
+  loadImage(src).then((img) => {
+    if (token !== previewToken) return; // a newer render has drawn, or will
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
+    canvas.dataset.src = src;
+    canvas.dataset.rect = JSON.stringify(rect);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.imageSmoothingQuality = "high";
+    const r = G.inImage(p, rect, img.naturalWidth);
+    ctx.drawImage(img, r.left, r.top, r.width, r.height, 0, 0, width, height);
+  }).catch(() => {
+    if (token === previewToken) $("preview-which").textContent += " (image failed to load)";
+  });
 }
 
 function renderStrip() {
