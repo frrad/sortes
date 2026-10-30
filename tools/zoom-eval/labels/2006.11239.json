@@ -1,0 +1,33 @@
+{
+  "comment": "",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader",
+    "aspect": 0.75,
+    "commit": "f80ae4ffc214",
+    "scale": 0.81,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "beta": 0.1,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "nothing looks super good on this page, but 1/ this is the right zoom level, rest of paper looks great 2/ if we have to choose, i'd rather lose that line over than the footnoe",
+      "idealCentre": {
+        "x": 306.1,
+        "y": 416.6
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "2006.11239",
+  "schema": 1
+}
