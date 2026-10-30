@@ -31,14 +31,15 @@ data class CropConfig(
         val READER = CropConfig("reader", IGNORABLE_INK_RULES, furniture = false, CropModelWeights())
 
         /**
-         * Tuned on the owner's labels, rounds 1-2: ignore isolated marks and page furniture too,
-         * and centre more firmly (beta 0.5). See tools/zoom-eval/SPEC.md.
+         * Tuned on the owner's labels, rounds 1-3: ignore isolated marks and page furniture too,
+         * and make a second window cost more (gamma 0.1), so a half-empty page keeps the paper's
+         * window. See tools/zoom-eval/SPEC.md.
          */
         val TUNED = CropConfig(
             "tuned",
             IGNORABLE_INK_RULES + IsolatedMarks,
             furniture = true,
-            CropModelWeights(beta = 0.5),
+            CropModelWeights(gamma = 0.1),
         )
 
         val ALL = listOf(READER, TUNED)
