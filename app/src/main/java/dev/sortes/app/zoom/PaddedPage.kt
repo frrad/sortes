@@ -50,6 +50,56 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     }
 
     private val mask = mask
+
+    // Raw runs of ink along each frame row and down each frame column, for offCentres: row r's
+    // runs are rowRunA[i] until rowRunB[i] for i in rowRuns[r] until rowRuns[r + 1]; likewise
+    // the columns. A few kilobytes a page.
+    private val rowRuns = IntArray(height + 1)
+    private val rowRunA: IntArray
+    private val rowRunB: IntArray
+    private val colRuns = IntArray(width + 1)
+    private val colRunA: IntArray
+    private val colRunB: IntArray
+
+    init {
+        val ra = ArrayList<Int>()
+        val rb = ArrayList<Int>()
+        for (y in 0 until height) {
+            rowRuns[y] = ra.size
+            val my = y - offY
+            if (my !in 0 until mask.height) continue
+            var x = 0
+            while (x < mask.width) {
+                if (!mask[x, my]) { x++; continue }
+                val start = x
+                while (x < mask.width && mask[x, my]) x++
+                ra += start + offX
+                rb += x + offX
+            }
+        }
+        rowRuns[height] = ra.size
+        rowRunA = ra.toIntArray()
+        rowRunB = rb.toIntArray()
+        val ca = ArrayList<Int>()
+        val cb = ArrayList<Int>()
+        for (x in 0 until width) {
+            colRuns[x] = ca.size
+            val mx = x - offX
+            if (mx !in 0 until mask.width) continue
+            var y = 0
+            while (y < mask.height) {
+                if (!mask[mx, y]) { y++; continue }
+                val start = y
+                while (y < mask.height && mask[mx, y]) y++
+                ca += start + offY
+                cb += y + offY
+            }
+        }
+        colRuns[width] = ca.size
+        colRunA = ca.toIntArray()
+        colRunB = cb.toIntArray()
+    }
+
     private var blocksGap = -1
     private var found: PageBlocks? = null
     private var blocksFor: List<CellRect> = emptyList()
@@ -388,24 +438,39 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     /**
      * [offCentre] for every position of a [w] x [h] window at once, into [out] at
      * `y * (width - w + 1) + x`. Linear in the frame's size rather than a search per position:
-     * for each window column it finds the next and previous inked row, and for each window row
-     * the next and previous inked column.
+     * from the ink runs along each row, which window columns x see ink in row r (a row's run
+     * [a, b) is seen by x in [a - w + 1, b - 1], marked through a difference array), then for
+     * each window column the next and previous inked row; and the same the other way round for
+     * the window rows. No table lookups.
      */
     fun offCentres(w: Int, h: Int, out: DoubleArray) {
         val cols = width - w + 1
         val rows = height - h + 1
-        // Vertical: for each window column x, the rows with ink across [x, x + w).
+        // Vertical: seenX[x * height + r] is whether row r has ink across [x, x + w).
+        val seenX = BooleanArray(cols * height)
+        val diff = IntArray(maxOf(cols, rows) + 1)
+        for (r in 0 until height) {
+            if (rowRuns[r] == rowRuns[r + 1]) continue
+            diff.fill(0, 0, cols + 1)
+            for (i in rowRuns[r] until rowRuns[r + 1]) {
+                diff[(rowRunA[i] - w + 1).coerceAtLeast(0)]++
+                diff[(rowRunB[i] - 1).coerceAtMost(cols - 1) + 1]--
+            }
+            var n = 0
+            for (x in 0 until cols) {
+                n += diff[x]
+                if (n > 0) seenX[x * height + r] = true
+            }
+        }
         val next = IntArray(maxOf(width, height) + 1)
         val prev = IntArray(maxOf(width, height))
-        val inked = BooleanArray(maxOf(width, height))
         for (x in 0 until cols) {
-            // One table lookup per row, then the next and previous inked row from it.
-            for (r in 0 until height) inked[r] = inside(x, r, w, 1) > 0
+            val base = x * height
             next[height] = height
-            for (r in height - 1 downTo 0) next[r] = if (inked[r]) r else next[r + 1]
+            for (r in height - 1 downTo 0) next[r] = if (seenX[base + r]) r else next[r + 1]
             var last = -1
             for (r in 0 until height) {
-                if (inked[r]) last = r
+                if (seenX[base + r]) last = r
                 prev[r] = last
             }
             for (y in 0 until rows) {
@@ -416,14 +481,28 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
                 }
             }
         }
-        // Horizontal: for each window row y, the columns with ink across [y, y + h).
+        // Horizontal: seenY[y * width + c] is whether column c has ink across [y, y + h).
+        val seenY = BooleanArray(rows * width)
+        for (c in 0 until width) {
+            if (colRuns[c] == colRuns[c + 1]) continue
+            diff.fill(0, 0, rows + 1)
+            for (i in colRuns[c] until colRuns[c + 1]) {
+                diff[(colRunA[i] - h + 1).coerceAtLeast(0)]++
+                diff[(colRunB[i] - 1).coerceAtMost(rows - 1) + 1]--
+            }
+            var n = 0
+            for (y in 0 until rows) {
+                n += diff[y]
+                if (n > 0) seenY[y * width + c] = true
+            }
+        }
         for (y in 0 until rows) {
-            for (c in 0 until width) inked[c] = inside(c, y, 1, h) > 0
+            val base = y * width
             next[width] = width
-            for (c in width - 1 downTo 0) next[c] = if (inked[c]) c else next[c + 1]
+            for (c in width - 1 downTo 0) next[c] = if (seenY[base + c]) c else next[c + 1]
             var last = -1
             for (c in 0 until width) {
-                if (inked[c]) last = c
+                if (seenY[base + c]) last = c
                 prev[c] = last
             }
             for (x in 0 until cols) {

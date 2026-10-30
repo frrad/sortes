@@ -23,7 +23,7 @@ fun benchMain(args: List<String>) {
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg" }
         arg.removePrefix("--").substringBefore('=') to arg.substringAfter('=')
     }
-    val known = setOf("only", "configs", "repeat", "corpus", "pdfs", "aspect", "scale")
+    val known = setOf("only", "configs", "repeat", "corpus", "pdfs", "aspect", "scale", "parallelism")
     opts.keys.firstOrNull { it !in known }?.let { throw IllegalArgumentException("Unknown option --$it") }
     val home = System.getProperty("user.home")
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv"))
@@ -32,8 +32,9 @@ fun benchMain(args: List<String>) {
     val repeat = (opts["repeat"] ?: "5").toInt()
     val scale = (opts["scale"] ?: "0.8").toFloat()
     val specs = (opts["configs"] ?: "reader,tuned").split(',').map { ConfigSpec.parse(it.trim()) }
+    val parallelism = (opts["parallelism"] ?: CropModel.DEFAULT_PARALLELISM.toString()).toInt()
     val only = requireNotNull(opts["only"]) { "--only=id,id is required" }.split(',').toSet()
-    println("paper\tpages\tconfig\tauto ms\tsolves\tscale\tsolve ms at $scale")
+    println("paper\tpages\tconfig\tauto ms (wall)\tcpu ms\tsolves\tscale\tsolve ms at $scale   [parallelism $parallelism]")
     for (paper in corpus) {
         if (paper.id !in only) continue
         val pdf = MutoolPdf(File(pdfs, paper.file))
@@ -45,7 +46,7 @@ fun benchMain(args: List<String>) {
         }
         for (spec in specs) {
             val masks = spec.config.prepare(rendered)
-            val model = CropModel(aspect, spec.config.weights)
+            val model = CropModel(aspect, spec.config.weights, parallelism)
             fun time(block: suspend () -> Unit): Long {
                 runBlocking { block() }
                 return (1..repeat).minOf {
@@ -56,10 +57,12 @@ fun benchMain(args: List<String>) {
             }
             var chosen = 0f
             var solves = 0
+            var cpu = 0L
             val auto = time {
                 val p = model.prepare(masks)
                 chosen = p.auto().scale
                 solves = p.solves
+                cpu = p.solveNanos / 1_000_000
             }
             val solve = time { model.prepare(masks).solve(scale) }
             // Where one solve's time goes, after the pages are prepared.
@@ -109,7 +112,7 @@ fun benchMain(args: List<String>) {
                 // What a padded page keeps for its blocks: runs, boxes and the capped ink tables.
                 bytes += PaddedPage(m, aspect).also { it.blocks(gap) }.blockBytes()
             }
-            println("${paper.id}\t${masks.size}\t${spec.label}\t$auto\t$solves\t${"%.3f".format(chosen)}\t$solve\tsegment $segment ms\tblocks ${bytes / masks.size} bytes/page\tblocks by ink 1,2-3,4-7,8-15,16-31,32-63,64-127,128+: ${sizes.joinToString(",")}")
+            println("${paper.id}\t${masks.size}\t${spec.label}\t$auto\t$cpu\t$solves\t${"%.3f".format(chosen)}\t$solve\tsegment $segment ms\tblocks ${bytes / masks.size} bytes/page\tblocks by ink 1,2-3,4-7,8-15,16-31,32-63,64-127,128+: ${sizes.joinToString(",")}")
         }
     }
 }

@@ -458,6 +458,39 @@ class CropModelBlocksTest {
     }
 
     @Test
+    fun solvingCandidateScalesInParallelChoosesWhatOneByOneDoes() = runBlocking {
+        val random = Random(17)
+        repeat(6) {
+            val masks = List(random.nextInt(3, 9)) {
+                val top = random.nextInt(4, 14)
+                val bottom = random.nextInt(60, 76)
+                page(rect(random.nextInt(6, 12), top, random.nextInt(46, 54), bottom), rect(10, bottom + 2, 50, bottom + 4))
+            }
+            val weights = weights(kappa = 0.2, zeta = 0.5).copy(autoMargin = 0.01)
+            val one = CropModel(aspect, weights, parallelism = 1).prepare(masks)
+            val four = CropModel(aspect, weights, parallelism = 4).prepare(masks)
+            val a = one.auto()
+            val b = four.auto()
+            assertEquals(a.scale, b.scale, 0f)
+            assertEquals(a.windows, b.windows)
+            assertEquals(a.pages, b.pages)
+            // A batch may solve a scale the one-by-one walk never reaches; never fewer.
+            assertTrue(four.solves >= one.solves)
+        }
+    }
+
+    @Test
+    fun smallPapersAreSolvedOneScaleAtATime() {
+        val weights = weights(kappa = 0.2, zeta = 0.5)
+        // Six 60 x 80 pages: far under the threshold.
+        assertEquals(1, CropModel(aspect, weights, parallelism = 4).prepare(List(6) { page(rect(10, 10, 50, 70)) }).effectiveParallelism)
+        // Forty letter-sized pages at the analysis resolution: over it.
+        val letter = TestPage(192, 256).rect(20, 20, 170, 230).mask()
+        assertEquals(4, CropModel(aspect, weights, parallelism = 4).prepare(List(40) { letter }).effectiveParallelism)
+        assertEquals(1, CropModel(aspect, weights, parallelism = 1).prepare(List(40) { letter }).effectiveParallelism)
+    }
+
+    @Test
     fun readerWeightsIgnoreBlocks() {
         val crops = solve(listOf(figurePage), 0.6f, CropModelWeights())
         assertEquals(0, crops.splitBlocks)
