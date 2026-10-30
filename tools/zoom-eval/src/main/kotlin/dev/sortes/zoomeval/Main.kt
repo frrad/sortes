@@ -69,6 +69,7 @@ fun main(args: Array<String>) {
         "labeller-serve" -> return labellerServe(args.drop(1))
         "fit" -> return fitMain(args.drop(1))
         "review" -> return reviewMain(args.drop(1))
+        "bench" -> return benchMain(args.drop(1))
     }
     val opts = args.associate { arg ->
         require(arg.startsWith("--") && '=' in arg) { "Bad argument: $arg\n$USAGE" }

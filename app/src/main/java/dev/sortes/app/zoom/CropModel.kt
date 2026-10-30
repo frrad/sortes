@@ -182,8 +182,15 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         private val totalInk = pages.sumOf { it.inkCount.toLong() }
         private val buffer = Buffer()
 
+        /** How many scales have been solved, for measuring the zoom search. */
+        var solves: Int = 0
+            private set
+
         /** The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
-        suspend fun solve(scale: Float): ModelCrops = solverFor(pages, scale, buffer).best()
+        suspend fun solve(scale: Float): ModelCrops {
+            solves++
+            return solverFor(pages, scale, buffer).best()
+        }
 
         /** Whether pages losing [lost] cells each (in page order) are within the automatic zoom's budget. */
         private fun withinBudget(lost: List<Long>): Boolean {
@@ -258,41 +265,31 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     /**
      * Crops at the scale minimising [ModelCrops.zoomObjective] over [scales] (loosest first),
      * loosened by [CropModelWeights.autoMargin]. The objective falls as the zoom tightens while
-     * only margins go, then climbs once windows cut and split the pages' blocks, so the search is
-     * local: from the cut budget's [Prepared.bound] it walks in coarse steps ([COARSE_STEP]
-     * scales) whichever way improves, allowing [LOOKAHEAD] worse steps to get past a bump, then
-     * tries every scale around the best coarse one.
+     * only margins go, then climbs once windows cut and split the pages' blocks, with a step
+     * wherever a page's blocks start to fit, so the search is a coarse grid rather than a walk:
+     * every [COARSE_STEP]th scale (0.02) from [GRID_TIGHTER] steps (0.04) tighter than the cut
+     * budget's [Prepared.bound] to [GRID_LOOSER] steps (0.06) looser, then the scales either side
+     * of the best: eight solves. On the corpus the optimum is within 0.02 of the bound.
      */
     private suspend fun Prepared.autoByCost(scales: FloatArray): ModelCrops {
         val solved = HashMap<Int, ModelCrops>()
         suspend fun at(i: Int): ModelCrops = solved.getOrPut(i) { solve(scales[i]) }
-        suspend fun objective(i: Int) = at(i).zoomObjective
-        var best = bound(scales)
-        var bestValue = objective(best)
-        for (direction in intArrayOf(-1, 1)) {
-            var i = best
-            var worse = 0
-            while (worse < LOOKAHEAD) {
-                i += direction * COARSE_STEP
-                if (i !in scales.indices) break
-                val v = objective(i)
-                if (v < bestValue - EPS) {
-                    best = i
-                    bestValue = v
-                    worse = 0
-                } else {
-                    worse++
-                }
-            }
-        }
-        for (i in (best - COARSE_STEP + 1)..(best + COARSE_STEP - 1)) {
-            if (i !in scales.indices || i == best) continue
-            val v = objective(i)
+        val bound = bound(scales)
+        var best = -1
+        var bestValue = Double.MAX_VALUE
+        suspend fun consider(i: Int) {
+            if (i !in scales.indices) return
+            val v = at(i).zoomObjective
             if (v < bestValue - EPS) {
                 best = i
                 bestValue = v
             }
         }
+        // Tighter is a larger index.
+        for (i in (bound - GRID_LOOSER)..(bound + GRID_TIGHTER) step COARSE_STEP) consider(i)
+        val coarse = best
+        consider(coarse - 1)
+        consider(coarse + 1)
         val loosened = scales[best] + weights.autoMargin.toFloat()
         val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f }
             ?: if (loosened > scales[0]) 0 else scales.lastIndex
@@ -656,7 +653,8 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
     companion object {
         private const val MAX_ROUNDS = 20
         private const val COARSE_STEP = 4
-        private const val LOOKAHEAD = 2
+        private const val GRID_TIGHTER = 8
+        private const val GRID_LOOSER = 12
         private const val MAX_SEEDS = 6
         private const val EPS = 1e-12
 

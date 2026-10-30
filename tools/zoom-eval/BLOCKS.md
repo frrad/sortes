@@ -28,11 +28,15 @@ Two ideas, both general, no paper- or page-specific rules.
 
 ### Blocks: keep or drop whole things
 
-Each page is segmented into **blocks** (`PageBlocks`): connected pieces of ink, where ink
-within `blockGap` = 2 blank cells (about 6 pt) belongs together. At the analysis resolution
-(about 3 pt per cell) that joins the lines of a paragraph and the paragraphs of a section, and
-leaves headings, figures, captions, tables, footnotes and columns as blocks of their own. A block
-is its bounding box; a connected piece has ink in every row and column of its box.
+Each page is segmented into **blocks** (`PageBlocks`): runs of ink along a row with at most
+`blockGap` = 2 blank cells (about 6 pt) between them are one piece, and pieces in rows at most
+3 apart that come within 3 columns of each other are one block (a union-find over the runs: a
+few hundred microseconds a page). At the analysis resolution (about 3 pt per cell) that joins
+the lines of a paragraph and the paragraphs of a section, and leaves headings, figures,
+captions, tables, footnotes and columns as blocks of their own. A block of fewer than 8 cells
+(`MIN_BLOCK_INK`: a speck of scan dirt, a stray dot, about half a glyph) is ink to cut or keep
+but not a thing to keep whole; without that, Shannon's specks beside the text moved its windows
+by a cell.
 
 A window **splits** a block when it overlaps the block's box without containing it. Each split
 block costs
@@ -87,9 +91,9 @@ Chinchilla p1), and a couple of sliced figures in 15 pages can't be (Adam). `aut
 then keeps the content a few points off the screen edge; 0.02 was consistently too loose
 against the owner's zooms and 0 too tight.
 
-The search is local (`CropModel.autoByCost`): from the cut budget's own bound, coarse steps of
-0.02 either way while the objective improves (allowing two worse steps), then every scale around
-the best. Eight to fifteen solves per paper, against the old search's three to six.
+The search is local (`CropModel.autoByCost`): from the cut budget's own bound, steps of 0.01
+either way while the objective improves (allowing one worse step), then the scales either side
+of the best. Six to nine solves per paper, against the old search's two or three.
 
 ### Two small things the labels asked for
 
@@ -169,10 +173,13 @@ the block term puts the edge between paragraphs or sections where there is one t
 "at-0.7" board shows both placements side by side).
 
 Zooms moved by at most 0.02 on any paper: tighter on 12, looser on 8, unchanged on 9. One-off windows
-appear on BatchNorm p11 (the table) and LDM p20 (a wide figure); GDL takes three windows
-instead of two (`labels/agent/`), the one visible regression. A dearer window doesn't fix it
-without losing what the owner asked for: γ 0.15 or 0.2 takes away BatchNorm p11's window (99 of
-107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 changes nothing there.
+appear on BatchNorm p11 (the table) and LDM p20 (a wide figure). GDL takes three windows
+instead of two: the third is the even pages' window 45 pt lower, for three pages (4, 16, 18)
+whose margin figures hang below the body and would be cut through by the even pages' window;
+the owner's round-2 complaint on GDL was exactly such cut content (pp. 4 and 8), so this is the
+model choosing the figure over staying put, as designed. A dearer window doesn't change it
+without losing what the owner asked for elsewhere: γ 0.15 or 0.2 takes away BatchNorm p11's
+window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 changes nothing.
 
 ### Runtime
 

@@ -104,11 +104,13 @@ class PageBlocksTest {
                 for (b in blocks.boxes.indices) {
                     val box = blocks.boxes[b]
                     val cut = blocks.inks[b] - kept[b]
-                    if (kept[b] > 0 && cut > 0) expectedSplit++
+                    if (blocks.inks[b] >= PageBlocks.MIN_BLOCK_INK && kept[b] > 0 && cut > 0) expectedSplit++
+                    if (blocks.inks[b] < PageBlocks.MIN_BLOCK_INK) continue
                     val sparse = blocks.inks[b] * 2 < (box.right - box.left) * (box.bottom - box.top)
-                    // The definition: a sparse block counts only through its own cells; a dense
-                    // one whenever its box is overlapped but not contained.
-                    val counts = if (sparse) kept[b] > 0 && cut > 0 else box.overlaps(window) && cut > 0
+                    // The definition: a block whose box the window overlaps is charged for what it
+                    // cuts, unless the window keeps none of its cells while lying inside its box
+                    // (a sparse frame around other content).
+                    val counts = box.overlaps(window) && cut > 0 && !(kept[b] == 0 && sparse && box.contains(window))
                     if (!counts) continue
                     val u = minOf(unit, maxOf(1, blocks.inks[b] / 2))
                     expected += minOf(1.0, cut.toDouble() / u)
@@ -147,6 +149,28 @@ class PageBlocksTest {
         assertEquals(0, padded.split(10, 15, 40, 20, 2))
         assertEquals(1.0, padded.splitCost(10, 15, 20, 20, 2, 50), 0.0)
         assertEquals(1, padded.split(10, 15, 20, 20, 2))
+    }
+
+    @Test
+    fun specksAreNotBlocksToKeepWhole() {
+        // Scan dirt of 3 cells beside the text: cutting it costs nothing as a split (its ink
+        // still counts as cut); an 8-cell mark does.
+        val speck = PaddedPage(TestPage(60, 80).rect(10, 10, 50, 40).rect(55, 20, 58, 21).mask(), aspect)
+        assertEquals(0.0, speck.splitCost(0, 0, 56, 80, 2, 100), 0.0)
+        assertEquals(0, speck.split(0, 0, 56, 80, 2))
+        val mark = PaddedPage(TestPage(60, 80).rect(10, 10, 50, 40).rect(54, 20, 58, 22).mask(), aspect)
+        assertTrue(mark.splitCost(0, 0, 56, 80, 2, 100) > 0.0)
+        assertEquals(1, mark.split(0, 0, 56, 80, 2))
+    }
+
+    @Test
+    fun runsBridgeGapsAlongARowAndAcrossRows() {
+        // Dots 2 cells apart along a row are one block at gap 2 and separate at gap 1; a dot 3
+        // rows below joins at gap 2 (reach 3) only if within 3 columns.
+        val dots = TestPage(20, 20).rect(2, 2, 3, 3).rect(5, 2, 6, 3).rect(8, 5, 9, 6).rect(15, 5, 16, 6).mask()
+        assertEquals(listOf(CellRect(2, 2, 9, 6), CellRect(15, 5, 16, 6)), PageBlocks.of(dots, 2).boxes)
+        assertEquals(4, PageBlocks.of(dots, 1).boxes.size)
+        assertArrayEquals(intArrayOf(3, 1), PageBlocks.of(dots, 2).inks)
     }
 
     @Test

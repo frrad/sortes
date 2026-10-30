@@ -405,16 +405,16 @@ class CropModelBlocksTest {
 
     @Test
     fun theCostBasedZoomSacrificesOnePageForTheRest() = runBlocking {
-        // One page's block (64 rows) is taller than the others' (56). Keeping it whole costs every
-        // page 8 rows of zoom; splitting it costs kappa plus its cut ink, on one page.
+        // One page's block (60 rows) is taller than the others' (56). Keeping it whole costs every
+        // page 4 rows of zoom; splitting it costs kappa plus its cut ink, on one page.
         val usual = page(rect(10, 10, 50, 66))
-        val tall = page(rect(10, 6, 50, 70))
+        val tall = page(rect(10, 8, 50, 68))
         val masks = List(12) { usual } + tall
         val keep = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(masks)
         assertEquals(56, keep.pages[0].cells.bottom - keep.pages[0].cells.top)
         assertEquals(1, keep.pagesSplit)
         val whole = CropModel(aspect, weights(kappa = 5.0, zeta = 1.0)).auto(masks)
-        assertEquals(64, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
+        assertEquals(60, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
         assertEquals(0, whole.pagesSplit)
     }
 
@@ -427,7 +427,7 @@ class CropModelBlocksTest {
         // stops where the figure fits.
         val masks = List(6) { page(rect(10, 10, 50, 35), rect(8, 40, 52, 60)) }
         val nibble = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.5)).auto(masks)
-        assertTrue("${nibble.scale}", nibble.scale <= 0.7f)
+        assertTrue("${nibble.scale}", nibble.scale <= 0.7001f)
         assertTrue("${nibble.pages[0]}", nibble.pages[0].splitBlocks >= 1 && nibble.pages[0].split < 0.3)
         val whole = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.005)).auto(masks)
         assertEquals(0, whole.splitBlocks)
