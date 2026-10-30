@@ -6,10 +6,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
@@ -177,8 +173,9 @@ class CropModel(
     val aspect: Float,
     val weights: CropModelWeights = CropModelWeights(),
     /**
-     * How many candidate scales the automatic zoom may solve at once, on [Dispatchers.Default],
-     * each with its own scratch. The result is the same as solving them one by one.
+     * How many threads a solve may spread its pages over, on [Dispatchers.Default]: each page's
+     * costs are computed on their own and written to their own part of the table, so the result
+     * is the same as on one thread.
      */
     val parallelism: Int = DEFAULT_PARALLELISM,
 ) {
@@ -186,6 +183,15 @@ class CropModel(
         require(aspect > 0f && aspect.isFinite()) { "Bad aspect ratio: $aspect" }
         require(parallelism >= 1) { "parallelism must be at least 1: $parallelism" }
     }
+
+    /**
+     * Threads to spread [pages] pages of [cells] frame cells in all over: one for a paper too
+     * small for the threads to pay for themselves (under [MIN_PARALLEL_CELLS]: a 15-page paper
+     * lost a few milliseconds to them, a 45-page one gained a quarter), else [parallelism], but
+     * never more than the pages.
+     */
+    internal fun threadsFor(pages: Int, cells: Long): Int =
+        if (cells < MIN_PARALLEL_CELLS) 1 else parallelism.coerceAtMost(pages).coerceAtLeast(1)
 
     /**
      * [masks] ready to solve at any scale: their padded pages and the solver's scratch space are
@@ -197,75 +203,48 @@ class CropModel(
             require(masks.isNotEmpty()) { "No pages" }
         }
 
-        private val pages = masks.map { PaddedPage(it, aspect) }
+        private val pages: List<PaddedPage> = runBlockingPrepare(masks)
+
+        /**
+         * The pages padded and, with blocks on, segmented, up to [parallelism] at a time on
+         * [Dispatchers.Default]: each page on its own, so the result is the same in any order.
+         */
+        private fun runBlockingPrepare(masks: List<InkMask>): List<PaddedPage> {
+            val threads = threadsFor(masks.size, masks.sumOf { PaddedPage.frameCells(it, aspect) })
+            if (threads == 1) return masks.map { PaddedPage(it, aspect).also { p -> if (weights.kappa > 0.0) p.blocks(weights.blockGap) } }
+            return kotlinx.coroutines.runBlocking {
+                masks.chunked((masks.size + threads - 1) / threads).map { chunk ->
+                    async(Dispatchers.Default) {
+                        chunk.map { PaddedPage(it, aspect).also { p -> if (weights.kappa > 0.0) p.blocks(weights.blockGap) } }
+                    }
+                }.awaitAll().flatten()
+            }
+        }
+
         private val totalInk = pages.sumOf { it.inkCount.toLong() }
         private val buffer = Buffer()
-
-        init {
-            // The pages' blocks are built once here, so concurrent solves only read them.
-            if (weights.kappa > 0.0) pages.forEach { it.blocks(weights.blockGap) }
-        }
 
         /** How many scales have been solved, for measuring the zoom search. */
         val solves: Int get() = solveCount.get()
         private val solveCount = AtomicInteger()
 
-        /** Nanoseconds spent solving, summed over all threads, for measuring. */
+        /** Nanoseconds spent solving, summed over the threads that took part, for measuring. */
         val solveNanos: Long get() = solvedNanos.get()
         private val solvedNanos = AtomicLong()
 
         /** The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
-        suspend fun solve(scale: Float): ModelCrops = solveWith(scale, buffer)
-
-        private suspend fun solveWith(scale: Float, buffer: Buffer): ModelCrops {
+        suspend fun solve(scale: Float): ModelCrops {
             val started = System.nanoTime()
             solveCount.incrementAndGet()
-            val crops = solverFor(pages, scale, buffer).best()
-            solvedNanos.addAndGet(System.nanoTime() - started)
+            val solver = solverFor(pages, scale, buffer)
+            val crops = solver.best()
+            solvedNanos.addAndGet(System.nanoTime() - started + solver.extraNanos)
             return crops
         }
 
-        // Scratch for concurrent solves: at most [parallelism] buffers, reused across batches.
-        private val spare = ArrayDeque<Buffer>()
-        private val spareLock = Mutex()
-
-        /**
-         * How many scales to solve at once: [parallelism], or one for a paper whose solves are
-         * too small to be worth handing to other threads, judged by its pages' frame cells (the
-         * precompute's size at any scale). On a four-core host a 15-page paper lost 20 ms to
-         * parallel solving and a 45-page one gained 30 ms.
-         */
-        internal val effectiveParallelism: Int =
-            if (pages.sumOf { it.width.toLong() * it.height } < MIN_PARALLEL_CELLS) 1 else parallelism
-
-        /**
-         * Solves [scales]' entries at [indices] that aren't in [solved] yet, up to [parallelism]
-         * at a time on [Dispatchers.Default], and puts them in [solved]. Each solve is
-         * independent and deterministic, so the results are what one-by-one solving gives.
-         */
+        /** Solves [scales]' entries at [indices] that aren't in [solved] yet, into [solved]. */
         internal suspend fun solveAll(scales: FloatArray, indices: List<Int>, solved: MutableMap<Int, ModelCrops>) {
-            val todo = indices.filter { it in scales.indices && it !in solved }.distinct()
-            if (todo.isEmpty()) return
-            if (effectiveParallelism == 1 || todo.size == 1) {
-                for (i in todo) solved[i] = solve(scales[i])
-                return
-            }
-            val results = coroutineScope {
-                val permits = Semaphore(effectiveParallelism)
-                todo.map { i ->
-                    async(Dispatchers.Default) {
-                        permits.withPermit {
-                            val b = spareLock.withLock { spare.removeFirstOrNull() } ?: Buffer()
-                            try {
-                                i to solveWith(scales[i], b)
-                            } finally {
-                                spareLock.withLock { spare.addLast(b) }
-                            }
-                        }
-                    }
-                }.awaitAll()
-            }
-            for ((i, crops) in results) solved[i] = crops
+            for (i in indices.distinct()) if (i in scales.indices && i !in solved) solved[i] = solve(scales[i])
         }
 
         /** Whether pages losing [lost] cells each (in page order) are within the automatic zoom's budget. */
@@ -369,17 +348,12 @@ class CropModel(
         }
         // Tighter is a larger index. The tighter side is a short grid; the looser side a walk
         // that goes on while the objective improves, allowing LOOKAHEAD worse coarse steps to get
-        // past a bump (a page's blocks fitting a step or two later). The scales the walk is
-        // about to look at are solved a batch at a time, then taken in the walk's own order, so
-        // the choice is the one-by-one walk's; a batch solved past the walk's stop is unused.
-        val grid = ((bound + GRID_TIGHTER) downTo bound step COARSE_STEP).toList()
-        solveAll(scales, grid + listOf(bound - COARSE_STEP, bound - 2 * COARSE_STEP), solved)
-        for (i in grid) consider(i)
+        // past a bump (a page's blocks fitting a step or two later).
+        for (i in (bound + GRID_TIGHTER) downTo bound step COARSE_STEP) consider(i)
         var i = bound
         var worse = 0
         while (worse <= LOOKAHEAD && i - COARSE_STEP >= 0) {
             i -= COARSE_STEP
-            if (i !in solved) solveAll(scales, listOf(i, i - COARSE_STEP), solved)
             val before = best
             consider(i)
             worse = if (best == i) 0 else worse + 1
@@ -387,11 +361,9 @@ class CropModel(
         }
         // Then halve the step twice around the best so far.
         val coarse = best
-        solveAll(scales, listOf(coarse - 2, coarse + 2), solved)
         consider(coarse - 2)
         consider(coarse + 2)
         val fine = best
-        solveAll(scales, listOf(fine - 1, fine + 1), solved)
         consider(fine - 1)
         consider(fine + 1)
         val loosened = scales[best] + weights.autoMargin.toFloat()
@@ -527,10 +499,13 @@ class CropModel(
 
         /** Nanoseconds spent in [precompute], in seeding the extra windows, and in refining them, for measuring. */
         var precomputeNanos = 0L
-        var splitNanos = 0L
-        var offNanos = 0L
+        val splitNanos = AtomicLong()
+        val offNanos = AtomicLong()
         var seedNanos = 0L
         var refineNanos = 0L
+
+        /** Nanoseconds the other threads spent in [precompute], for the CPU total. */
+        var extraNanos = 0L
         /** Whether the search for a second window was skipped because it couldn't pay for itself. */
         var prunedAt = 0
 
@@ -539,11 +514,36 @@ class CropModel(
         private val cost = buffer.get(pages.size * positions)
         private val sums = DoubleArray(positions)
 
+        /**
+         * Fills the cost table, the pages spread over [CropModel.parallelism] threads on
+         * [Dispatchers.Default]: each page's row of the table is its own, and each thread has its
+         * own scratch, so the table is the same however the pages are shared out.
+         */
         suspend fun precompute() {
             val started = System.nanoTime()
+            val threads = threadsFor(pages.size, pages.sumOf { it.width.toLong() * it.height })
+            if (threads == 1) {
+                precomputePages(0, pages.size, buffer.blocks)
+            } else {
+                val chunk = (pages.size + threads - 1) / threads
+                val spent = coroutineScope {
+                    (0 until pages.size step chunk).map { from ->
+                        async(Dispatchers.Default) {
+                            val t = System.nanoTime()
+                            precomputePages(from, minOf(pages.size, from + chunk), BlockScratch())
+                            System.nanoTime() - t
+                        }
+                    }.awaitAll()
+                }
+                extraNanos += spent.sum() - (System.nanoTime() - started)
+            }
+            precomputeNanos += System.nanoTime() - started
+        }
+
+        private suspend fun precomputePages(from: Int, until: Int, scratch: BlockScratch) {
             var offCentres = DoubleArray(0)
             var splits = DoubleArray(0)
-            for (p in pages.indices) {
+            for (p in from until until) {
                 currentCoroutineContext().ensureActive()
                 val page = pages[p]
                 val row = p * positions
@@ -558,12 +558,12 @@ class CropModel(
                 if (offCentres.size < size) offCentres = DoubleArray(size)
                 val offStart = System.nanoTime()
                 page.offCentres(w, h, offCentres)
-                offNanos += System.nanoTime() - offStart
+                offNanos.addAndGet(System.nanoTime() - offStart)
                 if (weights.kappa > 0.0) {
                     if (splits.size < size) splits = DoubleArray(size)
                     val splitStart = System.nanoTime()
-                    page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits, buffer.blocks)
-                    splitNanos += System.nanoTime() - splitStart
+                    page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits, scratch)
+                    splitNanos.addAndGet(System.nanoTime() - splitStart)
                 }
                 val reference = (page.maskWidth to page.maskHeight) == refSize
                 for (pos in 0 until positions) {
@@ -584,7 +584,6 @@ class CropModel(
                         (if (weights.kappa > 0.0) weights.kappa * splits[y * pageCols + x] else 0.0)
                 }
             }
-            precomputeNanos += System.nanoTime() - started
         }
 
         /** The least any page can cost at any position: a lower bound on what any windows can achieve. */
@@ -806,12 +805,12 @@ class CropModel(
         /** [PageCrop.windowIndex] of a page's [ownCrop], outside the paper's shared windows. */
         const val OWN_WINDOW = -1
 
-        /** Candidate scales solved at once by default: up to four, as the host has cores. */
+        /** Threads a solve may use by default: up to four, as the host has cores. */
         val DEFAULT_PARALLELISM: Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
 
         /**
-         * Fewest frame cells over a paper's sampled pages for its scales to be solved in
-         * parallel: about 30 letter pages at the analysis resolution (192 x 256 cells each).
+         * Fewest frame cells over a paper's pages for a solve to use more than one thread: about
+         * 30 letter pages at the analysis resolution (192 x 256 cells each).
          */
         const val MIN_PARALLEL_CELLS = 1_500_000L
 

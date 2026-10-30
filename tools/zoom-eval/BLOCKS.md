@@ -196,38 +196,40 @@ window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 cha
 
 ### Runtime and memory
 
-`zoom-eval bench` (best of five, on the reader's sample of at most 60 pages, no rendering):
-the automatic zoom end to end as wall time, the CPU time its solves add up to, the number of
-scales solved, and one solve at a fixed scale. "Before" is `TUNED` as it was before #36. The
-host had a load of about 2–4 from other work during these runs, so take them as relative.
+`zoom-eval bench`, one-thread and four-thread runs interleaved three times, best of seven
+each, on the reader's sample of at most 60 pages, no rendering: the automatic zoom end to end
+as wall time and as the CPU time its solves add up to. The host carries a standing load of
+about 2.5 from other services (it read 2.4–4.3 during the runs), so the numbers are relative
+to each other; "before" is `TUNED` as it was before #36.
 
-| paper | before: auto / one solve | now, one scale at a time: auto / cpu / solves / one solve | now, four at a time: auto / cpu |
+| paper | before, 1 thread: wall / cpu | now, 1 thread: wall / cpu | now, 4 threads: wall / cpu |
 | --- | --- | --- | --- |
-| Attention, 15 pages | 23 ms / 13 ms | 61 ms / 45 ms / 10 / 19 ms | 84 ms / 166 ms |
-| GPT-3, 60 of 75 pages | 68 ms / 51 ms | 251 ms / 212 ms / 10 / 83 ms | **167 ms** / 226 ms |
-| Shannon, 45 pages | 69 ms / 39 ms | 207 ms / 153 ms / 10 / 58 ms | **173 ms** / 533 ms |
-| PDLT, 60 of 237 pages | 93 ms / 53 ms | 317 ms / 245 ms / 11 / 73 ms | **243 ms** / 402 ms |
+| Attention, 15 pages | 25 / 7 ms | 49 / 32 ms | one thread (below the threshold) |
+| GPT-3, 60 of 75 pages | 67 / 27 ms | 186 / 118 ms | **102** / 141 ms |
+| Shannon, 45 pages | 68 / 38 ms | 149 / 106 ms | **126** / 254 ms |
+| PDLT, 60 of 237 pages | 77 / 38 ms | 291 / 230 ms | **173** / 259 ms |
 
 Where the time goes, from the solver's own counters (`bench` prints them): a solve is almost
-all precompute. Of that, the kept ink's off-centredness (`offCentres`) was the largest part;
-it now comes from the page's ink runs along rows and columns (which window columns see ink in
-a row is a difference array over the row's runs), with no table lookups. The block costs are
-2–4 ms a solve over 60 pages once the pages' tables are built, and the search for second and
-third windows is skipped outright when no extra window could pay for itself (every page at its
-own cheapest position would not save a window's price: an exact bound, so results are
-unchanged). What remains over the old model is ten solves against two, since the cost-based
-zoom has to look at the scales where the cut budget bisected on a cheap per-page bound, and
-about 1.5× the work per solve.
+all precompute. The kept ink's off-centredness (`offCentres`) comes from the page's ink runs
+along rows and columns (which window columns see ink in a row is a difference array over the
+row's runs), with no table lookups; the block costs are 2–4 ms a solve over 60 pages once the
+pages' tables are built; and the search for second and third windows is skipped outright when
+no extra window could pay for itself (every page at its own cheapest position would not save
+a window's price: an exact bound). Per solve the work is about the old model's; what remains
+over it is nine or ten solves against two, since the cost-based zoom has to look at the scales
+where the cut budget bisected on a cheap per-page bound. A cheap screen of the scales doesn't
+help: each candidate's objective needs the cost table at its scale, and a cut-only lower bound
+can't prune the refinement scales nearest the optimum, which are most of the solves.
 
-The candidate scales are solved up to four at a time (`CropModel.parallelism`, on
-`Dispatchers.Default`, each solve with its own scratch, at most four buffers kept): the walk's
-next scales are solved as a batch and then taken in the walk's own order, so the choice is
-exactly the one-by-one walk's (a test checks it on random papers). On a 60-page sample that
-takes a third off the wall time on this loaded four-core host; on a 15-page paper the solves
-are too small for it to pay, so a paper under about 30 letter pages' worth of frame cells
-(`MIN_PARALLEL_CELLS`) is solved one scale at a time. The CPU time is the same work plus the
-batch's unused scales. Against the old model that is 2.5× on the long papers and 3.5× on the
-short ones, down from 4–7× in #36.
+So the wall time comes from threads. Within a solve the pages are spread over up to four
+(`CropModel.parallelism`, on `Dispatchers.Default`): each page's costs are computed on their
+own, with per-thread scratch, into the page's own row of the cost table, so the table is the
+same however the pages are shared out (tests check the table and the automatic zoom on one
+thread against four). The pages' preparation (padding, segmentation, tables) is spread the
+same way, and scales are solved one at a time, so no solve is wasted. A paper under about 30
+letter pages' worth of frame cells (`MIN_PARALLEL_CELLS`) stays on one thread: at that size
+the threads cost a few milliseconds more than they save. With that, a 60-page sample takes
+about 1.5× the old model's wall time on a loaded four-core host, and a 15-page paper 2×.
 
 A page keeps its blocks as runs and boxes plus ink tables for the largest blocks, capped at one
 frame's worth of cells: measured by `bench`, 85–110 KB a page on Attention, LDM, GPT-3,
@@ -270,6 +272,7 @@ same rule as the rest. READER is untouched.
 
 **Numbers** (against `TUNED` before #36): pages agreeing 99 → 103 of 107; zooms agreeing
 14 → 15 of 16; sliced-line pages 25 → 0 at the automatic zoom and 491 → 279 at 0.7; the
-automatic solve about 2.5× the old model's on long papers with four scales solved at once
-(GPT-3's 60-page sample 167 ms wall on a loaded host), a third of #36's. Round 4, labelled by the owner on these crops, is the held-out test still
+automatic solve about 1.5× the old model's wall time on long papers with the pages spread
+over four threads (GPT-3's 60-page sample 102 ms on a loaded host) and 2× on short ones, a
+fifth of #36's. Round 4, labelled by the owner on these crops, is the held-out test still
 to come.

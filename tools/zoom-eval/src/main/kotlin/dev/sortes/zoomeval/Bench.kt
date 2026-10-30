@@ -75,7 +75,7 @@ fun benchMain(args: List<String>) {
                 solver.best()
                 val t2 = System.nanoTime()
                 "precompute %d ms (off-centres %d, splits %d), windows %d ms (seed %d, refine %d), pruned at K=%d".format(
-                    solver.precomputeNanos / 1_000_000, solver.offNanos / 1_000_000, solver.splitNanos / 1_000_000, (t2 - t1) / 1_000_000, solver.seedNanos / 1_000_000, solver.refineNanos / 1_000_000, solver.prunedAt)
+                    solver.precomputeNanos / 1_000_000, solver.offNanos.get() / 1_000_000, solver.splitNanos.get() / 1_000_000, (t2 - t1) / 1_000_000, solver.seedNanos / 1_000_000, solver.refineNanos / 1_000_000, solver.prunedAt)
             }
             println("  $profile")
             // splitCosts and offCentres alone, on warm pages, per solve over the sample.
