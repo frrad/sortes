@@ -224,7 +224,8 @@ The candidate scales are solved up to four at a time (`CropModel.parallelism`, o
 next scales are solved as a batch and then taken in the walk's own order, so the choice is
 exactly the one-by-one walk's (a test checks it on random papers). On a 60-page sample that
 takes a third off the wall time on this loaded four-core host; on a 15-page paper the solves
-are too small for it to pay and it costs about 20 ms. The CPU time is the same work plus the
+are too small for it to pay, so a paper under about 30 letter pages' worth of frame cells
+(`MIN_PARALLEL_CELLS`) is solved one scale at a time. The CPU time is the same work plus the
 batch's unused scales. Against the old model that is 2.5× on the long papers and 3.5× on the
 short ones, down from 4–7× in #36.
 

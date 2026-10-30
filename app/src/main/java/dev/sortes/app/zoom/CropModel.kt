@@ -230,6 +230,15 @@ class CropModel(
         private val spareLock = Mutex()
 
         /**
+         * How many scales to solve at once: [parallelism], or one for a paper whose solves are
+         * too small to be worth handing to other threads, judged by its pages' frame cells (the
+         * precompute's size at any scale). On a four-core host a 15-page paper lost 20 ms to
+         * parallel solving and a 45-page one gained 30 ms.
+         */
+        internal val effectiveParallelism: Int =
+            if (pages.sumOf { it.width.toLong() * it.height } < MIN_PARALLEL_CELLS) 1 else parallelism
+
+        /**
          * Solves [scales]' entries at [indices] that aren't in [solved] yet, up to [parallelism]
          * at a time on [Dispatchers.Default], and puts them in [solved]. Each solve is
          * independent and deterministic, so the results are what one-by-one solving gives.
@@ -237,12 +246,12 @@ class CropModel(
         internal suspend fun solveAll(scales: FloatArray, indices: List<Int>, solved: MutableMap<Int, ModelCrops>) {
             val todo = indices.filter { it in scales.indices && it !in solved }.distinct()
             if (todo.isEmpty()) return
-            if (parallelism == 1 || todo.size == 1) {
+            if (effectiveParallelism == 1 || todo.size == 1) {
                 for (i in todo) solved[i] = solve(scales[i])
                 return
             }
             val results = coroutineScope {
-                val permits = Semaphore(parallelism)
+                val permits = Semaphore(effectiveParallelism)
                 todo.map { i ->
                     async(Dispatchers.Default) {
                         permits.withPermit {
@@ -799,6 +808,12 @@ class CropModel(
 
         /** Candidate scales solved at once by default: up to four, as the host has cores. */
         val DEFAULT_PARALLELISM: Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+
+        /**
+         * Fewest frame cells over a paper's sampled pages for its scales to be solved in
+         * parallel: about 30 letter pages at the analysis resolution (192 x 256 cells each).
+         */
+        const val MIN_PARALLEL_CELLS = 1_500_000L
 
         /** The median ink per page over pages with any ink: the unit cut_p is measured in. */
         fun referenceInk(masks: List<InkMask>): Double = referenceInkOf(masks.map { it.inkCount })
