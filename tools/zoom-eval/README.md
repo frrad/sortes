@@ -147,7 +147,7 @@ and `CropModelWeights`.
 
 - **`CropConfig.READER`** is what the reader uses today (`analyzePaper`'s default).
 - **`CropConfig.TUNED`** is the candidate tuned on the owner's labels: furniture and isolated
-  marks ignored, β 0.5.
+  marks ignored, γ 0.1.
 
 The fit scores `TUNED` as its "given" set, and the labeller renders it with
 `labeller-export --config=tuned` (or `LABELLER_ARGS="--config=tuned" tools/zoom-eval/label.sh

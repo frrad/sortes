@@ -1,8 +1,9 @@
 # The papers in the labelling set, one corpus.tsv id per line, in the order the labeller shows them.
-# Round 3: new papers, rendered with the tuned model (LABELLER_ARGS="--variant=furniture+marks --beta=0.5").
-# Rounds 1-2 are in labels/.
-2010.11929
-1506.02640
-2106.09685
-2203.15556
-1412.6980
+# Round 4: new papers, rendered with CropConfig.TUNED (LABELLER_ARGS="--config=tuned").
+# Rounds 1-3 are in labels/.
+1902.10186
+1806.07572
+perelman-0211159
+maldacena-9711200
+2009.03300
+1905.00537

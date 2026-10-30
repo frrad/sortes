@@ -233,7 +233,34 @@ The fit found no robust gain from these, so they stay at their old values (off).
 
 ### `CropConfig`: the tuned set, kept out of the reader for now
 
-`CropConfig.TUNED` holds the proposal: the furniture and marks rules, and β 0.1 → 0.5. The
-harness, fit and labeller use it now. The reader keeps `CropConfig.READER` until the owner
+`CropConfig.TUNED` holds the proposal: the furniture and marks rules, and γ 0.05 → 0.1. The
+harness, fit and labeller use it now.
+
+After round 2 it had β 0.1 → 0.5 instead. Round 3, held out, refuted that (labels/ROUND-3.md):
+
+- **The problem:** β 0.5 makes centring a half-empty page (a section's last page, the end of the
+  references) worth a window of its own. The owner wants the paper's window there.
+- **The evidence:** fitted on rounds 1–2 alone, the search still picks β 0.5, which scores 38.1
+  on round 3. β 0.1 scores 7.5 there.
+- **Rounds 1–3:** β is flat from 0.05 to 0.3. γ 0.1 is a little better than 0.05, and sets a
+  higher bar for a second window, which is round 3's lesson.
+
+| | score | pages agreeing (of 107) |
+| --- | --- | --- |
+| `READER` | 155.5 | — |
+| β 0.5 (old `TUNED`) | 67.9 | 92 |
+| β 0.1, γ 0.05 | 38.9 | 98 |
+| β 0.1, γ 0.1 (`TUNED`) | 38.7 | 99 |
+
+Leaving one round out, the set fitted on the other two scores on the held-out round:
+
+| held out | fitted on the rest | `READER` | β 0.5 | `TUNED` |
+| --- | --- | --- | --- | --- |
+| round 1 | 23.2 | 46.3 | 19.5 | 23.0 |
+| round 2 | 8.9 | 42.3 | 10.4 | 8.2 |
+| round 3 | 38.1 | 66.8 | 38.1 | 7.5 |
+
+β 0.5 does better on round 1 (BatchNorm pp. 8 and 11, where centring firmly helps) but much
+worse on round 3. The reader keeps `CropConfig.READER` until the owner
 approves; adopting `TUNED` is one line, `analyzePaper`'s default config.
 
