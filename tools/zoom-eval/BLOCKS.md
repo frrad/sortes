@@ -214,9 +214,10 @@ twice the work per solve (the block costs). On the tablet, where PDLT's solve to
 before, expect about 1.5 s on a long book, on top of the 0.6–0.8 s of rendering; the zoom
 panel's curve is unaffected (it solves single scales).
 
-A page keeps about 7–8 KB of runs and boxes for its blocks (`bench`'s bytes/page), plus the
-blocks' ink tables, capped at one frame's worth of cells (about 200 KB); the position scratch
-is shared by all pages. The whole 60-page sample stays under about 12 MB.
+A page keeps its blocks as runs and boxes plus ink tables for the largest blocks, capped at one
+frame's worth of cells: measured by `bench`, 85–110 KB a page on Attention, LDM, GPT-3,
+Shannon and PDLT (about 7 KB of it the runs and boxes), so a 60-page sample takes about 6 MB.
+The position scratch is shared by all pages.
 
 ## Final status
 
