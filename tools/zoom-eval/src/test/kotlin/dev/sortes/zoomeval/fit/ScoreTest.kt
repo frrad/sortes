@@ -87,6 +87,33 @@ class ScoreTest {
     }
 
     @Test
+    fun aBadPageCanAskForAnotherPagesCrop() {
+        // "Should be cropped like the rest": page 2 was judged at another window; page 1's is the target.
+        val judged = listOf(Point(30.0, 40.0), Point(30.0, 25.0), Point(30.0, 40.0))
+        val t = targets(labels(2 to label(Verdict.BAD, comment = "same as the rest")), mapOf(2 to Interpretation(move = "high", like = 1)), 0.8, judged)
+        val page = t.pages.single()
+        assertEquals(Point(30.0, 40.0), page.centre)
+        assertEquals(ScoreWeights.HIGH, page.centreWeight, 0.0)
+        assertEquals("like p1 (100%)", page.why)
+        // Like a page with the same crop: no move, nothing to score.
+        assertEquals(emptyList<PageTarget>(), targets(labels(3 to label(Verdict.BAD)), mapOf(3 to Interpretation(move = "high", like = 1)), 0.8, judged).pages)
+    }
+
+    @Test
+    fun aHorizontalReadingScoresOnlyTheMoveAcross() {
+        // Moved 5 across and 20 up, but the vertical part kept a running head the owner drops.
+        val t = targets(
+            labels(1 to label(centre = Point(35.0, 20.0)), scale = 0.9),
+            mapOf(0 to Interpretation(zoom = "unset"), 1 to Interpretation(move = "medium", horizontal = true)), 0.8, judged,
+        )
+        // The zoom the owner set answered the head too: back to the zoom they saw, at half weight.
+        assertEquals(0.8, t.scale, 1e-9)
+        assertEquals(ScoreWeights.IMPLICIT_ZOOM, t.scaleWeight, 0.0)
+        val window = windowAt(Point(30.0, 40.0), 0.5, size, aspect)
+        assertEquals(5.0, score(t, crops(window, cellsOf(window, mask, aspect)), listOf(mask), listOf(size), aspect).pages.single().centreError!!, 1e-3)
+    }
+
+    @Test
     fun windowsAndCentresRoundTrip() {
         val w = windowAt(Point(25.0, 45.0), 0.5, size, aspect)
         // An unpadded 3:4 page: the frame is the page, so fractions are plain.
@@ -147,7 +174,13 @@ class ScoreTest {
         val read = readInterpretations(file)
         assertEquals(Interpretation(zoom = "affirmed"), read.getValue("p").getValue(0))
         assertEquals(Interpretation(move = "medium", keep = true, verdict = Verdict.GOOD), read.getValue("p").getValue(3))
+        file.writeText("p\t4\thigh@2\tno\t-\t-\t\n")
+        assertEquals(Interpretation(move = "high", like = 2), readInterpretations(file).getValue("p").getValue(4))
         file.writeText("p\t3\tsure\tyes\t-\t-\t\n")
+        assertThrows(IllegalArgumentException::class.java) { readInterpretations(file) }
+        file.writeText("p\t4\tmedium/x\tno\t-\tunset\t\n")
+        assertEquals(Interpretation(move = "medium", horizontal = true, zoom = "unset"), readInterpretations(file).getValue("p").getValue(4))
+        file.writeText("p\t3\thigh@two\tno\t-\t-\t\n")
         assertThrows(IllegalArgumentException::class.java) { readInterpretations(file) }
         assertEquals(emptyMap<String, Any>(), readInterpretations(dir.resolve("missing.tsv")))
         dir.deleteRecursively()

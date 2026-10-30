@@ -114,6 +114,9 @@ PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-co
 - **Zoom:** each paper's distance from the owner's zoom (or the zoom they saw and left, at half
   weight), at 2 units per 0.01 of scale.
 - **Unlabelled pages:** no opinion. They aren't scored.
+- **Readings** (`interpretation.tsv`): a page can ask for another page's crop (`high@10`, for
+  "same as the rest" on a page judged bad), or count only the horizontal part of its move
+  (`medium/x`). A paper's set zoom can be superseded (`unset`).
 
 **Search:**
 - `--trials=` random weight sets (`sampleWeights`), alternating over `--variants=`. Variants:

@@ -1,0 +1,76 @@
+{
+  "comment": "seems perfect",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "reader+furniture+marks",
+    "aspect": 0.75,
+    "commit": "37d755c5c48c",
+    "scale": 0.815,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.019999999552965164,
+      "autoMaxLost": 0.004999999888241291,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "delta": 0,
+      "delta2": 0.02,
+      "epsilon": 300,
+      "gamma": 0.05,
+      "maxWindows": 3,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "11": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "19": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "22": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "23": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "26": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    }
+  },
+  "paper": "2106.09685",
+  "schema": 1
+}

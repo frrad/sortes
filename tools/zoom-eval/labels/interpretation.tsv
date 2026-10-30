@@ -2,14 +2,15 @@
 # `zoom-eval fit`. Edit it when the owner corrects a reading. Columns (tab-separated):
 #   paper    corpus id
 #   page     page number, or * for the paper
-#   move     high | medium | low | none: confidence in the page's moved window (pages only)
+#   move     high | medium | low | none: confidence in the page's moved window (pages only);
+#            high@10 etc.: the page should have page 10's crop as judged ("same as the rest")
 #   keep     yes | no: the ink the ideal crop keeps must stay visible (pages only)
 #   verdict  good | bad | -: the verdict a comment implies, where none was given (pages only)
 #   zoom     affirmed | tighter | looser | -: what the label says about the paper's zoom
 #   note     free text
 # Pages missing from this table read their labels plainly: a move of 8 pt or more is high
-# confidence, a smaller one low, and a verdict as given. Round 1 (ROUND-1.md) is at the top,
-# round 2 (ROUND-2.md) below it. From round 2 on, small moves are deliberate nudges, so they are
+# confidence, a smaller one low, and a verdict as given. Each round's rows follow its
+# ROUND-<n>.md, round 1 first. From round 2 on, small moves are deliberate nudges, so they are
 # listed as high (or medium where the owner called the labels rough).
 1706.03762	*	-	-	-	tighter	p2 "could mb be slightly tighter"
 1706.03762	1	high	yes	-	-	notice and footnote both visible
@@ -42,13 +43,21 @@
 2112.10752	2	medium	no	-	-
 2112.10752	3	medium	no	-	-
 2112.10752	4	medium	no	-	-
-2104.13478-p20-49	*	-	-	-	-	"mostly just try to center each page"; zoom set looser (0.85)
-2104.13478-p20-49	1	medium	no	-	-	"not super strongly held"
-2104.13478-p20-49	2	medium	no	-	-
-2104.13478-p20-49	3	medium	no	-	-
-2104.13478-p20-49	4	medium	yes	-	-	crop cut 1.5%
-2104.13478-p20-49	5	medium	no	-	-
-2104.13478-p20-49	6	medium	no	-	-
-2104.13478-p20-49	7	medium	no	-	-
-2104.13478-p20-49	8	medium	yes	-	-	"page 8 convinced me to tweak the zoom"
-2104.13478-p20-49	9	medium	no	-	-
+2104.13478-p20-49	*	-	-	-	unset	"mostly just try to center each page"; zoom set looser (0.85); round 3: 0.85 fitted the running head too, which the owner drops (ROUND-3.md)
+2104.13478-p20-49	1	medium/x	no	-	-	"not super strongly held"; vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	2	medium/x	no	-	-	vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	3	medium/x	no	-	-	vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	4	medium/x	yes	-	-	crop cut 1.5%; vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	5	medium/x	no	-	-	vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	6	medium/x	no	-	-	vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	7	medium/x	no	-	-	vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	8	medium/x	yes	-	-	"page 8 convinced me to tweak the zoom"; vertical part kept the running head (ROUND-3.md)
+2104.13478-p20-49	9	medium/x	no	-	-	vertical part kept the running head (ROUND-3.md)
+# Round 3 (ROUND-3.md): rendered with CropConfig.TUNED
+2106.09685	*	-	-	-	affirmed	"seems perfect"
+1412.6980	6	high	yes	-	-	"tiny move, but previously the figures were cropped at the top"
+1412.6980	7	high	yes	-	-	"figure was cropped at the top. had to make window larger to accomodate"
+1412.6980	11	high@10	no	-	-	"big jump vs prev page. i think it should have been same"
+1412.6980	15	high@14	no	-	-	"window moved up for no reason"
+1506.02640	10	high@9	no	-	-	"seems like this should be cropped same as rest of pages??"
+2203.15556	1	none	no	-	-	"don't love this page ... nothing better we can do here with this crop window"
