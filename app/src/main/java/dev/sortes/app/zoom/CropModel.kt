@@ -184,8 +184,14 @@ class CropModel(
         require(parallelism >= 1) { "parallelism must be at least 1: $parallelism" }
     }
 
-    /** Threads to spread [pages] pages over: [parallelism], but never more than the pages. */
-    internal fun threadsFor(pages: Int): Int = parallelism.coerceAtMost(pages).coerceAtLeast(1)
+    /**
+     * Threads to spread [pages] pages of [cells] frame cells in all over: one for a paper too
+     * small for the threads to pay for themselves (under [MIN_PARALLEL_CELLS]: a 15-page paper
+     * lost a few milliseconds to them, a 45-page one gained a quarter), else [parallelism], but
+     * never more than the pages.
+     */
+    internal fun threadsFor(pages: Int, cells: Long): Int =
+        if (cells < MIN_PARALLEL_CELLS) 1 else parallelism.coerceAtMost(pages).coerceAtLeast(1)
 
     /**
      * [masks] ready to solve at any scale: their padded pages and the solver's scratch space are
@@ -204,7 +210,7 @@ class CropModel(
          * [Dispatchers.Default]: each page on its own, so the result is the same in any order.
          */
         private fun runBlockingPrepare(masks: List<InkMask>): List<PaddedPage> {
-            val threads = threadsFor(masks.size)
+            val threads = threadsFor(masks.size, masks.sumOf { PaddedPage.frameCells(it, aspect) })
             if (threads == 1) return masks.map { PaddedPage(it, aspect).also { p -> if (weights.kappa > 0.0) p.blocks(weights.blockGap) } }
             return kotlinx.coroutines.runBlocking {
                 masks.chunked((masks.size + threads - 1) / threads).map { chunk ->
@@ -515,7 +521,7 @@ class CropModel(
          */
         suspend fun precompute() {
             val started = System.nanoTime()
-            val threads = threadsFor(pages.size)
+            val threads = threadsFor(pages.size, pages.sumOf { it.width.toLong() * it.height })
             if (threads == 1) {
                 precomputePages(0, pages.size, buffer.blocks)
             } else {
@@ -801,6 +807,12 @@ class CropModel(
 
         /** Threads a solve may use by default: up to four, as the host has cores. */
         val DEFAULT_PARALLELISM: Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+
+        /**
+         * Fewest frame cells over a paper's pages for a solve to use more than one thread: about
+         * 30 letter pages at the analysis resolution (192 x 256 cells each).
+         */
+        const val MIN_PARALLEL_CELLS = 1_500_000L
 
         /** The median ink per page over pages with any ink: the unit cut_p is measured in. */
         fun referenceInk(masks: List<InkMask>): Double = referenceInkOf(masks.map { it.inkCount })

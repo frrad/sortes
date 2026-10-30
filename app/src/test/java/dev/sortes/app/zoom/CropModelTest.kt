@@ -479,12 +479,16 @@ class CropModelBlocksTest {
     }
 
     @Test
-    fun aSolveUsesNoMoreThreadsThanPages() {
+    fun aSolveUsesThreadsOnlyForAPaperBigEnoughAndNeverMoreThanPages() {
         val model = CropModel(aspect, weights(kappa = 0.2), parallelism = 4)
-        assertEquals(1, model.threadsFor(1))
-        assertEquals(3, model.threadsFor(3))
-        assertEquals(4, model.threadsFor(60))
-        assertEquals(1, CropModel(aspect, weights(kappa = 0.2), parallelism = 1).threadsFor(60))
+        val letter = 192L * 256
+        assertEquals(1, model.threadsFor(15, 15 * letter))
+        assertEquals(4, model.threadsFor(60, 60 * letter))
+        assertEquals(3, model.threadsFor(3, 100 * letter))
+        assertEquals(1, CropModel(aspect, weights(kappa = 0.2), parallelism = 1).threadsFor(60, 60 * letter))
+        // Six 60 x 80 test pages: one thread; the frame cells are what the padded page has.
+        assertEquals(60L * 80, PaddedPage.frameCells(TestPage(60, 80).mask(), aspect))
+        assertEquals(60L * 80, PaddedPage.frameCells(TestPage(40, 80).mask(), aspect))
     }
 
     @Test

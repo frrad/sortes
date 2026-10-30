@@ -8,9 +8,23 @@ import kotlin.math.roundToInt
  * summed-area table for counting the ink in any window. Shared by [CropAnalysis] and [CropModel].
  */
 internal class PaddedPage(mask: InkMask, private val aspect: Float) {
-    private companion object {
+    companion object {
         /** Most frames' worth of cells the blocks' ink tables may take per page: about 200 KB. */
-        const val SAT_AREAS = 1
+        private const val SAT_AREAS = 1
+
+        /** How many cells [mask]'s frame has when padded to [aspect], without building it. */
+        fun frameCells(mask: InkMask, aspect: Float): Long {
+            val w: Int
+            val h: Int
+            if (mask.width.toFloat() / mask.height < aspect) {
+                w = (mask.height * aspect).roundToInt().coerceAtLeast(mask.width)
+                h = mask.height
+            } else {
+                w = mask.width
+                h = (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
+            }
+            return w.toLong() * h
+        }
     }
 
     val width: Int
