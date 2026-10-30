@@ -265,4 +265,23 @@ class PaperAnalysisTest {
         assertEquals(crops.scale, placement.window.scale)
         assertTrue(crops.windows.none { it == placement.window })
     }
+
+    @Test
+    fun theReaderUsesTheReaderConfigAndATunedConfigDropsFurniture() {
+        // A page number under every page's text: the reader keeps it in play, the tuned config
+        // ignores it everywhere, on sampled pages and the rest alike.
+        val numbered = TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask()
+        val pages = FakePages(List(10) { numbered })
+        val reader = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        val tuned = runBlocking { analyzePaper(pages, aspect, maxPages = 4, config = CropConfig.TUNED) }
+        assertEquals(CropConfig.READER.weights, reader.model.weights)
+        assertEquals(CropConfig.TUNED.weights, tuned.model.weights)
+        val scale = 0.76f
+        for (index in listOf(0, 4)) {
+            val r = runBlocking { reader.place(pages, index, reader.cropsAt(scale)) }
+            val t = runBlocking { tuned.place(pages, index, tuned.cropsAt(scale)) }
+            assertEquals("reader, page $index", 1, r.cut.size)
+            assertEquals("tuned, page $index", emptyList<CutInk>(), t.cut)
+        }
+    }
 }

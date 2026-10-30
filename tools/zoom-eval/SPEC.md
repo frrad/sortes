@@ -231,7 +231,9 @@ Labels: `labels/ROUND-1.md` and `ROUND-2.md`. Fit: `zoom-eval fit` (see README.m
 
 The fit found no robust gain from these, so they stay at their old values (off).
 
-### Proposed for approval
+### `CropConfig`: the tuned set, kept out of the reader for now
 
-The furniture and marks rules in the reader, and β 0.1 → 0.5.
+`CropConfig.TUNED` holds the proposal: the furniture and marks rules, and β 0.1 → 0.5. The
+harness, fit and labeller use it now. The reader keeps `CropConfig.READER` until the owner
+approves; adopting `TUNED` is one line, `analyzePaper`'s default config.
 

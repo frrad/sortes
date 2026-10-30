@@ -10,12 +10,11 @@ import dev.sortes.app.zoom.cutInk
 import dev.sortes.app.zoom.maskSize
 import dev.sortes.app.zoom.padded
 import dev.sortes.app.zoom.regionOn
-import dev.sortes.app.zoom.withoutIgnorableInk
 import dev.sortes.zoomeval.Algorithm
 import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.Paper
 import dev.sortes.zoomeval.cropsFor
-import dev.sortes.zoomeval.fit.Variant
+import dev.sortes.app.zoom.CropConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.awt.Color
@@ -35,19 +34,18 @@ suspend fun exportPaper(
     paper: Paper,
     pdf: MutoolPdf,
     aspect: Float,
-    weights: CropModelWeights,
     commit: String,
     out: File,
-    variant: Variant = Variant(),
+    config: CropConfig = CropConfig.READER,
 ): JSONObject {
     val dir = File(out, paper.id).apply { mkdirs() }
     val density = analysisDensity(pdf.pageSizes, aspect)
     // The pages as the model sees them, which is also what its cut ink is counted on.
-    val masks = variant.prepare(pdf.pageSizes.indices.map { i ->
+    val masks = config.prepare(pdf.pageSizes.indices.map { i ->
         val (w, h) = maskSize(pdf.pageSizes[i], density)
-        pdf.renderMask(i, w, h).withoutIgnorableInk()
+        pdf.renderMask(i, w, h)
     })
-    val crops: ModelCrops = cropsFor(Algorithm.READER, masks, CropModel(aspect, weights))
+    val crops: ModelCrops = cropsFor(Algorithm.READER, masks, CropModel(aspect, config.weights))
     val pages = JSONArray()
     for (i in masks.indices) {
         val size = pdf.pageSizes[i]
@@ -79,8 +77,8 @@ suspend fun exportPaper(
         .put("pageCount", masks.size)
         .put("labelledAgainst", LabelledAgainst(
             commit = commit,
-            algorithm = if (variant == Variant()) "reader" else "reader+$variant",
-            weights = weights.toMap(),
+            algorithm = config.name,
+            weights = config.weights.toMap(),
             scale = crops.scale.toString().toDouble(),
             aspect = aspect.toDouble(),
         ).toJson())

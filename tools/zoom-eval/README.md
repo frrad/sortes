@@ -80,12 +80,18 @@ tune:
 
 ## Corpus
 
-`corpus.tsv` lists 20 arXiv papers:
-- single- and two-column;
-- figure-heavy and appendix-heavy;
+`corpus.tsv` lists arXiv papers and excerpts (plus one non-arXiv scan, by URL):
+- single- and two-column, including ACL/NAACL;
+- figure-heavy, appendix-heavy and table-heavy;
+- math-heavy, including old-style single-column (1997, 2002);
 - short papers;
 - a small LNCS page;
-- two two-sided book excerpts (30 pages each), with alternating margins.
+- two-sided book excerpts with alternating margins;
+- a long paper (GPT-3, 75 pages, sampled by the reader);
+- an image-only scan (Shannon 1948).
+
+Ids may only use letters, digits, `.`, `_` and `-` (they name label files), so old-style arXiv
+ids like `math/0211159` get a name and an explicit URL.
 
 PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-corpus.sh`.
 
@@ -130,6 +136,21 @@ PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-co
 
 `trials.tsv` has every trial's per-paper scores.
 
-To label a candidate model's crops, render them with
-`LABELLER_ARGS="--variant=furniture+marks --beta=0.5" tools/zoom-eval/label.sh --render`.
+## Configs: one definition for the harness, the labeller and (later) the reader
+
+`CropConfig` (`app/src/main/java/dev/sortes/app/zoom/CropConfig.kt`) bundles everything that
+decides crops besides the pages: per-page ignorable-ink rules, whether to ignore page furniture,
+and `CropModelWeights`.
+
+- **`CropConfig.READER`** is what the reader uses today (`analyzePaper`'s default).
+- **`CropConfig.TUNED`** is the candidate tuned on the owner's labels: furniture and isolated
+  marks ignored, β 0.5.
+
+The fit scores `TUNED` as its "given" set, and the labeller renders it with
+`labeller-export --config=tuned` (or `LABELLER_ARGS="--config=tuned" tools/zoom-eval/label.sh
+--render`). Weight options override a config's weights, and `--variant=` swaps its rules. The
+fit's variants are built as `CropConfig`s too, so everything runs the reader's own code path.
+
+To move the reader to a tuned config once the owner approves, change `analyzePaper`'s default
+`config` to `CropConfig.TUNED`: one line.
 

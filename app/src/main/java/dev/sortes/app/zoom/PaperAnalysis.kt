@@ -23,6 +23,8 @@ class PaperAnalysis(
     val auto: ModelCrops,
     /** Time spent finding [auto] once the pages were rendered, for diagnostics. */
     val solveMillis: Long = 0,
+    /** A rendered page as the model sees it: without the config's ignorable ink. */
+    private val prepare: (InkMask) -> InkMask = { it.withoutIgnorableInk() },
 ) {
     init {
         require(paper.masks.size == auto.pages.size) { "One crop per sampled page" }
@@ -86,7 +88,7 @@ class PaperAnalysis(
         } else {
             val (width, height) = maskSize(page, density)
             val rendered = source.renderMask(index, width, height)
-            withContext(Dispatchers.Default) { rendered.withoutIgnorableInk() }
+            withContext(Dispatchers.Default) { prepare(rendered) }
         }
         return withContext(Dispatchers.Default) {
             val crop = paper.cropFor(index, crops, mask.takeIf { analysed < 0 })
@@ -115,7 +117,7 @@ suspend fun analyzePaper(
     source: PageSource,
     aspect: Float,
     maxPages: Int = MAX_ANALYZED_PAGES,
-    weights: CropModelWeights = CropModelWeights(),
+    config: CropConfig = CropConfig.READER,
 ): PaperAnalysis = withContext(Dispatchers.Default) {
     val sample = samplePages(source.pageCount, maxPages)
     val sizes = sample.associateWith { index -> orNull { source.pageSize(index) } }
@@ -124,14 +126,16 @@ suspend fun analyzePaper(
     val density = analysisDensity(readable.values.map { it!! }, aspect)
     val rendered = readable.mapNotNull { (index, size) ->
         val (width, height) = maskSize(size!!, density)
-        orNull { index to source.renderMask(index, width, height).withoutIgnorableInk() }
+        orNull { index to source.renderMask(index, width, height).withoutIgnorableInk(config.pageRules) }
     }
     if (rendered.isEmpty()) throw java.io.IOException("No pages could be rendered")
+    // Paper-level rules learn from the sample, then apply to any page.
+    val paperRule = config.paperRule(rendered.map { it.second })
     val started = System.nanoTime()
-    val paper = SampledPaper(CropModel(aspect, weights), rendered.map { it.second }, rendered.map { it.first })
+    val paper = SampledPaper(CropModel(aspect, config.weights), rendered.map { paperRule.strip(it.second) }, rendered.map { it.first })
     val auto = paper.auto()
     val solveMillis = (System.nanoTime() - started) / 1_000_000
-    PaperAnalysis(paper, density, source.pageCount, auto, solveMillis)
+    PaperAnalysis(paper, density, source.pageCount, auto, solveMillis) { paperRule.strip(it.withoutIgnorableInk(config.pageRules)) }
 }
 
 private inline fun <T> orNull(block: () -> T): T? = try {

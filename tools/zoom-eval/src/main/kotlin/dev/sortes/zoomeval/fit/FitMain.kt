@@ -1,5 +1,6 @@
 package dev.sortes.zoomeval.fit
 
+import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModelWeights
 import dev.sortes.zoomeval.WEIGHT_NAMES
 import dev.sortes.zoomeval.readCorpus
@@ -11,8 +12,8 @@ import kotlin.random.Random
 /**
  * `fit [--trials=200] [--seed=1] [--labels=labels] [--out=~/sortes-review/fit] [--only=id,id]
  *      [--<weight>=value ...]`: scores the model's default weights against the labels, then
- * searches random weights for a lower score, with leave-one-paper-out results. `--<weight>=`
- * fixes a weight during the search (and scores it as "given").
+ * searches random weights for a lower score, with leave-one-paper-out results. The "given" set is
+ * [CropConfig.TUNED], or, with `--<weight>=`, those weights (fixed during the search too).
  */
 fun fitMain(args: List<String>) {
     val opts = args.associate { arg ->
@@ -41,7 +42,9 @@ fun fitMain(args: List<String>) {
     val report = FitReport(papers, out, opts["split"]?.split(',')?.toSet().orEmpty())
     runBlocking {
         val baseline = trial(papers, CropModelWeights())
-        val given = if (fixed.isEmpty()) null else trial(papers, CropModelWeights().with(fixed), variants.last())
+        // The shared tuned config (CropConfig.TUNED), or the weights fixed on the command line.
+        val given = if (fixed.isEmpty()) trial(papers, CropConfig.TUNED.weights, Variant.of(CropConfig.TUNED))
+        else trial(papers, CropModelWeights().with(fixed), variants.last())
         val tried = mutableListOf(baseline)
         variants.filter { it != Variant() }.forEach { tried += trial(papers, CropModelWeights(), it) }
         given?.let { tried += it }

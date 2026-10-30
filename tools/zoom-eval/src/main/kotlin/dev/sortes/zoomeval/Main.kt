@@ -27,12 +27,12 @@ fun readCorpus(file: File): List<Paper> = file.readLines()
         Paper(f[0].trim(), f[1].trim(), f[2].trim(), f[3].trim())
     }
 
-/** The reader's default weights, then a properties file's, then `--name=value` overrides. */
-fun readWeights(file: File?, overrides: Map<String, String>): CropModelWeights {
+/** [base] weights (the reader's by default), then a properties file's, then `--name=value` overrides. */
+fun readWeights(file: File?, overrides: Map<String, String>, base: CropModelWeights = CropModelWeights()): CropModelWeights {
     val props = Properties()
     file?.takeIf { it.exists() }?.reader()?.use { props.load(it) }
     val fromFile = props.stringPropertyNames().associateWith { props.getProperty(it).trim() }
-    return CropModelWeights().with(fromFile).with(overrides)
+    return base.with(fromFile).with(overrides)
 }
 
 /** What one column chose for a paper: its crops, the masks it saw and the masks before the ignorable-ink rules. */
