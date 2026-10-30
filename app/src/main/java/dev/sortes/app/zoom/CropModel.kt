@@ -121,6 +121,8 @@ data class PageCrop(
     val splitBlocks: Int = 0,
     /** split_p: those blocks' cut shares, each capped at 1 (0 unless [CropModelWeights.kappa] is set). */
     val split: Double = 0.0,
+    /** Optional experimental page penalty, already weighted. Zero in the reader. */
+    val additionalCost: Double = 0.0,
 )
 
 /** A paper's crops: one scale, a few windows, and each analysed page's window and costs. */
@@ -148,7 +150,8 @@ data class ModelCrops(
     val splitTerm: Double get() = weights.kappa * pages.sumOf { it.split }
     val windowTerm: Double get() = weights.gamma * (k - 1)
     val switchTerm: Double get() = weights.delta * switches + weights.delta2 * breaks
-    val total: Double get() = cutTerm + offTerm + pageCutTerm + splitTerm + windowTerm + switchTerm
+    val additionalTerm: Double get() = pages.sumOf { it.additionalCost }
+    val total: Double get() = cutTerm + offTerm + pageCutTerm + splitTerm + windowTerm + switchTerm + additionalTerm
 
     /** Blocks cut through, over all pages. */
     val splitBlocks: Int get() = pages.sumOf { it.splitBlocks }
@@ -178,6 +181,12 @@ class CropModel(
      * is the same as on one thread.
      */
     val parallelism: Int = DEFAULT_PARALLELISM,
+    /**
+     * Offline feature experiments on the same solver. Called with the original prepared mask
+     * and the exact cells kept, in page coordinates; must be pure, thread-safe, finite and
+     * non-negative. Null preserves the reader's objective. Included in solving AND reporting.
+     */
+    private val additionalPageCost: ((InkMask, CellRect) -> Double)? = null,
 ) {
     init {
         require(aspect > 0f && aspect.isFinite()) { "Bad aspect ratio: $aspect" }
@@ -406,7 +415,8 @@ class CropModel(
         for (pos in 0 until cols * rows) {
             val cut = page.inkCount - page.inside(pos % cols, pos / cols, w, h)
             val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] + (if (splits != null) weights.kappa * splits[pos] else 0.0) +
-                if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)
+                (if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)) +
+                    (if (additionalPageCost == null) 0.0 else extraCost(page, page.cellsAt(pos % cols, pos / cols, scale)))
             if (c < bestCost - EPS) {
                 bestCost = c
                 best = pos
@@ -444,7 +454,13 @@ class CropModel(
 
     /** A page's own share of the cost in its window: every per-page term, none of the per-paper ones. */
     fun pageCost(c: PageCrop): Double =
-        weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split
+        weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split + c.additionalCost
+
+    private fun extraCost(page: PaddedPage, cells: CellRect): Double {
+        val cost = additionalPageCost?.invoke(page.mask, cells) ?: return 0.0
+        require(cost.isFinite() && cost >= 0.0) { "Bad additional page cost: $cost" }
+        return cost
+    }
 
     private fun pageCrop(page: PaddedPage, refInk: Double, window: Int, x: Int, y: Int, scale: Float, buffer: Buffer): PageCrop {
         val w = page.windowWidth(scale)
@@ -460,6 +476,7 @@ class CropModel(
             offCentre = page.offCentre(x, y, w, h),
             splitBlocks = if (weights.kappa > 0.0) page.split(x, y, w, h, weights.blockGap) else 0,
             split = if (weights.kappa > 0.0) page.splitCost(x, y, w, h, weights.blockGap, splitUnit(refInk)) else 0.0,
+            additionalCost = extraCost(page, page.cellsAt(x, y, scale)),
         )
     }
 
@@ -547,7 +564,7 @@ class CropModel(
                 currentCoroutineContext().ensureActive()
                 val page = pages[p]
                 val row = p * positions
-                if (page.inkCount == 0) {
+                if (page.inkCount == 0 && additionalPageCost == null) {
                     cost.fill(0.0, row, row + positions)
                     continue
                 }
@@ -580,7 +597,8 @@ class CropModel(
                     val cut = page.inkCount - page.inside(x, y, w, h)
                     cost[row + pos] = weights.alpha * cut / refInk +
                         weights.beta * offCentres[y * pageCols + x] +
-                        weights.excess(cut.toDouble() / page.inkCount) +
+                        (if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)) +
+                        (if (additionalPageCost == null) 0.0 else extraCost(page, page.cellsAt(x, y, scale))) +
                         (if (weights.kappa > 0.0) weights.kappa * splits[y * pageCols + x] else 0.0)
                 }
             }

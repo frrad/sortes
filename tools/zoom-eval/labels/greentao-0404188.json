@@ -1,0 +1,388 @@
+{
+  "comment": "seems all good, no notes",
+  "idealScale": null,
+  "labelledAgainst": {
+    "algorithm": "tuned+text",
+    "aspect": 0.75,
+    "centres": [
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      },
+      {
+        "x": 304.40625,
+        "y": 380.0625
+      }
+    ],
+    "commit": "9f5186603a07",
+    "parameters": {
+      "elementWeight": 0.01,
+      "fineFactor": 4,
+      "lineWeight": 0.1,
+      "maxScale": 0.9700000286102295,
+      "minScale": 0.6000000238418579,
+      "textComfortablePx": 28,
+      "textFloor": 0.1,
+      "textPower": 16
+    },
+    "scale": 0.82,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.01,
+      "autoMaxLost": 0.004999999888241291,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "blockGap": 2,
+      "delta": 0.005,
+      "delta2": 0.02,
+      "epsilon": 0,
+      "gamma": 0.1,
+      "kappa": 0.2,
+      "maxWindows": 3,
+      "splitInk": 0.005,
+      "zeta": 0.5,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "12": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "13": {
+      "comment": "not sure why red boxes at top. this is totally fine",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "14": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "17": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "23": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "25": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "27": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "29": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "33": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "36": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "39": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "41": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "44": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "48": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "56": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    },
+    "8": {
+      "comment": "",
+      "idealCentre": null,
+      "tags": [],
+      "verdict": "good"
+    }
+  },
+  "paper": "greentao-0404188",
+  "schema": 1
+}

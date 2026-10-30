@@ -104,10 +104,16 @@ suspend fun labelledPaper(
         if (k in setOf("maxWindows", "zoomIgnoredPages", "blockGap")) v.toInt().toString() else v.toString()
     })
     // ...and the rules ("reader", "tuned", or "reader+furniture+marks" for a variant's crops).
-    val judgedVariant = Variant.parse(labels.labelledAgainst?.algorithm ?: "reader")
-    val judged = cropsFor(Algorithm.READER, judgedVariant.config().prepare(rendered), CropModel(aspect, judgedWeights))
-    val centres = judged.pages.indices.map { centreOf(judged.pages[it].window, pdf.pageSizes[it], aspect) }
-    val targets = targets(labels, interpretation, judged.scale.toDouble(), centres)
+    val judgedVariant by lazy { Variant.parse(labels.labelledAgainst?.algorithm ?: "reader") }
+    // Labels that recorded the crops shown (an experiment's, say) use them as they were.
+    val recorded = labels.labelledAgainst?.centres?.takeIf { it.size == rendered.size }
+    val (judgedScale, centres) = if (recorded != null) {
+        labels.labelledAgainst!!.scale to recorded
+    } else {
+        val judged = cropsFor(Algorithm.READER, judgedVariant.config().prepare(rendered), CropModel(aspect, judgedWeights))
+        judged.scale.toDouble() to judged.pages.indices.map { centreOf(judged.pages[it].window, pdf.pageSizes[it], aspect) }
+    }
+    val targets = targets(labels, interpretation, judgedScale, centres)
     return LabelledPaper(paper, rendered, Variant(furniture = true, marks = true).config().prepare(rendered), pdf.pageSizes, labels, targets, aspect)
 }
 

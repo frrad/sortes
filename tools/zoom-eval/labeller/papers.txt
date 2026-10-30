@@ -1,9 +1,10 @@
 # The papers in the labelling set, one corpus.tsv id per line, in the order the labeller shows them.
-# Round 4: new papers, rendered with CropConfig.TUNED (LABELLER_ARGS="--config=tuned").
-# Rounds 1-3 are in labels/.
-1902.10186
-1806.07572
-perelman-0211159
-maldacena-9711200
-2009.03300
-1905.00537
+# Round 5 (labelled, see labels/ROUND-5.md): new papers, rendered with the offline "tuned+text" model (TextModel):
+#   LABELLER_DATA=~/sortes-review/labeller/round5 LABELLER_ARGS="--config=tuned+text" tools/zoom-eval/label.sh
+# Rounds 1-4 are in labels/.
+witten-9802150
+greentao-0404188
+1312.6114
+1602.03837
+1406.2661
+2001.08361

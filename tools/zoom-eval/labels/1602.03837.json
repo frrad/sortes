@@ -1,0 +1,162 @@
+{
+  "comment": "ok tbh yours was maybe better, but i don't hate this view either, slightly tighter zoom, exclude the header",
+  "idealScale": 0.85,
+  "labelledAgainst": {
+    "algorithm": "tuned+text",
+    "aspect": 0.75,
+    "centres": [
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      },
+      {
+        "x": 304.40625,
+        "y": 368.90625
+      }
+    ],
+    "commit": "9f5186603a07",
+    "parameters": {
+      "elementWeight": 0.01,
+      "fineFactor": 4,
+      "lineWeight": 0.1,
+      "maxScale": 0.9700000286102295,
+      "minScale": 0.6000000238418579,
+      "textComfortablePx": 28,
+      "textFloor": 0.1,
+      "textPower": 16
+    },
+    "scale": 0.87,
+    "weights": {
+      "allowance": 0.01,
+      "alpha": 1,
+      "autoMargin": 0.01,
+      "autoMaxLost": 0.004999999888241291,
+      "autoMaxPageCut": 1,
+      "beta": 0.5,
+      "blockGap": 2,
+      "delta": 0.005,
+      "delta2": 0.02,
+      "epsilon": 0,
+      "gamma": 0.1,
+      "kappa": 0.2,
+      "maxWindows": 3,
+      "splitInk": 0.005,
+      "zeta": 0.5,
+      "zoomIgnoredPages": 0
+    }
+  },
+  "pages": {
+    "1": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 383.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "2": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 383.2
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "3": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 383.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "4": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 378.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "5": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 383.9
+      },
+      "tags": [],
+      "verdict": null
+    },
+    "6": {
+      "comment": "",
+      "idealCentre": {
+        "x": 304.4,
+        "y": 383.9
+      },
+      "tags": [],
+      "verdict": null
+    }
+  },
+  "paper": "1602.03837",
+  "schema": 1
+}

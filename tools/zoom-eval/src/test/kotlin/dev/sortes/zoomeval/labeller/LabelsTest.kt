@@ -35,6 +35,20 @@ class LabelsTest {
     }
 
     @Test
+    fun recordedCentresAndParametersRoundTripAndOlderLabelsHaveNone() {
+        val recorded = labels.copy(labelledAgainst = against.copy(
+            algorithm = "tuned+text",
+            centres = listOf(Point(306.0, 396.0), Point(300.5, 401.25)),
+            parameters = mapOf("lineWeight" to 0.02, "textComfortablePx" to 28.0),
+        ))
+        assertEquals(recorded, PaperLabels.fromText(recorded.toText()))
+        assertEquals(recorded.toText(), PaperLabels.fromText(recorded.toText()).toText())
+        assertFalse(labels.toText().contains("centres"))
+        assertFalse(labels.toText().contains("parameters"))
+        assertEquals(null, PaperLabels.fromText(labels.toText()).labelledAgainst!!.centres)
+    }
+
+    @Test
     fun anAgentsLabelsSayWhoJudgedAndTheOwnersDoNot() {
         val agent = labels.copy(labeller = "agent")
         assertEquals(agent, PaperLabels.fromText(agent.toText()))

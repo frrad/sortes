@@ -179,3 +179,16 @@ fit's variants are built as `CropConfig`s too, so everything runs the reader's o
 To move the reader to a tuned config once the owner approves, change `analyzePaper`'s default
 `config` to `CropConfig.TUNED`: one line.
 
+
+## Experimental content costs (digital-native PDFs)
+
+`content-experiment` tests a fine-component omission cost without changing READER
+or TUNED. It includes a target-cost audit, bounded exhaustive scale sweeps, a
+placement-only control, optional worst-page sensitivity and comparison images.
+See [the experiment and results](notes/content-elements/README.md) for commands,
+limitations and the cases it fixes or regresses.
+
+`text-size` measures each paper's body-text size from page images (no PDF text), and
+`zoom-experiment` tests a text-size-aware legibility cost for the automatic zoom, a
+truncated-line placement cost and worst-page emphasis. See
+[text-size notes](notes/text-size/README.md).

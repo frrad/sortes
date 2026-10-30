@@ -103,7 +103,7 @@ fun reviewMain(args: List<String>) {
     println("Wrote ${File(out, "index.html")}")
 }
 
-private class ReviewResult(val spec: ConfigSpec, val crops: ModelCrops, val masks: List<InkMask>, val raw: List<InkMask>) {
+internal class ReviewResult(val spec: ConfigSpec, val crops: ModelCrops, val masks: List<InkMask>, val raw: List<InkMask>) {
     val slices = crops.pages.mapIndexed { p, c -> edgeSlices(masks[p], c.cells) }
     val slicedLinePages get() = slices.count { it.slicesLine() }
 }
@@ -121,7 +121,7 @@ private const val STYLE = "<style>body{font:14px sans-serif;margin:20px}table{bo
 
 private val WINDOW_COLORS = listOf(Color(0x00, 0xA0, 0x00), Color(0x10, 0x50, 0xE0), Color(0xD0, 0x00, 0xD0))
 
-private fun writePaper(paper: Paper, pdf: MutoolPdf, aspect: Float, width: Int, results: List<ReviewResult>, out: File, blocks: Int?) {
+internal fun writePaper(paper: Paper, pdf: MutoolPdf, aspect: Float, width: Int, results: List<ReviewResult>, out: File, blocks: Int?) {
     val dir = File(out, paper.id).apply { mkdirs() }
     val html = StringBuilder()
     html.appendLine("<!doctype html><meta charset=utf-8><title>${paper.id} ${paper.title}</title>$STYLE")

@@ -63,7 +63,7 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         }
     }
 
-    private val mask = mask
+    val mask = mask
 
     // Raw runs of ink along each frame row and down each frame column, for offCentres: row r's
     // runs are rowRunA[i] until rowRunB[i] for i in rowRuns[r] until rowRuns[r + 1]; likewise
