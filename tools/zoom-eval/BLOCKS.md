@@ -196,28 +196,44 @@ window (99 of 107 agreeing), and only 0.2 brings GDL back to two; δ₂ 0.04 cha
 
 ### Runtime and memory
 
-`zoom-eval bench` (best of three, on the reader's sample of at most 60 pages, no rendering):
-the automatic zoom end to end, the number of scales it solves, one solve at a fixed scale, and
-the segmentation alone. "Before" is `TUNED` as it was before #36; "#36" the first block model;
-"now" this one.
+`zoom-eval bench` (best of five, on the reader's sample of at most 60 pages, no rendering):
+the automatic zoom end to end, the number of scales it solves, and one solve at a fixed scale.
+"Before" is `TUNED` as it was before #36; "#36" the first block model; "now" this one.
 
-| paper | before: auto / solves / one solve | #36: auto / solves / one solve | now: auto / solves / one solve / segment |
+| paper | before: auto / solves / one solve | #36: auto / solves / one solve | now: auto / solves / one solve |
 | --- | --- | --- | --- |
-| Attention, 15 pages | 45 ms / 2 / 14 ms | 161 ms / 11 / 39 ms | 109 ms / 11 / 25 ms / 4 ms |
-| GPT-3, 60 of 75 pages | 58 ms / 2 / 27 ms | 479 ms / 11 / 185 ms | 288 ms / 11 / 55 ms / 16 ms |
-| Shannon, 45 pages | 63 ms / 3 / 26 ms | 373 ms / 11 / 142 ms | 222 ms / 11 / 43 ms / 10 ms |
-| PDLT, 60 of 237 pages | 80 ms / 2 / 31 ms | 735 ms / 11 / 164 ms | 508 ms / 12 / 54 ms / 15 ms |
+| Attention, 15 pages | 15 ms / 2 / 5 ms | 161 ms / 11 / 39 ms | 56 ms / 9 / 12 ms |
+| GPT-3, 60 of 75 pages | 44 ms / 2 / 24 ms | 479 ms / 11 / 185 ms | 231 ms / 9 / 46 ms |
+| Shannon, 45 pages | 54 ms / 3 / 22 ms | 373 ms / 11 / 142 ms | 172 ms / 9 / 43 ms |
+| PDLT, 60 of 237 pages | 67 ms / 2 / 24 ms | 735 ms / 11 / 164 ms | 313 ms / 10 / 49 ms |
 
-Well under #36. What remains over the old model is eleven solves against two (the cost-based
-zoom has to look at the scales; the cut budget bisected on a cheap per-page bound) and about
-twice the work per solve (the block costs). On the tablet, where PDLT's solve took 386 ms
-before, expect about 1.5 s on a long book, on top of the 0.6–0.8 s of rendering; the zoom
-panel's curve is unaffected (it solves single scales).
+Where the time goes, from the solver's own counters (`bench` prints them): a solve is almost
+all precompute, and of that the kept ink's off-centredness (`offCentres`, which the old model
+pays too) is the largest part; the block costs are 2–4 ms a solve over 60 pages once the pages'
+tables are built, and the search for second and third windows is skipped outright when no
+extra window could pay for itself (every page at its own cheapest position would not save a
+window's price: an exact bound, so results are unchanged). What remains over the old model is
+nine solves against two, since the cost-based zoom has to look at the scales where the cut
+budget bisected on a cheap per-page bound, and about twice the work per solve. Three to five
+times the old model's automatic solve, half of #36's; a 60-page sample takes about a quarter of
+a second on the host.
 
 A page keeps its blocks as runs and boxes plus ink tables for the largest blocks, capped at one
 frame's worth of cells: measured by `bench`, 85–110 KB a page on Attention, LDM, GPT-3,
 Shannon and PDLT (about 7 KB of it the runs and boxes), so a 60-page sample takes about 6 MB.
 The position scratch is shared by all pages.
+
+### Audit notes (round-4 papers, before the owner's labels)
+
+- **Edge breathing room.** On Maldacena and NTK the last line's descenders touch the window's
+  bottom edge. A larger `autoMargin` (0.015 for 0.01) gives the gap but loosens every paper by
+  0.005 and drops agreement to 99 of 107: the owner's zooms sit at the 0.01 margin. Left as is.
+- **Over-width content.** MMLU p15's table rules run a few cells past the window, and Perelman
+  pp. 15, 16 and 21 have equation tails past the text's margin. The model prices each as a
+  nibble: 0.05–0.5 % of the page's ink plus a small share of a split (κ · cut / unit), a few
+  hundredths in all, against a looser zoom's cost on every page of the paper. No weight short
+  of charging nibbles like whole splits would change that, and that is what moved GDL's window
+  60 pt. Left as is.
 
 ## Final status
 
@@ -243,6 +259,6 @@ same rule as the rest. READER is untouched.
 
 **Numbers** (against `TUNED` before #36): pages agreeing 99 → 103 of 107; zooms agreeing
 14 → 15 of 16; sliced-line pages 25 → 0 at the automatic zoom and 491 → 279 at 0.7; the
-automatic solve about four times the old model's and half of #36's (GPT-3's 60-page sample
-288 ms on the host). Round 4, labelled by the owner on these crops, is the held-out test still
+automatic solve three to five times the old model's and half of #36's (GPT-3's 60-page sample
+231 ms on the host). Round 4, labelled by the owner on these crops, is the held-out test still
 to come.
