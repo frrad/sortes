@@ -36,12 +36,31 @@ data class CropModelWeights(
     val delta2: Double = 0.02,
     /** Most windows a paper may use. */
     val maxWindows: Int = 3,
+    /** Share of the paper's ink the automatic zoom may cut off. */
+    val autoMaxLost: Double = CropAnalysis.AUTO_MAX_LOST.toDouble(),
+    /** How much looser (in scale) than the tightest acceptable scale the automatic zoom is. */
+    val autoMargin: Double = CropAnalysis.AUTO_MARGIN.toDouble(),
+    /**
+     * Pages the automatic zoom's budget leaves out: the ones that would lose most. A title page
+     * that can't fit at a good zoom for the rest of the paper then doesn't hold the paper back.
+     */
+    val zoomIgnoredPages: Int = 0,
+    /**
+     * Most of its own ink any one page may lose at the automatic zoom, besides the paper-wide
+     * [autoMaxLost]; the [zoomIgnoredPages] pages that would lose the largest share are exempt.
+     * 1 (the default) means no cap.
+     */
+    val autoMaxPageCut: Double = 1.0,
 ) {
     init {
         require(listOf(alpha, beta, epsilon, allowance, gamma, delta, delta2).all { it >= 0.0 && it.isFinite() }) {
             "Weights must be finite and non-negative: $this"
         }
         require(maxWindows >= 1) { "maxWindows must be at least 1: $maxWindows" }
+        require(autoMaxLost > 0.0 && autoMaxLost < 1.0) { "Bad autoMaxLost: $autoMaxLost" }
+        require(autoMargin in -0.5..0.5) { "Bad autoMargin: $autoMargin" }
+        require(zoomIgnoredPages >= 0) { "Bad zoomIgnoredPages: $zoomIgnoredPages" }
+        require(autoMaxPageCut > 0.0 && autoMaxPageCut <= 1.0) { "Bad autoMaxPageCut: $autoMaxPageCut" }
     }
 }
 
@@ -124,22 +143,27 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
         /** The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
         suspend fun solve(scale: Float): ModelCrops = solverFor(pages, scale, buffer).best()
 
+        /** Whether pages losing [lost] cells each (in page order) are within the automatic zoom's budget. */
+        private fun withinBudget(lost: List<Long>): Boolean {
+            val counted = lost.sortedDescending().drop(weights.zoomIgnoredPages).sum()
+            if (counted.toDouble() / totalInk > weights.autoMaxLost) return false
+            if (weights.autoMaxPageCut >= 1.0) return true
+            val shares = lost.indices.map { if (pages[it].inkCount == 0) 0.0 else lost[it].toDouble() / pages[it].inkCount }
+            return shares.sortedDescending().drop(weights.zoomIgnoredPages).all { it <= weights.autoMaxPageCut }
+        }
+
         /**
          * The index into [scales] of the tightest scale at which each page's own best window is
-         * within [CropAnalysis.AUTO_MAX_LOST]: no crops the model chooses can do better. Found by
-         * bisection, since what those best windows lose only grows with zoom; it agrees with
-         * [CropAnalysis]' whole curve.
+         * within the automatic zoom's budget ([CropModelWeights.autoMaxLost]): no crops the model
+         * chooses can do better. Found by bisection, since what those best windows lose only
+         * grows with zoom; with the default weights it agrees with [CropAnalysis]' whole curve.
          */
         internal suspend fun bound(scales: FloatArray): Int {
             if (totalInk == 0L) return 0
-            suspend fun fits(i: Int): Boolean {
-                var lost = 0L
-                for (page in pages) {
-                    currentCoroutineContext().ensureActive()
-                    lost += page.inkCount - page.maxInside(scales[i])
-                }
-                return lost.toDouble() / totalInk <= CropAnalysis.AUTO_MAX_LOST
-            }
+            suspend fun fits(i: Int): Boolean = withinBudget(pages.map { page ->
+                currentCoroutineContext().ensureActive()
+                (page.inkCount - page.maxInside(scales[i])).toLong()
+            })
             var bound = 0
             var beyond = scales.size
             while (beyond - bound > 1) {
@@ -151,15 +175,16 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
 
         /**
          * Crops at the automatic scale: the tightest of [scales] at which the model's own crops
-         * cut at most [CropAnalysis.AUTO_MAX_LOST] of the ink, loosened by
-         * [CropAnalysis.AUTO_MARGIN]. The search starts at the [bound], gallops looser (1, 2, 4...
+         * are within the budget (at most [CropModelWeights.autoMaxLost] of the ink, not counting
+         * the [CropModelWeights.zoomIgnoredPages] pages that lose most), loosened by
+         * [CropModelWeights.autoMargin]. The search starts at the [bound], gallops looser (1, 2, 4...
          * steps) until the model's crops are within budget, then bisects back, treating the
          * model's cut as rising with zoom.
          */
         suspend fun auto(scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops {
             require(scales.isNotEmpty() && scales.all { it > 0f && it <= 1f }) { "Bad scales" }
             if (totalInk == 0L) return solve(scales[0])
-            suspend fun fitsAt(i: Int) = solve(scales[i]).cutFraction <= CropAnalysis.AUTO_MAX_LOST
+            suspend fun fitsAt(i: Int) = withinBudget(solve(scales[i]).pages.map { it.cutCells.toLong() })
             // Index of the tightest scale known to fit (0, the whole page, always does), and of
             // the loosest known not to, if any.
             var fit = bound(scales)
@@ -176,8 +201,10 @@ class CropModel(val aspect: Float, val weights: CropModelWeights = CropModelWeig
                     if (fitsAt(mid)) fit = mid else miss = mid
                 }
             }
-            val loosened = scales[fit] + CropAnalysis.AUTO_MARGIN
-            val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f } ?: 0
+            // In Float, as CropAnalysis does, so the default margin picks exactly the same scale.
+            val loosened = scales[fit] + weights.autoMargin.toFloat()
+            val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f }
+                ?: if (loosened > scales[0]) 0 else scales.lastIndex
             return solve(scales[chosen])
         }
     }
