@@ -3,7 +3,10 @@ package dev.sortes.app.importing
 import dev.sortes.app.data.Paper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,31 +33,35 @@ class ImportTracker(private val scope: CoroutineScope) {
     private var running = 0
     private var lastResult: ImportStatus? = null
 
+    @OptIn(ExperimentalCoroutinesApi::class) // CoroutineStart.ATOMIC
     fun launch(block: suspend () -> Paper): Job {
         synchronized(lock) {
             running++
             _status.value = ImportStatus.Running(running)
         }
-        var result: ImportStatus? = null
-        val job = scope.launch {
-            result = try {
-                ImportStatus.Done(block().title)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                ImportStatus.Failed(e.message ?: e.toString())
+        // Atomic, so the body runs even if the job is cancelled before it's dispatched, and the
+        // count is settled in a finally block before the job completes. It was settled in a
+        // completion handler, but join() on a job that has completed returns without waiting
+        // for its handlers, so an import just joined could still show as running.
+        return scope.launch(start = CoroutineStart.ATOMIC) {
+            var result: ImportStatus? = null
+            try {
+                ensureActive() // don't start an import cancelled before it was dispatched
+                result = try {
+                    ImportStatus.Done(block().title)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ImportStatus.Failed(e.message ?: e.toString())
+                }
+            } finally {
+                synchronized(lock) {
+                    running--
+                    result?.let { lastResult = it }
+                    _status.value = if (running > 0) ImportStatus.Running(running) else lastResult
+                }
             }
         }
-        // Not a finally in the body: a job cancelled before it starts never runs its body,
-        // but always completes.
-        job.invokeOnCompletion {
-            synchronized(lock) {
-                running--
-                result?.let { lastResult = it }
-                _status.value = if (running > 0) ImportStatus.Running(running) else lastResult
-            }
-        }
-        return job
     }
 
     /** Hides a finished result; has no effect while imports are running. */
