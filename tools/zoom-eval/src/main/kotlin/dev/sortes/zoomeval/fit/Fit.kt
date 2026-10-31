@@ -50,21 +50,22 @@ class LabelledPaper(
  */
 suspend fun labelledPaper(
     paper: Paper,
-    pdf: MutoolPdf,
+    pdf: dev.sortes.app.zoom.PageRenderer,
     labels: PaperLabels,
     interpretation: Map<Int, Interpretation>,
     aspect: Float,
 ): LabelledPaper {
     // Every render is remembered, so trials don't re-render.
     val pages = MemoPages(pdf)
+    val pageSizes = (0 until pdf.pageCount).map { pdf.pageSize(it) }
     val raster = paperRaster(pages, aspect)
-    val rendered = pdf.pageSizes.indices.map { raster.coarse(it) }
+    val rendered = pageSizes.indices.map { raster.coarse(it) }
     val judged = requireNotNull(labels.labelledAgainst?.takeIf { it.centres?.size == rendered.size }) {
         "${labels.paper}: the labels don't record the ${rendered.size} pages' judged crops (labelledAgainst.centres)"
     }
     val targets = targets(labels, interpretation, judged.scale, judged.centres!!)
     val bare = SCORING_RULES.prepare(rendered)
-    return LabelledPaper(paper, pages, rendered, bare, pdf.pageSizes, labels, targets, aspect)
+    return LabelledPaper(paper, pages, rendered, bare, pageSizes, labels, targets, aspect)
 }
 
 /**
@@ -124,6 +125,6 @@ fun loadLabelled(
         if (only != null && labels.paper !in only) return@mapNotNull null
         val paper = corpus[labels.paper] ?: return@mapNotNull null.also { System.err.println("${labels.paper}: not in the corpus") }
         if (labels.pages.values.all { it.isEmpty } && labels.idealScale == null) return@mapNotNull null
-        runBlocking { labelledPaper(paper, MutoolPdf(File(pdfs, paper.file)), labels, interpretations[labels.paper].orEmpty(), aspect) }
+        runBlocking { labelledPaper(paper, dev.sortes.zoomeval.rendererFor(File(pdfs, paper.file)), labels, interpretations[labels.paper].orEmpty(), aspect) }
     }
 }

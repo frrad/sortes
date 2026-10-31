@@ -42,6 +42,7 @@ fun main(args: Array<String>) {
         "review" -> reviewMain(args.drop(1))
         "bench" -> benchMain(args.drop(1))
         "crops" -> cropsMain(args.drop(1))
+        "fidelity" -> fidelityMain(args.drop(1))
         "text-size" -> dev.sortes.zoomeval.content.textSizeMain(args.drop(1))
         "zoom-experiment" -> dev.sortes.zoomeval.content.zoomExperimentMain(args.drop(1))
         else -> {

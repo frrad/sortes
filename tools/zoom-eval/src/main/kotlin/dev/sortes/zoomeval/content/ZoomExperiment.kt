@@ -74,7 +74,7 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
         if (paper.category.contains("scan", ignoreCase = true)) continue
         if (l.pages.values.all { it.isEmpty } && l.idealScale == null) continue
         val pdf = MutoolPdf(File(pdfs, paper.file))
-        val p = labelledPaper(paper, pdf, l, interpretations[l.paper].orEmpty(), 0.75f)
+        val p = labelledPaper(paper, dev.sortes.zoomeval.rendererFor(File(pdfs, paper.file)), l, interpretations[l.paper].orEmpty(), 0.75f)
         println("${paper.id}: ${p.rendered.size} pages")
         val reviews = mutableListOf<ReviewResult>()
         var reference: List<Int>? = null
