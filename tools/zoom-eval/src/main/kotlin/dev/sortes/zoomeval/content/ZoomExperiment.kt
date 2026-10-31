@@ -4,7 +4,7 @@ import dev.sortes.app.zoom.CellRect
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.LineTruncation
 import dev.sortes.zoomeval.ConfigSpec
-import dev.sortes.zoomeval.MutoolPdf
+import dev.sortes.zoomeval.PdfiumPdf
 import dev.sortes.zoomeval.ReviewResult
 import dev.sortes.zoomeval.edgeSlices
 import dev.sortes.zoomeval.fit.cellsOf
@@ -73,7 +73,7 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
         val paper = corpus[l.paper] ?: error("${l.paper}: not in corpus")
         if (paper.category.contains("scan", ignoreCase = true)) continue
         if (l.pages.values.all { it.isEmpty } && l.idealScale == null) continue
-        val pdf = MutoolPdf(File(pdfs, paper.file))
+        val pdf = PdfiumPdf(File(pdfs, paper.file))
         val p = labelledPaper(paper, pdf, l, interpretations[l.paper].orEmpty(), 0.75f)
         println("${paper.id}: ${p.rendered.size} pages")
         val reviews = mutableListOf<ReviewResult>()

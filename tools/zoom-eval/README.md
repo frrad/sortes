@@ -6,22 +6,31 @@ against the owner's labels.
 It compiles the app's real `zoom/` sources, not a copy, and gets every crop from the reader's
 own entry point, `analyzePaper` (`app/src/main/java/dev/sortes/app/zoom/PaperAnalysis.kt`):
 the same page sampling, mask resolution, thresholds, fine renders for the text model, zoom
-search and placement of unsampled pages (`readerCrops` in `Methods.kt`). So the crops it scores
-are by construction the tablet's. The one difference is the pixels: pages are rendered with
-`mutool` (MuPDF, `MutoolPdf`) instead of Android's `PdfRenderer`, both behind the shared
-`PageRenderer` interface; antialiasing differs slightly, so a mask can differ by a cell at an edge.
+search and placement of unsampled pages (`readerCrops` in `ReaderCrops.kt`). The one difference
+is the pixels, behind the shared `PageRenderer` interface: the tablet renders with Android's
+`PdfRenderer`, zoom-eval with `PdfiumPdf`, pdfium pinned to the release nearest the one Android 15
+ships (chromium/5731), drawn the way PdfRenderer draws and with its whole-point page sizes. On the
+corpus that gives the tablet's crops on 32 of 33 papers and its zoom on all of them; see
+[renderer fidelity](notes/renderer-fidelity.md), and `device-check` below to re-check it.
 
 ## Running
 
-Needs `mutool` and network access to arXiv. On a memory-starved host, run Gradle under the
-shared lock:
+Needs Linux x86-64, network access to arXiv and GitHub, and `mutool` only to cut the book
+excerpts when fetching the corpus. On a memory-starved host, run Gradle under the shared lock:
 
+    tools/zoom-eval/setup-pdfium.sh            # pinned pdfium into ~/.cache/sortes-zoom-eval/pdfium-chromium-5731
     tools/zoom-eval/fetch-corpus.sh            # PDFs into ~/.cache/sortes-zoom-eval/pdf
     flock /tmp/sortes-gradle.lock ./gradlew :zoom-eval:installDist :zoom-eval:test
     cd tools/zoom-eval && build/install/zoom-eval/bin/zoom-eval <command> ...
 
+`setup-pdfium.sh` downloads pdfium-binaries' `chromium/5731` and checks its SHA-256;
+`SORTES_PDFIUM` points zoom-eval at another install dir. Without it every command stops with an
+error saying to run the script. The renderer tests skip without it; with
+`SORTES_REQUIRE_PDFIUM=1` they fail instead, for a CI job that has run `setup-pdfium.sh`.
+
 Commands: `review`, `labeller-export`, `labeller-serve` (see `labeller/README.md`), `fit`,
-`zoom-experiment`, `text-size`, `bench` and `crops`. Papers run one at a time in a 768 MB heap.
+`zoom-experiment`, `text-size`, `bench`, `crops` and `device-check`. Papers run one at a time in
+a 768 MB heap.
 Weights (`--alpha= --beta= --epsilon= --allowance= --gamma= --delta= --delta2= --maxWindows=
 --kappa= --blockGap= --splitInk= --zeta= --autoMargin=`) override `CropConfig.DEFAULT`'s where a
 command takes them.
@@ -51,6 +60,28 @@ so two commits' crops can be compared exactly.
 
 times `analyzePaper` without rendering (every page rendered once beforehand) and reports the heap
 the finished analysis keeps. See [the unification notes](notes/unified-pipeline.md).
+
+### Checking pdfium against the tablet
+
+The tablet's renderer can change under us (PdfRenderer's pdfium ships in the MediaProvider
+mainline module, updated through Play system updates), and so can our pin. To re-check, dump the
+tablet's crops and renders with the app's instrumented `CropDumpTest`, then compare:
+
+    ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest   # install both if the app differs
+    adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+    D=/sdcard/Android/data/dev.sortes.app/files/fidelity
+    adb shell mkdir -p $D/pdf && adb push ~/.cache/sortes-zoom-eval/pdf/. $D/pdf/
+    adb shell am instrument -w -e class dev.sortes.app.pdf.CropDumpTest \
+        -e dump 1706.03762.pdf,1810.04805.pdf dev.sortes.app.test/androidx.test.runner.AndroidJUnitRunner
+    adb pull $D/out /tmp/tablet-dump
+    build/install/zoom-eval/bin/zoom-eval device-check --device=/tmp/tablet-dump
+
+(`-e papers a.pdf,b.pdf` limits the papers analysed; `-e dump` lists those whose renders are
+saved, about 15 MB a 15-page paper, so dump a few.) For each dumped paper `device-check` reports
+whether replaying the tablet's renders gives its crops (it must: the pipeline is the same code),
+whether pdfium gives them, and how far pdfium's masks and grey levels are from the tablet's. The
+last check (Boox Note Air5 C, Android 15, mediaprovider 352090000): pdfium gives the tablet's
+crops on 32 of 33 papers, masks about 3% of ink apart. Dumps aren't committed.
 
 ## Corpus
 

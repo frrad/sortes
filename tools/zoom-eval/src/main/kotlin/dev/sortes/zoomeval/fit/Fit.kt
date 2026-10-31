@@ -10,8 +10,8 @@ import dev.sortes.app.zoom.PageRenderer
 import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.paperRaster
 import dev.sortes.zoomeval.MemoPages
-import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.Paper
+import dev.sortes.zoomeval.PdfiumPdf
 import dev.sortes.zoomeval.labeller.PaperLabels
 import dev.sortes.zoomeval.labeller.toMap
 import dev.sortes.zoomeval.readerCrops
@@ -50,7 +50,7 @@ class LabelledPaper(
  */
 suspend fun labelledPaper(
     paper: Paper,
-    pdf: MutoolPdf,
+    pdf: PdfiumPdf,
     labels: PaperLabels,
     interpretation: Map<Int, Interpretation>,
     aspect: Float,
@@ -124,6 +124,6 @@ fun loadLabelled(
         if (only != null && labels.paper !in only) return@mapNotNull null
         val paper = corpus[labels.paper] ?: return@mapNotNull null.also { System.err.println("${labels.paper}: not in the corpus") }
         if (labels.pages.values.all { it.isEmpty } && labels.idealScale == null) return@mapNotNull null
-        runBlocking { labelledPaper(paper, MutoolPdf(File(pdfs, paper.file)), labels, interpretations[labels.paper].orEmpty(), aspect) }
+        runBlocking { labelledPaper(paper, PdfiumPdf(File(pdfs, paper.file)), labels, interpretations[labels.paper].orEmpty(), aspect) }
     }
 }

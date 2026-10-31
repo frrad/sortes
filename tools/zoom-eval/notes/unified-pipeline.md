@@ -21,7 +21,8 @@ reached through one entry point, `analyzePaper(source, aspect, config)`:
 | placement | the text costs at the chosen zoom; unsampled pages rendered, measured and placed on demand (the last 8 kept) |
 
 Only the pixels differ: `PageRenderer.renderPixels` is PdfRenderer in the app (`PdfPages`) and
-mutool in zoom-eval (`MutoolPdf`). `PaperAnalysis.kt` is no longer excluded from zoom-eval; it is
+pdfium pinned to Android's version in zoom-eval (`PdfiumPdf`; mutool's `MutoolPdf` until the
+[renderer-fidelity](renderer-fidelity.md) change). `PaperAnalysis.kt` is no longer excluded from zoom-eval; it is
 pure. zoom-eval's `readerCrops` (review, labeller export, fit, zoom-experiment, crops, bench) is
 `analyzePaper` plus `placeAll`, which places every page exactly as the reader's `place` does.
 
@@ -63,6 +64,10 @@ unlabelled ones and the scan). `zoom-experiment` with the default config:
 
 as in `text-size/final.tsv` (e0.01 l0.1 T28 n16 f0.1, placed) and `labels/ROUND-5.md`. `fit
 --trials=0` over all 28 labelled papers (with the scan): 198 of 211 pages agree, score 67.81.
+
+These were rendered with mutool. With pdfium, which gives the tablet's crops, the same model
+scores 135/144 (19/21 zooms, 47.238) on the training papers, 57/63 (5/6) on round 5, and 193 of
+211 pages, 80.65, in the fit: see [renderer fidelity](renderer-fidelity.md#re-scoring-with-pdfium).
 
 `bench` (host, four threads, no rendering), and the heap the finished analysis keeps:
 

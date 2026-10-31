@@ -2,45 +2,13 @@ package dev.sortes.zoomeval
 
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModelWeights
-import dev.sortes.app.zoom.PageSize
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
-class MutoolTest {
-    @Test
-    fun pageSizesPreferTheCropBoxAndFollowRotation() {
-        val listing = """
-            doc.pdf:
-            <page pagenum="1">
-            <MediaBox l="0" b="0" r="612" t="792" />
-            </page>
-            <page pagenum="2">
-            <MediaBox l="0" b="0" r="612" t="792" />
-            <CropBox l="10" b="20" r="510" t="720" />
-            <Rotate v="90" />
-            </page>
-        """.trimIndent()
-        assertEquals(
-            listOf(PageSize(612f, 792f), PageSize(700f, 500f)),
-            MutoolPdf.parsePageSizes(listing),
-        )
-    }
-
-    @Test
-    fun pnmParsesHeadersWithCommentsAndResamples() {
-        val bytes = "P5\n# made by hand\n2 2\n255\n".toByteArray() + byteArrayOf(0, 50, 100, -1)
-        val pnm = Pnm.parse(bytes)
-        assertEquals(2, pnm.width)
-        assertEquals(100, pnm.pixel(0, 1, 0))
-        assertEquals(255, pnm.pixel(1, 1, 0))
-        val big = pnm.resized(4, 4)
-        assertEquals(50, big.pixel(3, 0, 0))
-        assertEquals(255, big.pixel(3, 3, 0))
-    }
-
+class MainTest {
     @Test
     fun corpusAndWeightsFilesParse() {
         val dir = Files.createTempDirectory("zoom-eval-test").toFile()

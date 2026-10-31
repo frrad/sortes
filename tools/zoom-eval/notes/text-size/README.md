@@ -145,3 +145,14 @@ papers are unchanged by the move (`final.tsv`'s last row, round 5's result).
 Round 5 result (`labels/ROUND-5.md`): 57/63 pages and 5/6 zooms. The only miss is LIGO,
 where the owner would drop the PRL running header at 0.85. TUNED gives the same crops on
 these six papers, so the round doesn't separate the models.
+
+## Rendered with pdfium
+
+Every number above was measured on mutool's renders. zoom-eval now renders with pdfium pinned to
+the tablet's version ([../renderer-fidelity.md](../renderer-fidelity.md)), which moves the
+glyph heights (by up to about 1.9 px at scale 1 on a paper) and some zooms. Unchanged weights,
+`zoom-experiment` with the default config: training papers 135/144 strict 135, 19/21 zooms,
+score 47.238 (mutool: 140/144, 20/21, 35.868); round 5 57/63, 5/6 zooms, 13.546 (unchanged
+pages; score 12.426). The tables here (`final.tsv`, `grid.tsv`, `legibility.tsv`,
+`text-size-by-paper.tsv`) are kept as mutool-era records and haven't been regenerated; a re-fit
+on the tablet's pixels would redo them.

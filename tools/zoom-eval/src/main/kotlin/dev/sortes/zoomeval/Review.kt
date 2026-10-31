@@ -74,7 +74,7 @@ fun reviewMain(args: List<String>) {
             continue
         }
         val started = System.currentTimeMillis()
-        val pdf = MutoolPdf(file)
+        val pdf = PdfiumPdf(file)
         val results = specs.map { spec ->
             val r = runBlocking { readerCrops(pdf, aspect, spec.config, scale) }
             ReviewResult(spec, r.crops, r.masks)
@@ -112,7 +112,7 @@ private const val STYLE = "<style>body{font:14px sans-serif;margin:20px}table{bo
 
 private val WINDOW_COLORS = listOf(Color(0x00, 0xA0, 0x00), Color(0x10, 0x50, 0xE0), Color(0xD0, 0x00, 0xD0))
 
-internal fun writePaper(paper: Paper, pdf: MutoolPdf, aspect: Float, width: Int, results: List<ReviewResult>, out: File, blocks: Int?) {
+internal fun writePaper(paper: Paper, pdf: PdfiumPdf, aspect: Float, width: Int, results: List<ReviewResult>, out: File, blocks: Int?) {
     val dir = File(out, paper.id).apply { mkdirs() }
     val html = StringBuilder()
     html.appendLine("<!doctype html><meta charset=utf-8><title>${paper.id} ${paper.title}</title>$STYLE")

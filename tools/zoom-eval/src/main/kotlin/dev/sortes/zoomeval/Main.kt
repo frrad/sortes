@@ -30,7 +30,7 @@ fun readWeights(file: File?, overrides: Map<String, String>, base: CropModelWeig
 
 private val USAGE = """
     Usage: zoom-eval review ... | labeller-export ... | labeller-serve ... (see labeller/README.md)
-           | fit ... | zoom-experiment ... | text-size ... | bench ... | crops ...
+           | fit ... | zoom-experiment ... | text-size ... | bench ... | crops ... | device-check ...
     See tools/zoom-eval/README.md. Weights: ${WEIGHT_NAMES.joinToString(", ")}
 """.trimIndent()
 
@@ -42,6 +42,7 @@ fun main(args: Array<String>) {
         "review" -> reviewMain(args.drop(1))
         "bench" -> benchMain(args.drop(1))
         "crops" -> cropsMain(args.drop(1))
+        "device-check" -> deviceCheckMain(args.drop(1))
         "text-size" -> dev.sortes.zoomeval.content.textSizeMain(args.drop(1))
         "zoom-experiment" -> dev.sortes.zoomeval.content.zoomExperimentMain(args.drop(1))
         else -> {

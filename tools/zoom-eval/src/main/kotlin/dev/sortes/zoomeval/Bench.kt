@@ -30,7 +30,7 @@ fun benchMain(args: List<String>) {
     println("paper\tpages\tanalysed\tconfig\tanalysis ms (wall)\tof it solving (last run)\tscale\twindows\tretained MB   [parallelism ${CropModel.DEFAULT_PARALLELISM}]")
     for (paper in corpus) {
         if (paper.id !in only) continue
-        val pages = MemoPages(MutoolPdf(File(pdfs, paper.file)))
+        val pages = MemoPages(PdfiumPdf(File(pdfs, paper.file)))
         for (spec in specs) {
             fun time(block: suspend () -> Unit): Long {
                 runBlocking { block() }
@@ -42,7 +42,7 @@ fun benchMain(args: List<String>) {
             }
             var analysis = runBlocking { analyzePaper(pages, aspect, spec.config) }
             val wall = time { analysis = analyzePaper(pages, aspect, spec.config) }
-            val retained = retainedBytes { runBlocking { analyzePaper(MutoolPdf(File(pdfs, paper.file)), aspect, spec.config) } }
+            val retained = retainedBytes { runBlocking { analyzePaper(PdfiumPdf(File(pdfs, paper.file)), aspect, spec.config) } }
             println("${paper.id}\t${pages.pageCount}\t${analysis.pagesAnalyzed}\t${spec.label}\t$wall\t${analysis.solveMillis}\t${"%.3f".format(analysis.auto.scale)}\t${analysis.auto.k}\t${"%.1f".format(retained / 1e6)}")
         }
     }
