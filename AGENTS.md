@@ -14,10 +14,10 @@
 ## Zoom analysis cache
 
 The reader stores each paper's zoom analysis on disk (`zoom/AnalysisCache.kt`), keyed by the
-PDF's content, the screen's shape and the `CropConfig`. A change to the config needs nothing
-more; a change to the code that alters what `analyzePaper` computes must bump
-`AnalysisCache.PIPELINE_VERSION` (and a change to the file format `FORMAT_VERSION`), or
-readers keep showing crops from the old code.
+PDF's content, the screen's shape, the `CropConfig` and the installed app build (versionCode
+and install time), so every new build recomputes them. Still bump
+`AnalysisCache.PIPELINE_VERSION` when a change alters what `analyzePaper` computes (it also
+keys zoom-eval and tests), and `FORMAT_VERSION` when the file format changes.
 
 ## Design for e-ink
 

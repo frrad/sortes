@@ -41,7 +41,6 @@ data class CropConfig(
         weights.toString(),
         text.toString(),
     ).joinToString("|")
-    }
 
     /** A paper's [rendered] pages (all of them, or its sample) as the model sees them. */
     fun prepare(rendered: List<InkMask>): List<InkMask> = rendered.map(preparer(rendered))

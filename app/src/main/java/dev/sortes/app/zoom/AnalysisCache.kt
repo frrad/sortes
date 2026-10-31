@@ -25,12 +25,18 @@ import kotlin.coroutines.cancellation.CancellationException
  * it's shown). That's a few hundred kilobytes to a few megabytes a paper, compressed; the
  * directory is kept under [maxBytes] by dropping the analyses least recently used.
  *
- * An analysis is keyed ([Key]) by the PDF's content, the screen's shape, the config and
- * [PIPELINE_VERSION], so a changed paper, screen or model is analysed afresh. Anything unreadable
+ * An analysis is keyed ([Key]) by the PDF's content, the screen's shape, the config, the app's
+ * build and [PIPELINE_VERSION], so a changed paper, screen, model or app is analysed afresh. Anything unreadable
  * (a truncated or corrupt file, an old format) is a miss: it's deleted and the paper analysed again.
  */
 class AnalysisCache(
     private val dir: File,
+    /**
+     * The build of the code doing the analysis, e.g. the app's versionCode and when it was
+     * installed: part of every key, so a new build never reads analyses an older one stored,
+     * whatever changed in it, without anyone remembering to bump [PIPELINE_VERSION].
+     */
+    private val build: String,
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
     /**
      * Where [analyze] stores fresh analyses, so they're shown without waiting for the write (a
@@ -40,13 +46,19 @@ class AnalysisCache(
 ) {
 
     /**
-     * What an analysis depends on besides the code: the PDF's [content] hash ([contentHash]), the
-     * screen's [aspect], the [config] and the most pages sampled ([maxPages]).
+     * What an analysis depends on: the [build] of the code, the PDF's [content] hash
+     * ([contentHash]), the screen's [aspect], the [config] and the most pages sampled ([maxPages]).
      */
-    data class Key(val content: String, val aspect: Float, val config: CropConfig, val maxPages: Int = MAX_ANALYZED_PAGES) {
+    data class Key(
+        val build: String,
+        val content: String,
+        val aspect: Float,
+        val config: CropConfig,
+        val maxPages: Int = MAX_ANALYZED_PAGES,
+    ) {
         /** The key as text: written into the file and checked when it's read. */
         val text: String = listOf(
-            "format=$FORMAT_VERSION", "pipeline=$PIPELINE_VERSION", "content=$content",
+            "format=$FORMAT_VERSION", "pipeline=$PIPELINE_VERSION", "build=$build", "content=$content",
             // Exactly, by its bits: a different screen shape is a different analysis.
             "aspect=${aspect.toRawBits()}", "maxPages=$maxPages", "config=${config.fingerprint()}",
         ).joinToString("\n")
@@ -134,7 +146,7 @@ class AnalysisCache(
         aspect: Float,
         config: CropConfig = CropConfig.DEFAULT,
     ): PaperAnalysis {
-        val key = Key(content, aspect, config)
+        val key = Key(build, content, aspect, config)
         load(key, source)?.let { return it }
         val analysis = analyzePaper(source, aspect, config, key.maxPages)
         if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) } else saveQuietly(key, analysis)
@@ -153,8 +165,9 @@ class AnalysisCache(
 
     companion object {
         /**
-         * The crop pipeline's version: bump it whenever a change to the code (not the config)
-         * changes what [analyzePaper] computes, so analyses stored by older code are recomputed.
+         * The crop pipeline's version. Every new build of the app invalidates stored analyses
+         * anyway (the key has the [build]); bump this too when a change alters what
+         * [analyzePaper] computes, for builds that don't (zoom-eval, tests), and as a record.
          * Config changes need no bump: the config is part of the key ([CropConfig.fingerprint]).
          */
         const val PIPELINE_VERSION = 1

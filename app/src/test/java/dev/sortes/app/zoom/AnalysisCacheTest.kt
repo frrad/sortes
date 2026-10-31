@@ -26,10 +26,10 @@ class AnalysisCacheTest {
     private val config = CropConfig.DEFAULT
 
     private fun cache(maxBytes: Long = AnalysisCache.DEFAULT_MAX_BYTES) =
-        AnalysisCache(File(temp.root, "analyses"), maxBytes)
+        AnalysisCache(File(temp.root, "analyses"), BUILD, maxBytes)
 
-    private fun key(content: String = "abc", aspect: Float = this.aspect, config: CropConfig = this.config, maxPages: Int = 6) =
-        AnalysisCache.Key(content, aspect, config, maxPages)
+    private fun key(content: String = "abc", aspect: Float = this.aspect, config: CropConfig = this.config, maxPages: Int = 6, build: String = BUILD) =
+        AnalysisCache.Key(build, content, aspect, config, maxPages)
 
     /** [pages] analysed as the cache would, sampling at most [Key.maxPages] pages. */
     private fun analysed(pages: PageRenderer, key: AnalysisCache.Key) =
@@ -126,6 +126,7 @@ class AnalysisCacheTest {
             key(config = config.copy(pageRules = IGNORABLE_INK_RULES)),
             key(config = config.copy(furniture = false)),
             key(maxPages = 8),
+            key(build = "2@2000"),
         )
 
         assertNotNull(runBlocking { cache.load(key, pages) })
@@ -136,6 +137,22 @@ class AnalysisCacheTest {
         }
         // A miss leaves the stored analysis alone.
         assertNotNull(runBlocking { cache.load(key, pages) })
+    }
+
+    @Test
+    fun aNewBuildOfTheAppAnalysesAfresh() {
+        // As after an app update: same PDF, screen and config, but stored by the old build.
+        val old = AnalysisCache(File(temp.root, "analyses"), "1@1000")
+        val updated = AnalysisCache(File(temp.root, "analyses"), "1@2000")
+        runBlocking { old.analyze(BookPages(14), "abc", aspect) }
+        assertTrue(runBlocking { old.analyze(BookPages(14), "abc", aspect) }.restored)
+        val pages = BookPages(14)
+
+        val analysis = runBlocking { updated.analyze(pages, "abc", aspect) }
+
+        assertFalse(analysis.restored)
+        assertTrue(pages.renders.isNotEmpty())
+        assertTrue(runBlocking { updated.analyze(BookPages(14), "abc", aspect) }.restored)
     }
 
     @Test
@@ -240,7 +257,7 @@ class AnalysisCacheTest {
         // Saves launched in the scope run only when its dispatcher is advanced.
         val dispatcher = StandardTestDispatcher()
         val job = SupervisorJob()
-        val cache = AnalysisCache(File(temp.root, "analyses"), saveScope = CoroutineScope(dispatcher + job))
+        val cache = AnalysisCache(File(temp.root, "analyses"), BUILD, saveScope = CoroutineScope(dispatcher + job))
 
         val analysis = runBlocking { cache.analyze(BookPages(14), "abc", aspect) }
 
@@ -260,7 +277,7 @@ class AnalysisCacheTest {
     fun aCacheThatCantBeWrittenStillAnalyses() {
         // The directory is a file: nothing can be stored, but the analysis is still returned.
         val dir = temp.newFile("not-a-dir")
-        val cache = AnalysisCache(dir)
+        val cache = AnalysisCache(dir, BUILD)
         val pages = BookPages(14)
 
         val analysis = runBlocking { cache.analyze(pages, "abc", aspect) }
@@ -340,6 +357,10 @@ class AnalysisCacheTest {
     }
 
     private fun AnalysisCache.dirFile() = File(temp.root, "analyses")
+
+    private companion object {
+        const val BUILD = "1@1000"
+    }
 }
 
 /**

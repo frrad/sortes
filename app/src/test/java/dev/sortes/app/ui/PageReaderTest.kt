@@ -581,7 +581,7 @@ class PageReaderTest {
 
     @Test
     fun aPaperOpenedAgainZoomsFromItsStoredAnalysisWithoutRenderingMasks() {
-        val cache = AnalysisCache(temporaryFolder.newFolder("analyses"))
+        val cache = AnalysisCache(temporaryFolder.newFolder("analyses"), build = "test")
         val masks = List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() }
         var opening by mutableStateOf(0)
         composeRule.setContent {

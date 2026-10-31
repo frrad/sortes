@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.pm.PackageInfoCompat
 import dev.sortes.app.data.Paper
 import dev.sortes.app.data.ZoomStore
 import dev.sortes.app.pdf.PageSource
@@ -141,9 +142,19 @@ private object ReaderAnalyses {
     fun get(context: Context): AnalysisCache = cache ?: synchronized(this) {
         cache ?: AnalysisCache(
             File(context.applicationContext.cacheDir, "zoom-analysis"),
+            build = appBuild(context),
             saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
         ).also { cache = it }
     }
+}
+
+/**
+ * The installed build: its versionCode and when it was installed or last updated, which changes
+ * with every new APK even when the versionCode doesn't (debug builds).
+ */
+private fun appBuild(context: Context): String {
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    return "${PackageInfoCompat.getLongVersionCode(info)}@${info.lastUpdateTime}"
 }
 
 /** The reader's colors, whatever the app theme: black ink on white paper. */
