@@ -3,13 +3,13 @@ plugins {
     application
 }
 
-// The harness compiles the app's real zoom code rather than a copy of it. PaperAnalysis is left
-// out because it reaches into the Android PDF renderer; the harness renders with mutool instead.
+// The harness compiles the app's real zoom code rather than a copy of it: the whole crop
+// pipeline (analyzePaper) is pure Kotlin. Only the pixels differ: the harness renders with mutool
+// (MutoolPdf), the reader with Android's PdfRenderer.
 sourceSets {
     main {
         kotlin.srcDir("../../app/src/main/java")
         kotlin.include("dev/sortes/app/zoom/**", "dev/sortes/zoomeval/**")
-        kotlin.exclude("dev/sortes/app/zoom/PaperAnalysis.kt")
     }
 }
 

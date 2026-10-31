@@ -1,6 +1,6 @@
 package dev.sortes.zoomeval
 
-import dev.sortes.app.zoom.InkMask
+import dev.sortes.app.zoom.PageRenderer
 import dev.sortes.app.zoom.PageSize
 import java.awt.image.BufferedImage
 import java.io.File
@@ -11,24 +11,24 @@ import java.nio.file.Files
  * Reads and renders a PDF with MuPDF's `mutool`, standing in for Android's PdfRenderer.
  * Antialiasing differs slightly from the device, so masks can differ by a cell at edges.
  */
-class MutoolPdf(private val file: File) {
+class MutoolPdf(private val file: File) : PageRenderer {
 
     /** Each page's size in points, after its crop box and rotation. */
     val pageSizes: List<PageSize> = parsePageSizes(run("mutool", "pages", file.path))
 
-    val pageCount: Int get() = pageSizes.size
+    override val pageCount: Int get() = pageSizes.size
 
-    /**
-     * The page as an ink mask of exactly [width] × [height], thresholded by [InkMask.fromArgb]:
-     * at [threshold] if given, else the reader's default.
-     */
-    fun renderMask(index: Int, width: Int, height: Int, threshold: Int? = null): InkMask {
+    override suspend fun pageSize(index: Int): PageSize = pageSizes[index]
+
+    override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray = grey(index, width, height)
+
+    /** The page in grey, as opaque ARGB pixels of exactly [width] × [height]. */
+    fun grey(index: Int, width: Int, height: Int): IntArray {
         val gray = render(index, width, height, rgb = false)
-        val pixels = IntArray(width * height) { i ->
+        return IntArray(width * height) { i ->
             val g = gray.pixel(i % width, i / width, 0)
             (0xFF shl 24) or (g shl 16) or (g shl 8) or g
         }
-        return InkMask.fromArgb(pixels, width, height, threshold)
     }
 
     /** The page as an RGB image of exactly [width] × [height]. */

@@ -1,11 +1,9 @@
 package dev.sortes.app.zoom
 
 /**
- * Everything that decides a paper's crops besides its pages: the ink to ignore, and the crop
- * model's weights. The reader analyses papers with [CropConfig.READER]; zoom-eval's harness, fit
- * and labeller can use any config. [CropConfig.TUNED] is the candidate tuned on the owner's labels
- * (tools/zoom-eval/labels); moving the reader to it is a one-line change in [analyzePaper]'s
- * default.
+ * Everything that decides a paper's crops besides its pages: the ink to ignore, the crop model's
+ * weights and the text model's. The reader and zoom-eval both analyse papers with [analyzePaper],
+ * by default with [CropConfig.DEFAULT]; zoom-eval's fit and experiments try variations of it.
  */
 data class CropConfig(
     val name: String,
@@ -14,32 +12,38 @@ data class CropConfig(
     /** Whether to ignore page furniture ([PageFurniture]), learnt from the paper's (sampled) pages. */
     val furniture: Boolean,
     val weights: CropModelWeights,
+    val text: TextWeights,
 ) {
     /** The paper-level rule for pages of a paper whose (sampled) pages, after [pageRules], are [pages]. */
     fun paperRule(pages: List<InkMask>): IgnorableInkRule =
         if (furniture) PageFurniture.of(pages) else IgnorableInkRule { it }
 
-    /** A paper's [rendered] pages (all of them, or its sample) as the model sees them. */
-    fun prepare(rendered: List<InkMask>): List<InkMask> {
-        val pages = rendered.map { it.withoutIgnorableInk(pageRules) }
-        val rule = paperRule(pages)
-        return pages.map { rule.strip(it) }
+    /**
+     * How a paper's pages are seen by the model, given its [sample] of rendered pages: without
+     * [pageRules]' ink, then without the paper rule's (furniture, learnt from the sample). The
+     * one place the rules are applied, to sampled pages and the rest alike.
+     */
+    fun preparer(sample: List<InkMask>): (InkMask) -> InkMask {
+        val rule = paperRule(sample.map { it.withoutIgnorableInk(pageRules) })
+        return { rule.strip(it.withoutIgnorableInk(pageRules)) }
     }
 
-    companion object {
-        /** What the reader uses. */
-        val READER = CropConfig("reader", IGNORABLE_INK_RULES, furniture = false, CropModelWeights())
+    /** A paper's [rendered] pages (all of them, or its sample) as the model sees them. */
+    fun prepare(rendered: List<InkMask>): List<InkMask> = rendered.map(preparer(rendered))
 
+    companion object {
         /**
-         * Tuned on the owner's labels, rounds 1-3 (tools/zoom-eval/BLOCKS.md): ignores isolated
-         * marks and page furniture; the block-aware cost (kappa, splitInk) so windows keep or drop
-         * figures, tables and paragraphs whole rather than cut through them; the cost-based zoom
-         * (zeta) with a small margin; stronger centring (beta) and a dearer second window (gamma),
-         * so a half-empty page keeps the paper's window; a small cost per switch (delta) against
-         * jitter; no per-page convex term (epsilon), since blocks do its job.
+         * The crop model tuned on the owner's labels (rounds 1-4, tools/zoom-eval/BLOCKS.md) with
+         * the text model (round 5, tools/zoom-eval/notes/text-size): ignores margin stamps,
+         * isolated marks and page furniture; the block-aware cost (kappa, splitInk) so windows
+         * keep or drop figures, tables and paragraphs whole; strong centring (beta) and a dear
+         * second window (gamma); a small cost per switch (delta); no per-page convex term
+         * (epsilon), since blocks do its job. The automatic zoom minimises the cost per page
+         * plus a legibility cost that knows the paper's text size, then loosens by 0.01; at that
+         * zoom, windows avoid dropping components and clipping lines.
          */
-        val TUNED = CropConfig(
-            "tuned",
+        val DEFAULT = CropConfig(
+            "tuned+text",
             IGNORABLE_INK_RULES + IsolatedMarks,
             furniture = true,
             CropModelWeights(
@@ -52,9 +56,10 @@ data class CropConfig(
                 zeta = 0.5,
                 autoMargin = 0.01,
             ),
+            TextWeights(),
         )
 
-        val ALL = listOf(READER, TUNED)
+        val ALL = listOf(DEFAULT)
 
         fun named(name: String): CropConfig =
             ALL.firstOrNull { it.name == name } ?: throw IllegalArgumentException("Unknown crop config $name")

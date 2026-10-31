@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
-import dev.sortes.app.zoom.InkMask
 import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.Region
 import kotlinx.coroutines.CoroutineScope
@@ -35,15 +34,16 @@ class PdfPages private constructor(private val renderer: PdfRenderer) : PageSour
     override suspend fun pageSize(index: Int): PageSize =
         pageSizes[index] ?: withPage(index) { it.size() }
 
-    override suspend fun renderMask(index: Int, width: Int, height: Int): InkMask {
+    override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
         val bitmap = render(index, width, height) { size ->
             Matrix().apply { setScale(width / size.width, height / size.height) }
         }
+        // Off the caller's thread, which may be Main: a 4x render is about a million pixels.
         return withContext(Dispatchers.Default) {
             val pixels = IntArray(width * height)
             bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
             bitmap.recycle()
-            InkMask.fromArgb(pixels, width, height)
+            pixels
         }
     }
 

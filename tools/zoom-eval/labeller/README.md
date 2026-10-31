@@ -41,8 +41,8 @@ Labels are saved as you go, straight into `tools/zoom-eval/labels/`. Commit them
 `label.sh` runs two `zoom-eval` subcommands:
 
 - `labeller-export --papers=id,id [--out=] [--aspect=] [--weights=] [--<weight>=]` renders each
-  page in its padded screen frame, with the crops the reader chooses today (zoom-eval's `reader`
-  algorithm: the app's `zoom/` code, rendered with mutool). It writes `paper.json` and `pNNN.png`
+  page in its padded screen frame, with the crops the reader chooses today (the reader's own
+  `analyzePaper`, rendered with mutool). It writes `paper.json` and `pNNN.png`
   per paper, plus `papers.json` listing them.
 - `labeller-serve --web= --labels= --data= [--host=127.0.0.1] [--port=8766]` serves:
   - the page at `/`;
@@ -129,10 +129,12 @@ two-space indent), so saving the same labels again leaves it byte for byte the s
   "paper": "1706.03762",
   "labelledAgainst": {
     "commit": "5ba99cff70e9",
-    "algorithm": "reader",
-    "weights": { "alpha": 1, "beta": 0.1, "epsilon": 300, "...": "..." },
+    "algorithm": "tuned+text",
+    "weights": { "alpha": 1, "beta": 0.5, "epsilon": 0, "...": "..." },
     "scale": 0.815,
-    "aspect": 0.75
+    "aspect": 0.75,
+    "centres": [{ "x": 306.0, "y": 396.0 }, "..."],
+    "parameters": { "textComfortablePx": 28, "...": "..." }
   },
   "idealScale": 0.8,
   "comment": "Paper-level comment",
@@ -149,7 +151,7 @@ two-space indent), so saving the same labels again leaves it byte for byte the s
 
 | field | meaning |
 | --- | --- |
-| `labelledAgainst` | The crops being judged: the commit (`-dirty` if the zoom code had uncommitted changes), the algorithm, the model's weights, the scale it chose, and the screen aspect (width / height). |
+| `labelledAgainst` | The crops being judged: the commit (`-dirty` if the zoom code had uncommitted changes), the algorithm (the config's name), the model's weights, the scale it chose, the screen aspect (width / height), each page's window centre as shown (`centres`, page points; scoring uses these, so later model changes can't move what was judged) and any other model `parameters` (the text model's). |
 | `idealScale` | The paper's ideal zoom, as the reader's `CropWindow.scale` (a fraction of the padded page; zoom = 1 / scale). `null` means the model's scale is fine. |
 | `pages` | Keyed by page number, counting from 1. Pages nothing has been said about are left out. |
 | `verdict` | `"good"`, `"bad"` or `null`. |

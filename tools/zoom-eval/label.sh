@@ -5,8 +5,8 @@
 # Usage: tools/zoom-eval/label.sh [--render]
 #   --render   re-render every paper in labeller/papers.txt with the current code and weights
 #              (otherwise only papers not rendered yet are rendered)
-# LABELLER_ARGS adds export options, e.g. LABELLER_ARGS="--config=tuned" to show the tuned
-# config's crops (CropConfig.TUNED) instead of the reader's.
+# LABELLER_ARGS adds export options, e.g. LABELLER_ARGS="--gamma=0.2" to show the reader's
+# config (CropConfig.DEFAULT) with a weight overridden.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."

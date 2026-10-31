@@ -41,3 +41,35 @@ fun maskSize(page: PageSize, density: Float): Pair<Int, Int> =
 
 /** Coarse enough to analyze a paper in well under a second, fine enough to find text edges. */
 const val ANALYSIS_LONG_SIDE = 256
+
+/**
+ * Where to crop one page: a window with the screen's aspect ratio, positioned within the page's
+ * padded frame (the page centered in white margins until it has the screen's aspect ratio).
+ * All values are fractions of the padded frame, so [scale] 1 shows the whole frame.
+ */
+data class CropWindow(val left: Float, val top: Float, val scale: Float)
+
+/**
+ * Mask cells from ([left], [top]) inclusive to ([right], [bottom]) exclusive. It may reach past
+ * the mask into the padding around it.
+ */
+data class CellRect(val left: Int, val top: Int, val right: Int, val bottom: Int)
+
+/** The zoom levels: what the slider offers and what the automatic zoom searches. */
+object ZoomScales {
+    const val MIN_SCALE = 0.3f
+    const val STEP = 0.005f
+
+    /**
+     * The automatic zoom tries every scale of [defaultScales] from [SEARCH_MIN] to [SEARCH_MAX]
+     * (then loosens by the config's margin): no paper in the corpus reads well outside them.
+     */
+    const val SEARCH_MIN = 0.60f
+    const val SEARCH_MAX = 0.97f
+
+    /** The scales, loosest (1 = whole padded page) first, every [STEP] down to [MIN_SCALE]. */
+    fun defaultScales(): FloatArray {
+        val n = ((1f - MIN_SCALE) / STEP).roundToInt() + 1
+        return FloatArray(n) { 1f - it * STEP }
+    }
+}

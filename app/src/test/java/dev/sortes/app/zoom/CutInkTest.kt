@@ -115,7 +115,7 @@ class CutInkTest {
     }
 
     @Test
-    fun cutCellsAddUpToTheInkTheAnalysisSaysIsLost() {
+    fun cutCellsAddUpToTheInkTheModelSaysIsCut() {
         val random = Random(11)
         val masks = List(4) {
             val p = TestPage(60, 80)
@@ -126,13 +126,13 @@ class CutInkTest {
             }
             p.mask()
         } + oddlyPaddedPages(random) + maskFixture("attention-page2.txt")
+        val model = CropModel(aspect)
         for (mask in masks) {
-            val a = runBlocking { CropAnalysis.of(listOf(mask), aspect) }
-            for (i in a.scales.indices step 5) {
-                val scale = a.scales[i]
-                val placed = placeWindowCells(mask, aspect, scale, runBlocking { a.anchor(scale) })
+            val scales = ZoomScales.defaultScales()
+            for (i in scales.indices step 5) {
+                val crop = model.ownCrop(mask, scales[i], CropModel.referenceInk(listOf(mask)))
                 val size = PageSize(mask.width.toFloat(), mask.height.toFloat())
-                assertEquals("scale $scale", a.lostInk[i], cutInk(mask, size, placed.cells).sumOf { it.cells }.toLong())
+                assertEquals("scale ${scales[i]}", crop.cutCells, cutInk(mask, size, crop.cells).sumOf { it.cells })
             }
         }
     }

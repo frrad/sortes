@@ -2,7 +2,7 @@ package dev.sortes.app.zoom
 
 /**
  * A kind of ink the zoom shouldn't try to keep on screen, like a stamp in the page margin.
- * Rules run on each page's mask before [CropAnalysis] and window placement see it, so ink they
+ * Rules run on each page's mask before the crop model sees it, so ink they
  * remove neither pulls the window toward it nor counts as lost when cut off.
  */
 fun interface IgnorableInkRule {
@@ -10,7 +10,7 @@ fun interface IgnorableInkRule {
     fun strip(mask: InkMask): InkMask
 }
 
-/** The rules the reader applies, in order. */
+/** The per-page rules every config starts from: margin stamps. [CropConfig.DEFAULT] adds [IsolatedMarks]. */
 val IGNORABLE_INK_RULES: List<IgnorableInkRule> = listOf(MarginStampRule)
 
 /** This mask with each of [rules] applied in turn. */

@@ -28,9 +28,6 @@ class PageBlocks private constructor(
 ) {
     val maskWidth: Int get() = mask.width
 
-    /** About how many bytes this takes, beyond the mask. */
-    val bytes: Int get() = boxes.size * 32 + runStart.size * 12
-
     /** Block [b]'s ink inside mask cells [l, r) x [t, b): from its runs, so linear in them. */
     fun inkIn(b: Int, l: Int, t: Int, r: Int, bt: Int): Int {
         var n = 0

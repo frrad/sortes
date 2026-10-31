@@ -1,5 +1,6 @@
 package dev.sortes.zoomeval
 
+import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModelWeights
 import dev.sortes.app.zoom.PageSize
 import org.junit.Assert.assertThrows
@@ -49,21 +50,11 @@ class MutoolTest {
         assertEquals(listOf(Paper("1706.03762", "1706.03762.pdf", "single-column", "Attention")), readCorpus(corpus))
         val weights = File(dir, "w.properties").apply { writeText("beta=0.5\ngamma=0.2\ndelta2=0.03\n") }
         assertEquals(
-            CropModelWeights(beta = 0.5, gamma = 0.3, delta2 = 0.03),
+            CropConfig.DEFAULT.weights.copy(beta = 0.5, gamma = 0.3, delta2 = 0.03),
             readWeights(weights, mapOf("gamma" to "0.3")),
         )
-        assertEquals(CropModelWeights(), readWeights(File(dir, "missing"), emptyMap()))
+        assertEquals(CropConfig.DEFAULT.weights, readWeights(File(dir, "missing"), emptyMap()))
         assertThrows(IllegalArgumentException::class.java) { CropModelWeights().with(mapOf("omega" to "1")) }
-        val columns = File(dir, "columns.tsv").apply {
-            writeText("# label\talgorithm\tthreshold\toverrides\nold\tanchor\t224\t-\nkeep\tmodel\tdefault\tepsilon=0, gamma=0.1\n")
-        }
-        assertEquals(
-            listOf(
-                Column("old", Algorithm.ANCHOR, 224, emptyMap()),
-                Column("keep", Algorithm.MODEL, null, mapOf("epsilon" to "0", "gamma" to "0.1")),
-            ),
-            readColumns(columns),
-        )
         dir.deleteRecursively()
     }
 }

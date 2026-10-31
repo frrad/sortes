@@ -1,11 +1,11 @@
-package dev.sortes.zoomeval.content
+package dev.sortes.app.zoom
 
 import org.junit.Assert.*
 import org.junit.Test
 
 class LegibilityTest {
-    @Test fun `linear is zeta times scale`() {
-        assertEquals(0.4, Legibility.linear(0.5).cost(0.8, 20.0), 1e-12)
+    @Test fun `with no comfortable size it is zeta times scale`() {
+        assertEquals(0.4, Legibility(0.5, Double.POSITIVE_INFINITY, 1.0, 1.0).cost(0.8, 20.0), 1e-12)
     }
 
     @Test fun `slope is zeta while text is small and diminishing but positive once big`() {
@@ -30,10 +30,5 @@ class LegibilityTest {
             prev = c
             s += 0.001
         }
-    }
-
-    @Test fun `parse`() {
-        assertEquals(Legibility.linear(0.5), Legibility.parse("linear", 0.5))
-        assertEquals(Legibility(0.5, 26.0, 8.0, 0.1), Legibility.parse("26:8:0.1", 0.5))
     }
 }

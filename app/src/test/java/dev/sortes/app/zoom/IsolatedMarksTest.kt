@@ -44,7 +44,7 @@ class IsolatedMarksTest {
     }
 
     @Test
-    fun theReaderDoesNotUseItYet() {
-        assertTrue(IsolatedMarks !in IGNORABLE_INK_RULES)
+    fun theReaderUsesIt() {
+        assertTrue(IsolatedMarks in CropConfig.DEFAULT.pageRules)
     }
 }

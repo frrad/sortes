@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.nio.file.Files
 
 class LabelsTest {
@@ -125,5 +126,18 @@ class LabelsTest {
     fun canonicalJsonSortsKeysAndWritesWholeNumbersPlainly() {
         val json = org.json.JSONObject().put("b", 2.0).put("a", org.json.JSONArray(listOf(0.5, "x", null))).put("c", org.json.JSONObject())
         assertEquals("{\n  \"a\": [\n    0.5,\n    \"x\",\n    null\n  ],\n  \"b\": 2,\n  \"c\": {}\n}", canonical(json))
+    }
+
+    @Test
+    fun everyCommittedLabelRecordsTheCropsItJudged() {
+        // Scoring reads the judged crops from the labels, never from model code.
+        val files = listOf(File("labels"), File("labels/agent")).flatMap { d -> d.listFiles { f -> f.extension == "json" }.orEmpty().toList() }
+        assertTrue(files.size >= 28)
+        for (file in files) {
+            val labels = PaperLabels.fromText(file.readText())
+            val centres = labels.labelledAgainst?.centres
+            assertTrue("${file.path}: no centres", centres != null && centres.isNotEmpty())
+            assertTrue("${file.path}: a page past the centres", labels.pages.keys.all { it <= centres!!.size })
+        }
     }
 }

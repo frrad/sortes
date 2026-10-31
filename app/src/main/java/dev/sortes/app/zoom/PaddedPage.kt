@@ -5,7 +5,7 @@ import kotlin.math.roundToInt
 
 /**
  * A page's ink mask centred in a frame with the screen's [aspect] ratio, in whole cells, plus a
- * summed-area table for counting the ink in any window. Shared by [CropAnalysis] and [CropModel].
+ * summed-area table for counting the ink in any window.
  */
 internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     companion object {
@@ -13,18 +13,14 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         private const val SAT_AREAS = 1
 
         /** How many cells [mask]'s frame has when padded to [aspect], without building it. */
-        fun frameCells(mask: InkMask, aspect: Float): Long {
-            val w: Int
-            val h: Int
-            if (mask.width.toFloat() / mask.height < aspect) {
-                w = (mask.height * aspect).roundToInt().coerceAtLeast(mask.width)
-                h = mask.height
-            } else {
-                w = mask.width
-                h = (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
-            }
-            return w.toLong() * h
-        }
+        fun frameCells(mask: InkMask, aspect: Float): Long = frameWidth(mask, aspect).toLong() * frameHeight(mask, aspect)
+
+        /** The width in cells of [mask]'s frame when padded to [aspect], without building it. */
+        fun frameWidth(mask: InkMask, aspect: Float): Int =
+            if (mask.width.toFloat() / mask.height < aspect) (mask.height * aspect).roundToInt().coerceAtLeast(mask.width) else mask.width
+
+        private fun frameHeight(mask: InkMask, aspect: Float): Int =
+            if (mask.width.toFloat() / mask.height < aspect) mask.height else (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
     }
 
     val width: Int
@@ -146,8 +142,6 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         return blocksFor
     }
 
-    /** Bytes the cached blocks and their tables take, for measuring. */
-    fun blockBytes(): Int = (found?.bytes ?: 0) + blocksFor.size * 28 + tableSums.size * 4
 
     private fun tables(f: PageBlocks?) {
         tableOffsets = IntArray(blocksFor.size) { -1 }
@@ -410,19 +404,6 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         val stride = width + 1
         return sums[(y + h) * stride + x + w] - sums[y * stride + x + w] -
             sums[(y + h) * stride + x] + sums[y * stride + x]
-    }
-
-    /** The most ink any window of [scale] can keep. */
-    fun maxInside(scale: Float): Int {
-        if (inkCount == 0) return 0
-        val w = windowWidth(scale)
-        val h = windowHeight(scale)
-        var best = 0
-        for (y in 0..height - h) for (x in 0..width - w) {
-            val v = inside(x, y, w, h)
-            if (v > best) best = v
-        }
-        return best
     }
 
     /**

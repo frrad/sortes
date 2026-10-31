@@ -6,8 +6,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -20,10 +18,11 @@ import kotlin.math.roundToInt
  * [splitInk] of the paper's median page, capped at 1 per block,
  *         + gamma·(K − 1) + delta·switches + delta2·breaks
  *
- * and, when [zeta] is set, the automatic zoom minimises that cost per page plus zeta·scale.
+ * and the automatic zoom minimises that cost per page plus a legibility cost of the scale
+ * (zeta·scale, or [Legibility]'s text-size-aware version).
  *
- * See tools/zoom-eval/SPEC.md for each term, and tools/zoom-eval/README.md for how to tune these
- * on the review board. The defaults here are what the reader uses.
+ * See tools/zoom-eval/SPEC.md for each term. The defaults are the bare model (no blocks, a
+ * per-page convex term), which tests build on; the reader's weights are [CropConfig.DEFAULT]'s.
  */
 data class CropModelWeights(
     /** Per page of ink cut off: cut_p is cut cells / the paper's median ink per page. */
@@ -63,26 +62,13 @@ data class CropModelWeights(
      */
     val splitInk: Double = 0.005,
     /**
-     * The automatic zoom's legibility reward: when positive, the zoom is the scale minimising the
-     * cost per page plus zeta·scale, instead of the tightest scale within the cut budget
-     * ([autoMaxLost]). A tighter zoom then pays for itself in cut and split blocks.
+     * The automatic zoom's legibility reward: the zoom is the scale minimising the cost per page
+     * plus zeta·scale (or [Legibility]'s cost), so a tighter zoom pays for itself in cut and
+     * split blocks.
      */
-    val zeta: Double = 0.0,
-    /** Share of the paper's ink the automatic zoom may cut off. */
-    val autoMaxLost: Double = CropAnalysis.AUTO_MAX_LOST.toDouble(),
-    /** How much looser (in scale) than the tightest acceptable scale the automatic zoom is. */
-    val autoMargin: Double = CropAnalysis.AUTO_MARGIN.toDouble(),
-    /**
-     * Pages the automatic zoom's budget leaves out: the ones that would lose most. A title page
-     * that can't fit at a good zoom for the rest of the paper then doesn't hold the paper back.
-     */
-    val zoomIgnoredPages: Int = 0,
-    /**
-     * Most of its own ink any one page may lose at the automatic zoom, besides the paper-wide
-     * [autoMaxLost]; the [zoomIgnoredPages] pages that would lose the largest share are exempt.
-     * 1 (the default) means no cap.
-     */
-    val autoMaxPageCut: Double = 1.0,
+    val zeta: Double = 0.5,
+    /** How much looser (in scale) than the scale minimising the zoom objective the automatic zoom is. */
+    val autoMargin: Double = 0.01,
 ) {
     init {
         require(listOf(alpha, beta, epsilon, allowance, gamma, delta, delta2, kappa, zeta).all { it >= 0.0 && it.isFinite() }) {
@@ -91,10 +77,7 @@ data class CropModelWeights(
         require(maxWindows >= 1) { "maxWindows must be at least 1: $maxWindows" }
         require(blockGap >= 0) { "blockGap must not be negative: $blockGap" }
         require(splitInk > 0.0 && splitInk.isFinite()) { "Bad splitInk: $splitInk" }
-        require(autoMaxLost > 0.0 && autoMaxLost < 1.0) { "Bad autoMaxLost: $autoMaxLost" }
         require(autoMargin in -0.5..0.5) { "Bad autoMargin: $autoMargin" }
-        require(zoomIgnoredPages >= 0) { "Bad zoomIgnoredPages: $zoomIgnoredPages" }
-        require(autoMaxPageCut > 0.0 && autoMaxPageCut <= 1.0) { "Bad autoMaxPageCut: $autoMaxPageCut" }
     }
 }
 
@@ -121,7 +104,7 @@ data class PageCrop(
     val splitBlocks: Int = 0,
     /** split_p: those blocks' cut shares, each capped at 1 (0 unless [CropModelWeights.kappa] is set). */
     val split: Double = 0.0,
-    /** Optional experimental page penalty, already weighted. Zero in the reader. */
+    /** The page's [PageCost] (the text model's element and line costs), already weighted. */
     val additionalCost: Double = 0.0,
 )
 
@@ -159,8 +142,23 @@ data class ModelCrops(
     /** Pages with a block cut through. */
     val pagesSplit: Int get() = pages.count { it.splitBlocks > 0 }
 
-    /** What the automatic zoom minimises when [CropModelWeights.zeta] is set: cost per page plus zeta·scale. */
-    val zoomObjective: Double get() = total / pages.size + weights.zeta * scale
+    /** The model's cost per page: what the automatic zoom adds a legibility cost to. */
+    val costPerPage: Double get() = total / pages.size
+}
+
+/**
+ * An extra cost of one page, besides the model's own terms: the text model's lost elements and
+ * truncated lines ([PageText]). [open] readies it for evaluation (building any tables, which
+ * the caller drops after one solve's use, so a paper's pages don't all hold them at once).
+ * Must be thread-safe.
+ */
+fun interface PageCost {
+    fun open(): CellCost
+}
+
+/** An opened [PageCost]: the cost of keeping [CellRect] of the page's mask; pure, finite and non-negative. */
+fun interface CellCost {
+    fun cost(cells: CellRect): Double
 }
 
 private fun CropModelWeights.excess(pageCut: Double): Double {
@@ -181,12 +179,8 @@ class CropModel(
      * is the same as on one thread.
      */
     val parallelism: Int = DEFAULT_PARALLELISM,
-    /**
-     * Offline feature experiments on the same solver. Called with the original prepared mask
-     * and the exact cells kept, in page coordinates; must be pure, thread-safe, finite and
-     * non-negative. Null preserves the reader's objective. Included in solving AND reporting.
-     */
-    private val additionalPageCost: ((InkMask, CellRect) -> Double)? = null,
+    /** Fewest frame cells over a paper's pages for a solve to use more than one thread; tests lower it. */
+    internal val minParallelCells: Long = MIN_PARALLEL_CELLS,
 ) {
     init {
         require(aspect > 0f && aspect.isFinite()) { "Bad aspect ratio: $aspect" }
@@ -200,16 +194,21 @@ class CropModel(
      * never more than the pages.
      */
     internal fun threadsFor(pages: Int, cells: Long): Int =
-        if (cells < MIN_PARALLEL_CELLS) 1 else parallelism.coerceAtMost(pages).coerceAtLeast(1)
+        if (cells < minParallelCells) 1 else parallelism.coerceAtMost(pages).coerceAtLeast(1)
 
     /**
      * [masks] ready to solve at any scale: their padded pages and the solver's scratch space are
      * kept, so repeated solves (a curve, manual zooms) don't rebuild them. Not thread-safe:
      * callers serialise solves.
      */
-    inner class Prepared internal constructor(masks: List<InkMask>) {
+    inner class Prepared internal constructor(
+        masks: List<InkMask>,
+        /** Each page's extra cost, if any, in the order of the masks; used where a solve asks for it. */
+        private val extras: List<PageCost?>?,
+    ) {
         init {
             require(masks.isNotEmpty()) { "No pages" }
+            require(extras == null || extras.size == masks.size) { "One extra cost per page" }
         }
 
         private val pages: List<PaddedPage> = runBlockingPrepare(masks)
@@ -233,175 +232,79 @@ class CropModel(
         private val totalInk = pages.sumOf { it.inkCount.toLong() }
         private val buffer = Buffer()
 
-        /** How many scales have been solved, for measuring the zoom search. */
-        val solves: Int get() = solveCount.get()
-        private val solveCount = AtomicInteger()
+        /** How many scales have been solved, for tests of the zoom search. */
+        var solves = 0
+            private set
 
-        /** Nanoseconds spent solving, summed over the threads that took part, for measuring. */
-        val solveNanos: Long get() = solvedNanos.get()
-        private val solvedNanos = AtomicLong()
-
-        /** The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
-        suspend fun solve(scale: Float): ModelCrops {
-            val started = System.nanoTime()
-            solveCount.incrementAndGet()
-            val solver = solverFor(pages, scale, buffer)
-            val crops = solver.best()
-            solvedNanos.addAndGet(System.nanoTime() - started + solver.extraNanos)
-            return crops
-        }
-
-        /** Solves [scales]' entries at [indices] that aren't in [solved] yet, into [solved]. */
-        internal suspend fun solveAll(scales: FloatArray, indices: List<Int>, solved: MutableMap<Int, ModelCrops>) {
-            for (i in indices.distinct()) if (i in scales.indices && i !in solved) solved[i] = solve(scales[i])
-        }
-
-        /** Whether pages losing [lost] cells each (in page order) are within the automatic zoom's budget. */
-        private fun withinBudget(lost: List<Long>): Boolean {
-            val counted = lost.sortedDescending().drop(weights.zoomIgnoredPages).sum()
-            if (counted.toDouble() / totalInk > weights.autoMaxLost) return false
-            if (weights.autoMaxPageCut >= 1.0) return true
-            val shares = lost.indices.map { if (pages[it].inkCount == 0) 0.0 else lost[it].toDouble() / pages[it].inkCount }
-            return shares.sortedDescending().drop(weights.zoomIgnoredPages).all { it <= weights.autoMaxPageCut }
+        /**
+         * The cheapest crops at [scale], with 1 to [CropModelWeights.maxWindows] windows; with
+         * the pages' extra costs unless [withExtras] is false.
+         */
+        suspend fun solve(scale: Float, withExtras: Boolean = true): ModelCrops {
+            solves++
+            return solverFor(pages, scale, buffer, extras.takeIf { withExtras }).best()
         }
 
         /**
-         * The index into [scales] of the tightest scale at which each page's own best window is
-         * within the automatic zoom's budget ([CropModelWeights.autoMaxLost]): no crops the model
-         * chooses can do better. Found by bisection, since what those best windows lose only
-         * grows with zoom; with the default weights it agrees with [CropAnalysis]' whole curve.
+         * Crops at the automatic scale: every scale of [scales] from [ZoomScales.SEARCH_MIN] to
+         * [ZoomScales.SEARCH_MAX] is solved without the pages' extra costs, the one minimising
+         * the cost per page plus [zoomCost] (by default zeta·scale; the loosest on a tie) is
+         * loosened by [CropModelWeights.autoMargin], and the crops there are solved with them.
+         * So the extra costs place windows but don't choose the zoom. Exhaustive: every scale in
+         * the range, about 75 solves.
          */
-        internal suspend fun bound(scales: FloatArray): Int {
-            if (totalInk == 0L) return 0
-            suspend fun fits(i: Int): Boolean = withinBudget(pages.map { page ->
-                currentCoroutineContext().ensureActive()
-                (page.inkCount - page.maxInside(scales[i])).toLong()
-            })
-            var bound = 0
-            var beyond = scales.size
-            while (beyond - bound > 1) {
-                val mid = (bound + beyond) / 2
-                if (fits(mid)) bound = mid else beyond = mid
-            }
-            return bound
-        }
-
-        /**
-         * Crops at the automatic scale: the tightest of [scales] at which the model's own crops
-         * are within the budget (at most [CropModelWeights.autoMaxLost] of the ink, not counting
-         * the [CropModelWeights.zoomIgnoredPages] pages that lose most), loosened by
-         * [CropModelWeights.autoMargin]. The search starts at the [bound], gallops looser (1, 2, 4...
-         * steps) until the model's crops are within budget, then bisects back, treating the
-         * model's cut as rising with zoom.
-         */
-        suspend fun auto(scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops {
+        suspend fun auto(
+            scales: FloatArray = ZoomScales.defaultScales(),
+            zoomCost: (Float) -> Double = { weights.zeta * it },
+        ): ModelCrops {
             require(scales.isNotEmpty() && scales.all { it > 0f && it <= 1f }) { "Bad scales" }
             if (totalInk == 0L) return solve(scales[0])
-            if (weights.zeta > 0.0) return autoByCost(scales)
-            suspend fun fitsAt(i: Int) = withinBudget(solve(scales[i]).pages.map { it.cutCells.toLong() })
-            // Index of the tightest scale known to fit (0, the whole page, always does), and of
-            // the loosest known not to, if any.
-            var fit = bound(scales)
-            var miss = -1
-            var step = 1
-            while (fit > 0 && !fitsAt(fit)) {
-                miss = fit
-                fit = (fit - step).coerceAtLeast(0)
-                step *= 2
-            }
-            if (miss >= 0) {
-                while (miss - fit > 1) {
-                    val mid = (fit + miss) / 2
-                    if (fitsAt(mid)) fit = mid else miss = mid
+            val grid = scales.indices.filter { scales[it] in ZoomScales.SEARCH_MIN - 1e-6f..ZoomScales.SEARCH_MAX + 1e-6f }
+                .ifEmpty { scales.indices.toList() }
+            var best = -1
+            var bestValue = Double.MAX_VALUE
+            var bestCrops: ModelCrops? = null
+            for (i in grid) {
+                val crops = solve(scales[i], withExtras = false)
+                val value = crops.costPerPage + zoomCost(scales[i])
+                if (value < bestValue) {
+                    best = i
+                    bestValue = value
+                    bestCrops = crops
                 }
             }
-            // In Float, as CropAnalysis does, so the default margin picks exactly the same scale.
-            val loosened = scales[fit] + weights.autoMargin.toFloat()
+            // In Float, so a margin of a whole number of steps lands exactly on a scale.
+            val loosened = scales[best] + weights.autoMargin.toFloat()
             val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f }
                 ?: if (loosened > scales[0]) 0 else scales.lastIndex
-            return solve(scales[chosen])
+            return if (chosen == best && extras == null) bestCrops!! else solve(scales[chosen])
         }
     }
 
-    /** [masks] prepared for solving at several scales. */
-    fun prepare(masks: List<InkMask>): Prepared = Prepared(masks)
-
-    /**
-     * Crops at the scale minimising [ModelCrops.zoomObjective] over [scales] (loosest first),
-     * loosened by [CropModelWeights.autoMargin]. The objective falls as the zoom tightens while
-     * only margins go, then climbs once windows cut and split the pages' blocks, with a step
-     * wherever a page's blocks start to fit. So: every [COARSE_STEP]th scale (0.02) from
-     * [GRID_TIGHTER] steps (0.02) tighter than the cut budget's [Prepared.bound] down to the
-     * bound, then looser in the same steps for as long as the objective improves, allowing
-     * [LOOKAHEAD] worse step (a page's blocks that fit a step later), then the scales 0.01
-     * either side of the best, then 0.005 either side of the best of those. Seven or eight
-     * solves; on the corpus the optimum is within 0.02 of the bound, and the refinement can
-     * still reach 0.03 tighter.
-     */
-    private suspend fun Prepared.autoByCost(scales: FloatArray): ModelCrops {
-        val solved = HashMap<Int, ModelCrops>()
-        suspend fun at(i: Int): ModelCrops {
-            solveAll(scales, listOf(i), solved)
-            return solved.getValue(i)
-        }
-        val bound = bound(scales)
-        var best = -1
-        var bestValue = Double.MAX_VALUE
-        suspend fun consider(i: Int) {
-            if (i !in scales.indices) return
-            val v = at(i).zoomObjective
-            if (v < bestValue - EPS) {
-                best = i
-                bestValue = v
-            }
-        }
-        // Tighter is a larger index. The tighter side is a short grid; the looser side a walk
-        // that goes on while the objective improves, allowing LOOKAHEAD worse coarse steps to get
-        // past a bump (a page's blocks fitting a step or two later).
-        for (i in (bound + GRID_TIGHTER) downTo bound step COARSE_STEP) consider(i)
-        var i = bound
-        var worse = 0
-        while (worse <= LOOKAHEAD && i - COARSE_STEP >= 0) {
-            i -= COARSE_STEP
-            val before = best
-            consider(i)
-            worse = if (best == i) 0 else worse + 1
-            if (before == best && worse > LOOKAHEAD) break
-        }
-        // Then halve the step twice around the best so far.
-        val coarse = best
-        consider(coarse - 2)
-        consider(coarse + 2)
-        val fine = best
-        consider(fine - 1)
-        consider(fine + 1)
-        val loosened = scales[best] + weights.autoMargin.toFloat()
-        val chosen = scales.indices.firstOrNull { scales[it] <= loosened + 1e-6f }
-            ?: if (loosened > scales[0]) 0 else scales.lastIndex
-        return at(chosen)
-    }
+    /** [masks] prepared for solving at several scales, with each page's [extras] cost if given. */
+    fun prepare(masks: List<InkMask>, extras: List<PageCost?>? = null): Prepared = Prepared(masks, extras)
 
     /** Crops at the automatic scale; see [Prepared.auto]. */
-    suspend fun auto(masks: List<InkMask>, scales: FloatArray = CropAnalysis.defaultScales()): ModelCrops =
+    suspend fun auto(masks: List<InkMask>, scales: FloatArray = ZoomScales.defaultScales()): ModelCrops =
         prepare(masks).auto(scales)
 
     /** The cheapest crops of [masks] at [scale], with 1 to [CropModelWeights.maxWindows] windows. */
     suspend fun solve(masks: List<InkMask>, scale: Float): ModelCrops = prepare(masks).solve(scale)
 
-    private suspend fun solverFor(pages: List<PaddedPage>, scale: Float, buffer: Buffer): Solver {
+    private suspend fun solverFor(pages: List<PaddedPage>, scale: Float, buffer: Buffer, extras: List<PageCost?>?): Solver {
         require(scale > 0f && scale <= 1f) { "Bad scale: $scale" }
-        return Solver(pages, scale, buffer).apply { precompute() }
+        return Solver(pages, scale, buffer, extras).apply { precompute() }
     }
 
     /** The solver for [masks] at [scale], for tests of its steps. */
     internal suspend fun solver(masks: List<InkMask>, scale: Float): Solver =
-        solverFor(masks.map { PaddedPage(it, aspect) }, scale, Buffer())
+        solverFor(masks.map { PaddedPage(it, aspect) }, scale, Buffer(), null)
 
     /**
      * A page's own best crop at [scale], ignoring every other page: where a page that fits none of
      * a paper's windows can sit. Its [PageCrop.windowIndex] is [OWN_WINDOW].
      */
-    fun ownCrop(mask: InkMask, scale: Float, referenceInk: Double): PageCrop {
+    fun ownCrop(mask: InkMask, scale: Float, referenceInk: Double, extra: CellCost? = null): PageCrop {
         val page = PaddedPage(mask, aspect)
         val w = page.windowWidth(scale)
         val h = page.windowHeight(scale)
@@ -409,31 +312,35 @@ class CropModel(
         val rows = page.height - h + 1
         val offCentres = DoubleArray(cols * rows)
         page.offCentres(w, h, offCentres)
-        val splits = if (weights.kappa > 0.0) DoubleArray(cols * rows).also { page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), it, scratch.blocks) } else null
+        val splits = if (weights.kappa > 0.0) DoubleArray(cols * rows).also { page.splitCosts(w, h, weights.blockGap, splitUnit(referenceInk), it, BlockScratch()) } else null
         var best = 0
         var bestCost = Double.MAX_VALUE
+        var bestExtra = 0.0
         for (pos in 0 until cols * rows) {
             val cut = page.inkCount - page.inside(pos % cols, pos / cols, w, h)
+            val e = if (extra == null) 0.0 else extraCost(extra, page.cellsAt(pos % cols, pos / cols, scale))
             val c = weights.alpha * cut / referenceInk + weights.beta * offCentres[pos] + (if (splits != null) weights.kappa * splits[pos] else 0.0) +
-                (if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)) +
-                    (if (additionalPageCost == null) 0.0 else extraCost(page, page.cellsAt(pos % cols, pos / cols, scale)))
+                (if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)) + e
             if (c < bestCost - EPS) {
                 bestCost = c
                 best = pos
+                bestExtra = e
             }
         }
-        return pageCrop(page, referenceInk, OWN_WINDOW, best % cols, best / cols, scale, scratch)
+        return pageCrop(page, referenceInk, OWN_WINDOW, best % cols, best / cols, scale, bestExtra)
     }
 
     /** Scores given per-page windows (e.g. another method's) with this model's cost. */
-    fun score(masks: List<InkMask>, perPage: List<CropWindow>): ModelCrops {
+    fun score(masks: List<InkMask>, perPage: List<CropWindow>, extras: List<PageCost?>? = null): ModelCrops {
         require(masks.isNotEmpty() && masks.size == perPage.size) { "Need one window per page" }
         val pages = masks.map { PaddedPage(it, aspect) }
         val refInk = referenceInkOf(pages.map { it.inkCount })
         val distinct = perPage.distinct()
         val terms = pages.indices.map { p ->
             val (x, y) = pages[p].positionOf(perPage[p])
-            pageCrop(pages[p], refInk, distinct.indexOf(perPage[p]), x, y, perPage[p].scale, scratch)
+            val cells = pages[p].cellsAt(x, y, perPage[p].scale)
+            val extra = extras?.get(p)?.let { extraCost(it.open(), cells) } ?: 0.0
+            pageCrop(pages[p], refInk, distinct.indexOf(perPage[p]), x, y, perPage[p].scale, extra)
         }
         return ModelCrops(perPage.first().scale, distinct, terms, weights, pages.sumOf { it.inkCount.toLong() })
     }
@@ -443,11 +350,11 @@ class CropModel(
      * the window that costs it least, preferring [preferred] (e.g. the window analysed pages of
      * the same parity use) on a tie.
      */
-    fun assign(mask: InkMask, crops: ModelCrops, referenceInk: Double, preferred: Int = 0): PageCrop {
+    fun assign(mask: InkMask, crops: ModelCrops, referenceInk: Double, preferred: Int = 0, extra: CellCost? = null): PageCrop {
         val page = PaddedPage(mask, aspect)
         val options = crops.windows.indices.map { j ->
             val (x, y) = page.positionOf(crops.windows[j])
-            pageCrop(page, referenceInk, j, x, y, crops.scale, scratch)
+            pageCrop(page, referenceInk, j, x, y, crops.scale, if (extra == null) 0.0 else extraCost(extra, page.cellsAt(x, y, crops.scale)))
         }
         return options.minWith(compareBy<PageCrop> { pageCost(it) }.thenBy { if (it.windowIndex == preferred) 0 else 1 })
     }
@@ -456,13 +363,14 @@ class CropModel(
     fun pageCost(c: PageCrop): Double =
         weights.alpha * c.cut + weights.beta * c.offCentre + weights.excess(c.pageCut) + weights.kappa * c.split + c.additionalCost
 
-    private fun extraCost(page: PaddedPage, cells: CellRect): Double {
-        val cost = additionalPageCost?.invoke(page.mask, cells) ?: return 0.0
+    private fun extraCost(extra: CellCost, cells: CellRect): Double {
+        val cost = extra.cost(cells)
         require(cost.isFinite() && cost >= 0.0) { "Bad additional page cost: $cost" }
         return cost
     }
 
-    private fun pageCrop(page: PaddedPage, refInk: Double, window: Int, x: Int, y: Int, scale: Float, buffer: Buffer): PageCrop {
+    /** Page [page]'s crop with the window at ([x], [y]), whose extra cost (already checked) is [extra]. */
+    private fun pageCrop(page: PaddedPage, refInk: Double, window: Int, x: Int, y: Int, scale: Float, extra: Double): PageCrop {
         val w = page.windowWidth(scale)
         val h = page.windowHeight(scale)
         val cut = page.inkCount - page.inside(x, y, w, h)
@@ -476,7 +384,7 @@ class CropModel(
             offCentre = page.offCentre(x, y, w, h),
             splitBlocks = if (weights.kappa > 0.0) page.split(x, y, w, h, weights.blockGap) else 0,
             split = if (weights.kappa > 0.0) page.splitCost(x, y, w, h, weights.blockGap, splitUnit(refInk)) else 0.0,
-            additionalCost = extraCost(page, page.cellsAt(x, y, scale)),
+            additionalCost = extra,
         )
     }
 
@@ -496,11 +404,12 @@ class CropModel(
         }
     }
 
-    // Scratch for the entry points outside a [Prepared] solve (ownCrop, assign, score), which
-    // callers serialise like solves.
-    private val scratch = Buffer()
-
-    internal inner class Solver(private val pages: List<PaddedPage>, private val scale: Float, private val buffer: Buffer) {
+    internal inner class Solver(
+        private val pages: List<PaddedPage>,
+        private val scale: Float,
+        private val buffer: Buffer,
+        private val extras: List<PageCost?>?,
+    ) {
         private val refInk = referenceInkOf(pages.map { it.inkCount })
 
         // Windows are positions on a reference page (the most common mask size); other pages take
@@ -514,22 +423,14 @@ class CropModel(
         /** Number of window positions on the reference page. */
         val positions = cols * rows
 
-        /** Nanoseconds spent in [precompute], in seeding the extra windows, and in refining them, for measuring. */
-        var precomputeNanos = 0L
-        val splitNanos = AtomicLong()
-        val offNanos = AtomicLong()
-        var seedNanos = 0L
-        var refineNanos = 0L
-
-        /** Nanoseconds the other threads spent in [precompute], for the CPU total. */
-        var extraNanos = 0L
-        /** Whether the search for a second window was skipped because it couldn't pay for itself. */
-        var prunedAt = 0
-
         // cost[p * positions + pos]: page p's cost with the window at reference position
         // pos = y * cols + x.
         private val cost = buffer.get(pages.size * positions)
         private val sums = DoubleArray(positions)
+
+        // extraTable[p * positions + pos]: page p's extra cost there, kept so the chosen crops'
+        // report doesn't open the pages' costs again; null without extra costs.
+        private val extraTable = if (extras == null) null else DoubleArray(pages.size * positions)
 
         /**
          * Fills the cost table, the pages spread over [CropModel.parallelism] threads on
@@ -537,24 +438,17 @@ class CropModel(
          * own scratch, so the table is the same however the pages are shared out.
          */
         suspend fun precompute() {
-            val started = System.nanoTime()
             val threads = threadsFor(pages.size, pages.sumOf { it.width.toLong() * it.height })
             if (threads == 1) {
                 precomputePages(0, pages.size, buffer.blocks)
             } else {
                 val chunk = (pages.size + threads - 1) / threads
-                val spent = coroutineScope {
+                coroutineScope {
                     (0 until pages.size step chunk).map { from ->
-                        async(Dispatchers.Default) {
-                            val t = System.nanoTime()
-                            precomputePages(from, minOf(pages.size, from + chunk), BlockScratch())
-                            System.nanoTime() - t
-                        }
+                        async(Dispatchers.Default) { precomputePages(from, minOf(pages.size, from + chunk), BlockScratch()) }
                     }.awaitAll()
                 }
-                extraNanos += spent.sum() - (System.nanoTime() - started)
             }
-            precomputeNanos += System.nanoTime() - started
         }
 
         private suspend fun precomputePages(from: Int, until: Int, scratch: BlockScratch) {
@@ -564,7 +458,8 @@ class CropModel(
                 currentCoroutineContext().ensureActive()
                 val page = pages[p]
                 val row = p * positions
-                if (page.inkCount == 0 && additionalPageCost == null) {
+                val extra = extras?.get(p)?.open()
+                if (page.inkCount == 0 && extra == null) {
                     cost.fill(0.0, row, row + positions)
                     continue
                 }
@@ -573,14 +468,10 @@ class CropModel(
                 val pageCols = page.width - w + 1
                 val size = pageCols * (page.height - h + 1)
                 if (offCentres.size < size) offCentres = DoubleArray(size)
-                val offStart = System.nanoTime()
                 page.offCentres(w, h, offCentres)
-                offNanos.addAndGet(System.nanoTime() - offStart)
                 if (weights.kappa > 0.0) {
                     if (splits.size < size) splits = DoubleArray(size)
-                    val splitStart = System.nanoTime()
                     page.splitCosts(w, h, weights.blockGap, splitUnit(refInk), splits, scratch)
-                    splitNanos.addAndGet(System.nanoTime() - splitStart)
                 }
                 val reference = (page.maskWidth to page.maskHeight) == refSize
                 for (pos in 0 until positions) {
@@ -595,10 +486,11 @@ class CropModel(
                         y = xy.second
                     }
                     val cut = page.inkCount - page.inside(x, y, w, h)
+                    val e = if (extra == null) 0.0 else extraCost(extra, page.cellsAt(x, y, scale))
+                    extraTable?.set(row + pos, e)
                     cost[row + pos] = weights.alpha * cut / refInk +
                         weights.beta * offCentres[y * pageCols + x] +
-                        (if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)) +
-                        (if (additionalPageCost == null) 0.0 else extraCost(page, page.cellsAt(x, y, scale))) +
+                        (if (page.inkCount == 0) 0.0 else weights.excess(cut.toDouble() / page.inkCount)) + e +
                         (if (weights.kappa > 0.0) weights.kappa * splits[y * pageCols + x] else 0.0)
                 }
             }
@@ -768,19 +660,15 @@ class CropModel(
             var bestCost = total(bestWindows, bestAssignment)
             var previous = bestWindows
             // Each page's own best position seeds candidates for an extra window.
-            val seedStart = System.nanoTime()
             val seeds = if (weights.maxWindows > 1) pages.indices.map { bestFor(listOf(it)) }.distinct() else emptyList()
             // What more windows could save at most: every page at its own cheapest position. If
             // that doesn't cover one more window's price, no extra window can pay for itself.
             val floor = if (weights.maxWindows > 1) pages.indices.sumOf { minimum(it) } else 0.0
-            seedNanos += System.nanoTime() - seedStart
             for (k in 2..weights.maxWindows) {
                 if (bestCost - floor <= weights.gamma * (k - 1) + EPS) {
-                    prunedAt = k
                     break
                 }
                 // Refining is the expensive part: only from the seeds that help most at once.
-                val refineStart = System.nanoTime()
                 val starts = seeds.map { previous + it }
                     .sortedBy { total(it, assign(it)) }
                     .take(MAX_SEEDS)
@@ -791,7 +679,6 @@ class CropModel(
                 }
                 if (starts.isEmpty()) break
                 val (windows, assignment) = starts.map { refine(it) }.minBy { total(it.first, it.second) }
-                refineNanos += System.nanoTime() - refineStart
                 previous = windows
                 val c = total(windows, assignment)
                 if (c < bestCost - EPS) {
@@ -806,7 +693,7 @@ class CropModel(
             val crops = pages.indices.map { p ->
                 val page = pages[p]
                 val (x, y) = mapped(page, bestWindows[bestAssignment[p]])
-                pageCrop(page, refInk, order.indexOf(bestAssignment[p]), x, y, scale, buffer)
+                pageCrop(page, refInk, order.indexOf(bestAssignment[p]), x, y, scale, extraTable?.get(p * positions + bestWindows[bestAssignment[p]]) ?: 0.0)
             }
             return ModelCrops(scale, windows, crops, weights, pages.sumOf { it.inkCount.toLong() })
         }
@@ -814,9 +701,6 @@ class CropModel(
 
     companion object {
         private const val MAX_ROUNDS = 20
-        private const val COARSE_STEP = 4
-        private const val GRID_TIGHTER = 4
-        private const val LOOKAHEAD = 1
         private const val MAX_SEEDS = 6
         private const val EPS = 1e-12
 

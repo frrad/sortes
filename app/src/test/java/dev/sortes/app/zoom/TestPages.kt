@@ -101,3 +101,82 @@ fun grayFixture(name: String): Triple<IntArray, Int, Int> {
     }
     return Triple(pixels, width, rows.size)
 }
+
+/**
+ * Pages drawn from synthetic ink masks, one mask cell per [POINTS_PER_CELL] page points, for the
+ * crop pipeline ([analyzePaper]) without Android. Records every render.
+ */
+class MaskPages(
+    private val masks: List<InkMask>,
+    /** Pages that can't be read at all. */
+    private val broken: Set<Int> = emptySet(),
+    /** Renders bigger than this many pixels fail, as a big render can on a device short of memory. */
+    private val maxPixels: Int = Int.MAX_VALUE,
+) : PageRenderer {
+    data class Render(val index: Int, val width: Int, val height: Int)
+
+    val renders: MutableList<Render> = java.util.Collections.synchronizedList(mutableListOf())
+
+    /** The pages rendered at all, in order, each once. */
+    val rendered: List<Int> get() = renders.map { it.index }.distinct()
+
+    override val pageCount: Int get() = masks.size
+
+    override suspend fun pageSize(index: Int): PageSize {
+        if (index in broken) throw java.io.IOException("Can't read page $index")
+        return PageSize(masks[index].width * POINTS_PER_CELL, masks[index].height * POINTS_PER_CELL)
+    }
+
+    override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
+        if (index in broken) throw java.io.IOException("Can't render page $index")
+        if (width.toLong() * height > maxPixels) throw IllegalStateException("Out of memory rendering page $index")
+        renders += Render(index, width, height)
+        val mask = masks[index]
+        return IntArray(width * height) {
+            if (mask[(it % width) * mask.width / width, (it / width) * mask.height / height]) BLACK else WHITE
+        }
+    }
+
+    companion object {
+        const val POINTS_PER_CELL = 10f
+        const val BLACK = 0xFF000000.toInt()
+        const val WHITE = 0xFFFFFFFF.toInt()
+    }
+}
+
+/**
+ * Pages of "text" drawn at whatever resolution they're rendered: [lines] lines of glyphs
+ * [glyph] points tall (each 0.6 of a glyph wide, 0.4 apart), every [pitch] points, in a column
+ * from ([left], [top]) [width] points wide, on [pageWidth] x [pageHeight] point pages.
+ */
+class TextPages(
+    override val pageCount: Int,
+    private val glyph: Float,
+    private val pitch: Float,
+    private val lines: Int,
+    private val left: Float = 100f,
+    private val top: Float = 100f,
+    private val width: Float = 400f,
+    private val pageWidth: Float = 600f,
+    private val pageHeight: Float = 800f,
+) : PageRenderer {
+    override suspend fun pageSize(index: Int) = PageSize(pageWidth, pageHeight)
+
+    override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
+        val sx = width / pageWidth
+        val sy = height / pageHeight
+        val out = IntArray(width * height) { MaskPages.WHITE }
+        for (line in 0 until lines) {
+            val y0 = ((top + line * pitch) * sy).toInt()
+            val y1 = ((top + line * pitch + glyph) * sy).toInt().coerceAtLeast(y0 + 1)
+            var x = left
+            while (x + glyph * 0.6f <= left + this.width) {
+                val x0 = (x * sx).toInt()
+                val x1 = ((x + glyph * 0.6f) * sx).toInt().coerceAtLeast(x0 + 1)
+                for (y in y0 until minOf(y1, height)) for (xx in x0 until minOf(x1, width)) out[y * width + xx] = MaskPages.BLACK
+                x += glyph
+            }
+        }
+        return out
+    }
+}

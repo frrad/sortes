@@ -9,8 +9,8 @@ data class CutInk(val region: Region, val cells: Int)
  * between them share a box, so a cut-off running head is one box rather than one per letter.
  *
  * Boxes cover only the cut part of the ink: a line straddling the window's edge gets a box from
- * the edge outwards. Given the cells from [placeWindowCells], the cells of all boxes add up to the
- * ink the analysis counts as lost.
+ * the edge outwards. Given a crop's [PageCrop.cells], the cells of all boxes add up to the
+ * ink the model counts as cut.
  */
 fun cutInk(
     mask: InkMask,

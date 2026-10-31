@@ -1,13 +1,10 @@
 package dev.sortes.zoomeval
 
 import dev.sortes.app.zoom.CropConfig
-import dev.sortes.app.zoom.CropModel
 import dev.sortes.app.zoom.InkMask
 import dev.sortes.app.zoom.ModelCrops
 import dev.sortes.app.zoom.PageBlocks
-import dev.sortes.app.zoom.analysisDensity
 import dev.sortes.app.zoom.cutInk
-import dev.sortes.app.zoom.maskSize
 import dev.sortes.app.zoom.padded
 import dev.sortes.app.zoom.regionOn
 import kotlinx.coroutines.runBlocking
@@ -41,7 +38,7 @@ data class ConfigSpec(val label: String, val config: CropConfig) {
 }
 
 /**
- * `review --configs=reader,tuned[,tuned:gamma=0.2;kappa=0.1] [--only=id,id] [--out=DIR] [--width=360] [--scale=S]
+ * `review [--configs=tuned+text,tuned+text:gamma=0.2;kappa=0.1] [--only=id,id] [--out=DIR] [--width=360] [--scale=S]
  * [--corpus=] [--pdfs=] [--aspect=]`: writes, for every paper, one readable image per page and
  * config (the padded frame with the page, the window outlined, what's off screen shaded and cut
  * ink boxed in red), a per-paper HTML grid, and an index with each config's zoom, windows and
@@ -60,7 +57,7 @@ fun reviewMain(args: List<String>) {
     val out = File(opts["out"] ?: "$home/sortes-review/model/fable").apply { mkdirs() }
     val aspect = (opts["aspect"] ?: "0.75").toFloat()
     val width = (opts["width"] ?: "360").toInt()
-    val specs = (opts["configs"] ?: "reader,tuned").split(',').map { ConfigSpec.parse(it.trim()) }
+    val specs = (opts["configs"] ?: CropConfig.DEFAULT.name).split(',').map { ConfigSpec.parse(it.trim()) }
     val only = opts["only"]?.split(',')?.toSet()
     val title = opts["title"] ?: "Crop review"
     // Outline each page's blocks (PageBlocks at this gap) in blue, to judge the segmentation.
@@ -78,15 +75,9 @@ fun reviewMain(args: List<String>) {
         }
         val started = System.currentTimeMillis()
         val pdf = MutoolPdf(file)
-        val density = analysisDensity(pdf.pageSizes, aspect)
-        val rendered = pdf.pageSizes.indices.map { i ->
-            val (w, h) = maskSize(pdf.pageSizes[i], density)
-            pdf.renderMask(i, w, h)
-        }
         val results = specs.map { spec ->
-            val masks = spec.config.prepare(rendered)
-            val crops = runBlocking { cropsFor(Algorithm.READER, masks, CropModel(aspect, spec.config.weights), scale) }
-            ReviewResult(spec, crops, masks, rendered)
+            val r = runBlocking { readerCrops(pdf, aspect, spec.config, scale) }
+            ReviewResult(spec, r.crops, r.masks)
         }
         writePaper(paper, pdf, aspect, width, results, out, blocks)
         index += indexRow(paper, pdf.pageCount, results)
@@ -103,7 +94,7 @@ fun reviewMain(args: List<String>) {
     println("Wrote ${File(out, "index.html")}")
 }
 
-internal class ReviewResult(val spec: ConfigSpec, val crops: ModelCrops, val masks: List<InkMask>, val raw: List<InkMask>) {
+internal class ReviewResult(val spec: ConfigSpec, val crops: ModelCrops, val masks: List<InkMask>) {
     val slices = crops.pages.mapIndexed { p, c -> edgeSlices(masks[p], c.cells) }
     val slicedLinePages get() = slices.count { it.slicesLine() }
 }

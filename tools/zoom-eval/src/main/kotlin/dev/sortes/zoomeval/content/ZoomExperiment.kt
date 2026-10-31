@@ -1,59 +1,70 @@
 package dev.sortes.zoomeval.content
 
-import dev.sortes.app.zoom.*
-import dev.sortes.zoomeval.*
-import dev.sortes.zoomeval.fit.*
+import dev.sortes.app.zoom.CellRect
+import dev.sortes.app.zoom.CropConfig
+import dev.sortes.app.zoom.LineTruncation
+import dev.sortes.zoomeval.ConfigSpec
+import dev.sortes.zoomeval.MutoolPdf
+import dev.sortes.zoomeval.ReviewResult
+import dev.sortes.zoomeval.edgeSlices
+import dev.sortes.zoomeval.fit.cellsOf
+import dev.sortes.zoomeval.fit.labelledPaper
+import dev.sortes.zoomeval.fit.readInterpretations
+import dev.sortes.zoomeval.fit.windowAt
 import dev.sortes.zoomeval.labeller.PaperLabels
+import dev.sortes.zoomeval.readCorpus
+import dev.sortes.zoomeval.readerCrops
+import dev.sortes.zoomeval.writePaper
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.math.abs
 
 /**
- * Offline experiment: automatic zoom chosen by a text-size-aware legibility cost ([Legibility]),
- * optionally with the component ([ElementLoss]) and truncated-line ([LineTruncation]) page
- * costs. Every scale of the grid is solved once per page-cost setting, then each legibility
- * spec (and worst-page risk) picks its scale from those solves, so a large grid is cheap.
+ * `zoom-experiment [--T=28,...] [--n=16,...] [--floor=0.1,...] [--elements=0.01,...] [--lines=0.1,...]
+ * [--zeta=0.5] [--only=id,id] [--render=true] [--out=] [--labels=] [--corpus=] [--pdfs=]`: scores
+ * variations of [CropConfig.DEFAULT]'s text model on the labelled clean papers. Each combination of
+ * the listed values is a config, and each config's crops are the reader's: [readerCrops], through
+ * [dev.sortes.app.zoom.analyzePaper]. `--T=Infinity` is the plain zeta·scale zoom.
  *
- * Writes `summary.tsv` (one row per paper and setting) and `paper.tsv` (each paper's text size).
- * `newIgnoredPages` counts pages whose window now shows ink the rules ignore (page numbers,
- * running heads, stamps) that the baseline's window didn't: the "don't start showing page
- * numbers" regression check.
+ * Writes `summary.tsv` (one row per paper and config), `pages.tsv` and `paper.tsv` (each paper's
+ * text size). `strictAgree` also asks that no line segment be clipped that the owner's crop shows
+ * whole; `newIgnoredPages` counts pages whose window shows ink the rules ignore (page numbers,
+ * running heads) that the first config's didn't.
  */
 fun zoomExperimentMain(args: List<String>) = runBlocking {
     val opts = args.associate {
         require(it.startsWith("--") && '=' in it) { "Expected --name=value: $it" }
         it.removePrefix("--").substringBefore('=') to it.substringAfter('=')
     }
-    val known = setOf("only", "out", "labels", "corpus", "pdfs", "factor", "elements", "lines", "risks", "zeta",
-        "T", "n", "floor", "minScale", "maxScale", "render", "renderSpecs", "lineGap", "lineSaturation")
+    val known = setOf("only", "out", "labels", "corpus", "pdfs", "elements", "lines", "zeta", "T", "n", "floor", "render")
     require(opts.keys.all { it in known }) { "Unknown option: ${opts.keys - known}" }
-    fun doubles(name: String, default: String) = (opts[name] ?: default).split(',').map { it.toDouble() }
+    val base = CropConfig.DEFAULT
+    fun doubles(name: String, default: Double) = opts[name]?.split(',')?.map { it.toDouble() } ?: listOf(default)
+    val zeta = (opts["zeta"] ?: base.weights.zeta.toString()).toDouble()
+    val configs = doubles("elements", base.text.elements).flatMap { e ->
+        doubles("lines", base.text.lines).flatMap { l ->
+            doubles("T", base.text.comfortable).flatMap { t ->
+                doubles("n", base.text.power).flatMap { n ->
+                    doubles("floor", base.text.floor).map { f ->
+                        val text = base.text.copy(elements = e, lines = l, comfortable = t, power = n, floor = f)
+                        val weights = base.weights.copy(zeta = zeta)
+                        val label = "e$e-l$l-T$t-n$n-f$f" + if (zeta != base.weights.zeta) "-z$zeta" else ""
+                        if (text == base.text && weights == base.weights) base else base.copy(name = label, weights = weights, text = text)
+                    }
+                }
+            }
+        }
+    }.distinct()
     val out = File(opts["out"] ?: "${System.getProperty("user.home")}/sortes-review/zoom-experiment").apply { mkdirs() }
-    val factor = (opts["factor"] ?: "4").toInt()
-    val elementWeights = doubles("elements", "0")
-    val lineWeights = doubles("lines", "0")
-    val risks = doubles("risks", "0")
-    val zeta = (opts["zeta"] ?: CropConfig.TUNED.weights.zeta.toString()).toDouble()
-    val lineGap = (opts["lineGap"] ?: "1.5").toDouble()
-    val lineSaturation = (opts["lineSaturation"] ?: "2").toDouble()
-    val specs = listOf(Legibility.linear(zeta)) + doubles("T", "").let { ts ->
-        ts.flatMap { t -> doubles("n", "4").flatMap { n -> doubles("floor", "0.1").map { f -> Legibility(zeta, t, n, f) } } }
-    }
-    val renderSpecs = opts["renderSpecs"]?.split(',').orEmpty()
     val render = opts["render"] == "true"
-    val minScale = (opts["minScale"] ?: "0.60").toFloat()
-    val maxScale = (opts["maxScale"] ?: "0.97").toFloat()
-    val scales = CropAnalysis.defaultScales().filter { it in minScale - 1e-6f..maxScale + 1e-6f }
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv")).associateBy { it.id }
     val pdfs = File(opts["pdfs"] ?: "${System.getProperty("user.home")}/.cache/sortes-zoom-eval/pdf")
     val labels = File(opts["labels"] ?: "labels")
     val interpretations = readInterpretations(File(labels, "interpretation.tsv"))
     val only = opts["only"]?.split(',')?.toSet()
-    val base = CropConfig.TUNED
-    val margin = base.weights.autoMargin.toFloat()
 
-    val summary = StringBuilder("paper\telements\tlines\tlegibility\trisk\tscale\ttargetScale\tagree\ttargets\tzoomAgrees\tscore\tK\tslicedLinePages\tnewIgnoredPages\ttruncatedLines\tstrictAgree\tclippedLines\n")
-    val paperInfo = StringBuilder("paper\tglyphPxAtScale1\tbaselineScale\ttargetScale\ttextPxAtTarget\ttextPxAtBaseline\n")
+    val summary = StringBuilder("paper\tconfig\tscale\ttargetScale\tagree\ttargets\tzoomAgrees\tscore\tK\tslicedLinePages\tnewIgnoredPages\ttruncatedLines\tstrictAgree\tclippedLines\tglyphPx\n")
+    val paperInfo = StringBuilder("paper\tglyphPxAtScale1\tscale\ttargetScale\ttextPxAtTarget\ttextPxAtScale\n")
     val pageRows = StringBuilder("paper\tconfig\tpage\terrorPt\tkeptInkCutPercent\tverdict\tclippedLines\n")
     val links = mutableListOf<String>()
     for (file in labels.listFiles { f -> f.extension == "json" }.orEmpty().sortedBy { it.name }) {
@@ -64,82 +75,47 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
         if (l.pages.values.all { it.isEmpty } && l.idealScale == null) continue
         val pdf = MutoolPdf(File(pdfs, paper.file))
         val p = labelledPaper(paper, pdf, l, interpretations[l.paper].orEmpty(), 0.75f)
-        val masks = base.prepare(p.rendered)
-        println("${paper.id}: ${masks.size} pages")
-        val fine = masks.indices.map { pdf.renderMask(it, p.rendered[it].width * factor, p.rendered[it].height * factor) }
-        // Glyph height on screen at scale 1: the frame (scale 1) fills the screen's width.
-        val k = TextSize.median(fine.indices.map { i ->
-            TextSize.glyphHeight(fine[i])?.let { it / factor / PaddedPage(masks[i], p.aspect).width * SCREEN_WIDTH }
-        }) ?: error("${paper.id}: no text found")
-        val elements = masks.indices.map { ElementLoss.of(fine[it], p.rendered[it], masks[it]) }
-        val lines = masks.indices.map { LineTruncation.of(fine[it], p.rendered[it], masks[it], lineGap, lineSaturation) }
-        val byMask = masks.indices.associateBy { masks[it] }
-
-        val baseline = CropModel(p.aspect, base.weights, parallelism = 1).auto(masks)
-        val target = p.score(baseline).targetScale
-        paperInfo.appendLine(listOf(paper.id, k, baseline.scale, target, k / target, k / baseline.scale).joinToString("\t"))
-        val reviews = mutableListOf(ReviewResult(ConfigSpec("baseline", base), baseline, masks, p.rendered))
-
-        fun ignoredInside(i: Int, cells: CellRect): Int {
-            var n = 0
-            for (y in maxOf(0, cells.top) until minOf(masks[i].height, cells.bottom))
-                for (x in maxOf(0, cells.left) until minOf(masks[i].width, cells.right))
-                    if (p.rendered[i][x, y] && !masks[i][x, y]) n++
-            return n
-        }
-        val baselineIgnored = masks.indices.map { ignoredInside(it, baseline.pages[it].cells) }
-        fun record(eta: Double, lambda: Double, spec: String, risk: Double, c: ModelCrops) {
+        println("${paper.id}: ${p.rendered.size} pages")
+        val reviews = mutableListOf<ReviewResult>()
+        var reference: List<Int>? = null
+        // Lines of the labelled pages, for strict agreement: measured on the first config's masks.
+        var lines: Map<Int, LineTruncation>? = null
+        for (config in configs) {
+            val r = readerCrops(p.pages, p.aspect, config)
+            val c = r.crops
+            val masks = r.masks
+            fun ignoredInside(i: Int, cells: CellRect): Int {
+                var n = 0
+                for (y in maxOf(0, cells.top) until minOf(masks[i].height, cells.bottom))
+                    for (x in maxOf(0, cells.left) until minOf(masks[i].width, cells.right))
+                        if (p.rendered[i][x, y] && !masks[i][x, y]) n++
+                return n
+            }
+            val ignored = masks.indices.map { ignoredInside(it, c.pages[it].cells) }
+            val referenceIgnored = reference ?: ignored.also { reference = it }
+            // The pipeline's own line segments (PageText), as the first config measured them.
+            val pageLines = lines ?: p.targets.pages.associate { t ->
+                val i = t.page - 1
+                i to requireNotNull(r.pages[i].text) { "${paper.id} p${t.page}: text not measured" }.lines
+            }.also { lines = it }
             val s = p.score(c)
             val agree = s.pages.count { (it.centreError ?: 0.0) <= 8.0 && it.keepCutPercent <= 0.25 }
-            // Stricter: also no line clipped that the owner's crop shows whole (the ink tolerance
-            // lets a clipped last character through).
             val clipped = p.targets.pages.associate { t ->
                 val i = t.page - 1
                 val ideal = cellsOf(windowAt(t.keepCentre, p.targets.scale, p.sizes[i], p.aspect), masks[i], p.aspect)
-                t.page to lines[i].clippedAgainst(c.pages[i].cells, ideal)
+                t.page to pageLines.getValue(i).clippedAgainst(c.pages[i].cells, ideal)
             }
             val strict = s.pages.count { (it.centreError ?: 0.0) <= 8.0 && it.keepCutPercent <= 0.25 && clipped.getValue(it.page) == 0 }
             val sliced = c.pages.indices.count { edgeSlices(masks[it], c.pages[it].cells).slicesLine() }
-            val newIgnored = c.pages.indices.count { ignoredInside(it, c.pages[it].cells) > baselineIgnored[it] }
-            val truncated = c.pages.indices.sumOf { lines[it].truncated(c.pages[it].cells) }
-            summary.appendLine(listOf(paper.id, eta, lambda, spec, risk, c.scale, s.targetScale, agree, s.pages.size,
-                abs(s.scale - s.targetScale) <= 0.015 + 1e-9, s.units, c.k, sliced, newIgnored, truncated, strict, clipped.values.sum()).joinToString("\t"))
-            val name = "e$eta-l$lambda-$spec-r$risk"
-            for (page in s.pages) pageRows.appendLine(listOf(paper.id, name, page.page, page.centreError, page.keepCutPercent, page.why, clipped.getValue(page.page)).joinToString("\t"))
-        }
-        record(0.0, 0.0, "baseline", 0.0, baseline)
-        // Each spec's zoom from the plain model (no extra page costs): the extra costs can then
-        // place windows at that zoom without moving it ("placed" rows).
-        val plainZoom = HashMap<String, Float>()
-        val wantPlain = 0.0 in elementWeights && 0.0 in lineWeights
-        val settings = (listOf(0.0 to 0.0) + elementWeights.flatMap { e -> lineWeights.map { e to it } }).distinct()
-        for ((eta, lambda) in settings) {
-            val extra: ((InkMask, CellRect) -> Double)? = if (eta == 0.0 && lambda == 0.0) null else { mask, cells ->
-                val i = byMask.getValue(mask)
-                eta * elements[i].lost(cells) + lambda * lines[i].cost(cells)
-            }
-            val model = CropModel(p.aspect, base.weights, parallelism = 1, additionalPageCost = extra)
-            val prepared = model.prepare(masks)
-            val solved = HashMap<Float, ModelCrops>()
-            suspend fun at(scale: Float) = solved.getOrPut(scale) { prepared.solve(scale) }
-            for (scale in scales) at(scale)
-            for (spec in specs) for (risk in risks) {
-                fun value(c: ModelCrops) = c.total / c.pages.size + spec.cost(c.scale.toDouble(), k) +
-                    risk * c.pages.maxOf { it.additionalCost }
-                val best = scales.minBy { value(solved.getValue(it)) }
-                val chosen = scales.firstOrNull { abs(it - (best + margin)) < 1e-4f } ?: (best + margin).coerceAtMost(1f)
-                val c = at(chosen)
-                if (eta == 0.0 && lambda == 0.0) plainZoom["${spec.label}-r$risk"] = chosen
-                if (eta == 0.0 && lambda == 0.0 && !wantPlain) continue
-                record(eta, lambda, spec.label, risk, c)
-                val name = "e$eta-l$lambda-${spec.label}-r$risk"
-                if (name in renderSpecs) reviews += ReviewResult(ConfigSpec(name, base), c, masks, p.rendered)
-                if (eta == 0.0 && lambda == 0.0) continue
-                val placed = at(plainZoom.getValue("${spec.label}-r$risk"))
-                record(eta, lambda, "${spec.label}-placed", risk, placed)
-                val placedName = "e$eta-l$lambda-${spec.label}-placed-r$risk"
-                if (placedName in renderSpecs) reviews += ReviewResult(ConfigSpec(placedName, base), placed, masks, p.rendered)
-            }
+            val newIgnored = c.pages.indices.count { ignored[it] > referenceIgnored[it] }
+            val truncated = p.targets.pages.sumOf { t -> pageLines.getValue(t.page - 1).truncated(c.pages[t.page - 1].cells) }
+            val k = r.analysis.glyphPx
+            summary.appendLine(listOf(paper.id, config.name, c.scale, s.targetScale, agree, s.pages.size,
+                abs(s.scale - s.targetScale) <= 0.015 + 1e-9, s.units, c.k, sliced, newIgnored, truncated, strict, clipped.values.sum(), k).joinToString("\t"))
+            if (config === configs.first()) paperInfo.appendLine(listOf(paper.id, k, c.scale, s.targetScale, k?.div(s.targetScale), k?.div(c.scale)).joinToString("\t"))
+            for (page in s.pages) pageRows.appendLine(listOf(paper.id, config.name, page.page, page.centreError, page.keepCutPercent, page.why, clipped.getValue(page.page)).joinToString("\t"))
+            println("  ${config.name}: scale ${c.scale}, agree $agree/${s.pages.size} (strict $strict), score ${"%.2f".format(s.units)}, K=${c.k}")
+            if (render) reviews += ReviewResult(ConfigSpec(config.name, config), c, masks)
         }
         if (render) writePaper(paper, pdf, p.aspect, 480, reviews, out, null)
         links += "<li><a href=\"${paper.id}.html\">${paper.id}</a> ${paper.title}</li>"
@@ -148,8 +124,5 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
         File(out, "pages.tsv").writeText(pageRows.toString())
     }
     File(out, "index.html").writeText("<!doctype html><meta charset=utf-8><h1>Zoom experiment</h1>" +
-        "<p>Columns: ${(listOf("baseline") + renderSpecs).joinToString(" · ")}</p><ul>${links.joinToString("")}</ul>")
+        "<p>Columns: ${configs.joinToString(" · ") { it.name }}</p><ul>${links.joinToString("")}</ul>")
 }
-
-/** The Boox Note Air5 C's screen width, in pixels. */
-const val SCREEN_WIDTH = 1860.0

@@ -1,10 +1,11 @@
 package dev.sortes.zoomeval.content
 
 import dev.sortes.app.zoom.InkMask
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
-class TextSizeTest {
+class LinePitchTest {
     /** Two columns of "text" lines: [glyph]-tall 3-wide glyphs with 2-px spaces, every [pitch] px, columns offset by [offset]. */
     private fun page(width: Int, height: Int, pitch: Int, glyph: Int, offset: Int = 0, lines: Int = 30): InkMask {
         val ink = BooleanArray(width * height)
@@ -21,35 +22,18 @@ class TextSizeTest {
     }
 
     @Test fun `line pitch is found despite offset columns`() {
-        val p = TextSize.linePitch(page(200, 400, pitch = 11, glyph = 6, offset = 5))!!
+        val p = LinePitch.of(page(200, 400, pitch = 11, glyph = 6, offset = 5))!!
         assertEquals(11.0, p, 0.15)
     }
 
     @Test fun `line pitch is not mistaken for a multiple or half of itself`() {
         for (pitch in listOf(5, 8, 13)) {
-            val p = TextSize.linePitch(page(200, 600, pitch = pitch, glyph = pitch / 2 + 1))!!
+            val p = LinePitch.of(page(200, 600, pitch = pitch, glyph = pitch / 2 + 1))!!
             assertEquals(pitch.toDouble(), p, 0.2)
         }
     }
 
-    @Test fun `a blank page has no pitch or glyph height`() {
-        val blank = InkMask(100, 100, BooleanArray(100 * 100))
-        assertNull(TextSize.linePitch(blank))
-        assertNull(TextSize.glyphHeight(blank))
-    }
-
-    @Test fun `glyph height ignores rules and tall figures`() {
-        val m = page(200, 400, pitch = 11, glyph = 6)
-        val ink = BooleanArray(200 * 400) { m[it % 200, it / 200] }
-        // A long rule and a big filled box.
-        for (x in 0 until 200) ink[395 * 200 + x] = true
-        for (y in 340..390) for (x in 20..80) ink[y * 200 + x] = true
-        assertEquals(6.0, TextSize.glyphHeight(InkMask(200, 400, ink))!!, 1e-9)
-    }
-
-    @Test fun `median skips nulls`() {
-        assertEquals(2.0, TextSize.median(listOf(null, 1.0, 3.0, 2.0))!!, 1e-9)
-        assertEquals(1.5, TextSize.median(listOf(1.0, 2.0))!!, 1e-9)
-        assertNull(TextSize.median(listOf(null)))
+    @Test fun `a blank page has no pitch`() {
+        assertNull(LinePitch.of(InkMask(100, 100, BooleanArray(100 * 100))))
     }
 }

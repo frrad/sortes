@@ -25,9 +25,9 @@ PDFs, 12 pages each):
 | --- | --- | --- |
 | glyph height, 4× render | 0.65 | 5.1% |
 | glyph height, 2× render | 0.80 | 2.3% |
-| line pitch (`TextSize.linePitch`), 4× | 1.18 | 8.4% |
+| line pitch (`LinePitch`, zoom-eval only), 4× | 1.18 | 8.4% |
 
-The pitch estimator recovers the PDF's baseline-to-baseline distance almost exactly, but
+The pitch estimator (`LinePitch`) recovers the PDF's baseline-to-baseline distance almost exactly, but
 leading isn't font size (Maldacena is nearly double-spaced), so glyph height is the better
 proxy. Some of glyph height's spread is real (fonts' x-heights differ). The experiment uses the
 4× render because it is already made for the component cost; the 2× estimate is tighter and
@@ -134,13 +134,13 @@ the shown windows' centres and the model's parameters in `labelledAgainst`, so s
 the crops as shown rather than rebuilding them. Six new papers (`labeller/papers.txt`): two old-style
 math papers (Witten, Green–Tao), VAE, the LIGO PRL, GAN and Scaling Laws.
 
-## Before the reader
+## In the reader
 
-- The reader needs a finer render to measure glyphs: a few sampled pages at 2× would do for
-  text size. The component and line costs need every page at a finer resolution, which costs
-  more and is not yet measured on the tablet.
-- The app's `autoByCost` search is not exhaustive; the new cost should be checked with it.
-- A fresh review round should confirm these choices before any config changes.
+Shipped as `CropConfig.DEFAULT`, with the model code moved into the app and one pipeline for the
+reader and zoom-eval: see [../unified-pipeline.md](../unified-pipeline.md). The commands above
+predate it; `zoom-experiment` now takes `--T= --n= --floor= --elements= --lines=` lists and scores
+each combination through the reader's `analyzePaper`. The text model's crops on the labelled
+papers are unchanged by the move (`final.tsv`'s last row, round 5's result).
 
 Round 5 result (`labels/ROUND-5.md`): 57/63 pages and 5/6 zooms. The only miss is LIGO,
 where the owner would drop the PRL running header at 0.85. TUNED gives the same crops on

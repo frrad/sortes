@@ -106,13 +106,12 @@ data class LabelledAgainst(
     /** The screen's width / height the crops were made for. */
     val aspect: Double,
     /**
-     * Each page's window centre as shown, in page points, by page index; null for older labels,
-     * whose crops are rebuilt from [algorithm] and [weights]. Recorded for models that aren't
-     * a [dev.sortes.app.zoom.CropConfig] (offline experiments), and so later code changes
-     * can't move what was judged.
+     * Each page's window centre as shown, in page points, by page index, so later code changes
+     * can't move what was judged. Every committed label has them (labels made before they were
+     * recorded had them filled in from the code of the time); scoring requires them.
      */
     val centres: List<Point>? = null,
-    /** Any model parameters besides [weights] (an experiment's), by name. */
+    /** Any model parameters besides [weights] (the text model's), by name. */
     val parameters: Map<String, Double> = emptyMap(),
 ) {
     fun toJson(): JSONObject = JSONObject()

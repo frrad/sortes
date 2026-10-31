@@ -69,8 +69,9 @@ class PageFurnitureTest {
     }
 
     @Test
-    fun theReaderDoesNotUseItYet() {
+    fun theReaderUsesItAsAPaperRule() {
         assertTrue(IGNORABLE_INK_RULES.none { it is PageFurniture })
+        assertTrue(CropConfig.DEFAULT.furniture)
     }
 
     @Test

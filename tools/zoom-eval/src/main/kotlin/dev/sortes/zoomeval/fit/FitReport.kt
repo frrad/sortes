@@ -33,11 +33,8 @@ class FitReport(
         appendLine()
         appendLine("## Best weights")
         appendLine()
-        appendLine("Score ${f(baseline.units)} with the defaults, **${f(best.units)}** with ${best.variant}: `${best.weights.diff()}`")
-        given?.let { appendLine("\nGiven weights (${it.variant}, `${it.weights.diff()}`): ${f(it.units)}") }
-        for (t in tried.filter { it.weights == baseline.weights && it.variant != baseline.variant }) {
-            appendLine("\nDefault weights with ${t.variant}: ${f(t.units)}")
-        }
+        appendLine("Score ${f(baseline.units)} with ${baseline.config.name}, **${f(best.units)}** with `${best.weights.diff()}`")
+        given?.let { appendLine("\nGiven weights (`${it.weights.diff()}`): ${f(it.units)}") }
         appendLine()
         appendLine("| paper | scale now → fitted (target) | zoom units | page units | total |")
         appendLine("| --- | --- | --- | --- | --- |")
@@ -58,7 +55,7 @@ class FitReport(
             val others = tried.minBy { it.unitsWithout(id) }
             defaultsSum += baseline.unitsOf(id)
             heldSum += others.unitsOf(id)
-            appendLine("| $id | ${f(baseline.unitsOf(id))} | ${f(others.unitsOf(id))} | ${others.variant}: `${others.weights.diff()}` |")
+            appendLine("| $id | ${f(baseline.unitsOf(id))} | ${f(others.unitsOf(id))} | `${others.weights.diff()}` |")
         }
         appendLine("| **all** | ${f(defaultsSum)} | **${f(heldSum)}** | |")
         if (split.isNotEmpty()) {
@@ -72,11 +69,12 @@ class FitReport(
             appendLine("| --- | --- | --- | --- | --- |")
             for ((train, test) in listOf(a to b, b to a)) {
                 val fitted = tried.minBy { sum(it, train) }
-                appendLine("| ${train.joinToString()} | ${test.joinToString()} | ${f(sum(baseline, test))} | **${f(sum(fitted, test))}** | ${fitted.variant}: `${fitted.weights.diff()}` |")
+                appendLine("| ${train.joinToString()} | ${test.joinToString()} | ${f(sum(baseline, test))} | **${f(sum(fitted, test))}** | `${fitted.weights.diff()}` |")
             }
         }
         appendLine()
-        appendAgreement(given ?: best)
+        appendAgreement(baseline)
+        given?.let { appendAgreement(it) }
         appendLine("## Pages that change")
         appendLine()
         appendLine("| paper | page | target | centre error (pt) | ideal ink cut (%) | units |")
@@ -101,7 +99,7 @@ class FitReport(
         appendLine()
         appendLine("| score | weights |")
         appendLine("| --- | --- |")
-        for (t in tried.sortedBy { it.units }.take(10)) appendLine("| ${f(t.units)} | ${t.variant}: `${t.weights.diff()}` |")
+        for (t in tried.sortedBy { it.units }.take(10)) appendLine("| ${f(t.units)} | `${t.weights.diff()}` |")
     }
 
     /**
@@ -110,7 +108,7 @@ class FitReport(
      * the owner's crop keeps; and each paper's zoom within [AGREE_SCALE] of the owner's.
      */
     private fun StringBuilder.appendAgreement(t: Trial) {
-        appendLine("## Agreement in principle (${t.variant}: `${t.weights.diff()}`)")
+        appendLine("## Agreement in principle (`${t.weights.diff()}`)")
         appendLine()
         appendLine("A page agrees if its window centre is within ${f(AGREE_POINTS, 0)} pt of the owner's (or of the crop they called good) and it cuts at most ${f(AGREE_KEEP_PERCENT)}% of the page's ink that the owner's crop keeps. A paper's zoom agrees within ${f(AGREE_SCALE, 3)} of the owner's scale.")
         appendLine()
@@ -140,10 +138,10 @@ class FitReport(
 
     private fun tsv(tried: List<Trial>) = buildString {
         val names = tried.first().weights.toMap().keys.toList()
-        appendLine((listOf("variant") + names + tried.first().scores.map { it.paper } + "total").joinToString("\t"))
+        appendLine((names + tried.first().scores.map { it.paper } + "total").joinToString("\t"))
         for (t in tried) {
             val w = t.weights.toMap()
-            appendLine((listOf(t.variant.toString()) + names.map { "%.5g".format(w.getValue(it)) } + t.scores.map { f(it.units, 3) } + f(t.units, 3)).joinToString("\t"))
+            appendLine((names.map { "%.5g".format(w.getValue(it)) } + t.scores.map { f(it.units, 3) } + f(t.units, 3)).joinToString("\t"))
         }
     }
 }
