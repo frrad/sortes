@@ -1,20 +1,25 @@
 package dev.sortes.app.alphaxiv
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONException
-import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONException
+import org.json.JSONObject
 
 /** The contents of a shared alphaXiv folder. */
 data class AlphaxivFolder(
     val name: String?,
-    /** alphaXiv `universalId`s in folder order; for arXiv papers this is the versionless arXiv ID. */
+    /**
+     * alphaXiv `universalId`s in folder order; for arXiv papers this is the versionless arXiv ID.
+     */
     val paperIds: List<String>,
-    /** False if the folder had more than [HttpAlphaxivClient.MAX_PAGES] pages and only those were read. */
+    /**
+     * False if the folder had more than [HttpAlphaxivClient.MAX_PAGES] pages and only those were
+     * read.
+     */
     val complete: Boolean = true,
 )
 
@@ -31,9 +36,7 @@ class AlphaxivFolderNotFoundException(folderId: String) :
     IOException("alphaXiv folder $folderId not found or not shared")
 
 /** Reads shared folders through the public, unauthenticated alphaXiv API the share page uses. */
-class HttpAlphaxivClient(
-    private val baseUrl: String = DEFAULT_BASE_URL,
-) : AlphaxivClient {
+class HttpAlphaxivClient(private val baseUrl: String = DEFAULT_BASE_URL) : AlphaxivClient {
 
     companion object {
         const val DEFAULT_BASE_URL = "https://api.alphaxiv.org"
@@ -42,30 +45,38 @@ class HttpAlphaxivClient(
         const val MAX_PAGES = 100
     }
 
-    override suspend fun fetchFolder(folderId: String): AlphaxivFolder = withContext(Dispatchers.IO) {
-        val folderJson = try {
-            get("/folders/v4/shared/$folderId")
-        } catch (e: HttpStatusException) {
-            // alphaXiv rejects IDs that aren't UUIDv7 with a 400 before looking anything up.
-            if (e.code == 400 || e.code == 404) throw AlphaxivFolderNotFoundException(folderId)
-            throw e
-        }
-        val name = AlphaxivJson.parseFolderName(folderJson, folderId)
+    override suspend fun fetchFolder(folderId: String): AlphaxivFolder =
+        withContext(Dispatchers.IO) {
+            val folderJson =
+                try {
+                    get("/folders/v4/shared/$folderId")
+                } catch (e: HttpStatusException) {
+                    // alphaXiv rejects IDs that aren't UUIDv7 with a 400 before looking anything
+                    // up.
+                    if (e.code == 400 || e.code == 404)
+                        throw AlphaxivFolderNotFoundException(folderId)
+                    throw e
+                }
+            val name = AlphaxivJson.parseFolderName(folderJson, folderId)
 
-        val ids = mutableListOf<String>()
-        val seenCursors = mutableSetOf<String>()
-        var cursor: String? = null
-        for (page in 1..MAX_PAGES) {
-            val query = cursor?.let { "?cursor=" + URLEncoder.encode(it, "UTF-8") } ?: ""
-            val result = AlphaxivJson.parsePapersPage(get("/folders/v4/shared/$folderId/papers$query"))
-            ids += result.paperIds
-            cursor = result.nextCursor ?: return@withContext AlphaxivFolder(name, ids.distinct())
-            if (!seenCursors.add(cursor)) throw IOException("alphaXiv returned a repeated page cursor")
+            val ids = mutableListOf<String>()
+            val seenCursors = mutableSetOf<String>()
+            var cursor: String? = null
+            for (page in 1..MAX_PAGES) {
+                val query = cursor?.let { "?cursor=" + URLEncoder.encode(it, "UTF-8") } ?: ""
+                val result =
+                    AlphaxivJson.parsePapersPage(get("/folders/v4/shared/$folderId/papers$query"))
+                ids += result.paperIds
+                cursor =
+                    result.nextCursor ?: return@withContext AlphaxivFolder(name, ids.distinct())
+                if (!seenCursors.add(cursor))
+                    throw IOException("alphaXiv returned a repeated page cursor")
+            }
+            AlphaxivFolder(name, ids.distinct(), complete = false)
         }
-        AlphaxivFolder(name, ids.distinct(), complete = false)
-    }
 
-    private class HttpStatusException(val code: Int) : IOException("alphaXiv request failed: HTTP $code")
+    private class HttpStatusException(val code: Int) :
+        IOException("alphaXiv request failed: HTTP $code")
 
     private fun get(path: String): String {
         val connection = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
@@ -86,28 +97,35 @@ class HttpAlphaxivClient(
 object AlphaxivJson {
 
     /** Name of [folderId] from `GET /folders/v4/shared/{id}`, which also lists its subfolders. */
-    fun parseFolderName(json: String, folderId: String): String? = parse(json) { root ->
-        val folders = root.optJSONArray("folders") ?: return@parse null
-        (0 until folders.length())
-            .mapNotNull { folders.optJSONObject(it) }
-            .firstOrNull { it.optString("id").equals(folderId, ignoreCase = true) }
-            ?.optStringOrNull("name")
-    }
+    fun parseFolderName(json: String, folderId: String): String? =
+        parse(json) { root ->
+            val folders = root.optJSONArray("folders") ?: return@parse null
+            (0 until folders.length())
+                .mapNotNull { folders.optJSONObject(it) }
+                .firstOrNull { it.optString("id").equals(folderId, ignoreCase = true) }
+                ?.optStringOrNull("name")
+        }
 
-    fun parsePapersPage(json: String): AlphaxivPapersPage = parse(json) { root ->
-        val papers = root.optJSONArray("papers") ?: throw IOException("alphaXiv response has no papers")
-        AlphaxivPapersPage(
-            paperIds = (0 until papers.length()).mapNotNull { papers.optJSONObject(it)?.optStringOrNull("universalId") },
-            nextCursor = root.optStringOrNull("nextCursor"),
-        )
-    }
+    fun parsePapersPage(json: String): AlphaxivPapersPage =
+        parse(json) { root ->
+            val papers =
+                root.optJSONArray("papers") ?: throw IOException("alphaXiv response has no papers")
+            AlphaxivPapersPage(
+                paperIds =
+                    (0 until papers.length()).mapNotNull {
+                        papers.optJSONObject(it)?.optStringOrNull("universalId")
+                    },
+                nextCursor = root.optStringOrNull("nextCursor"),
+            )
+        }
 
     private fun <T> parse(json: String, block: (JSONObject) -> T): T {
-        val root = try {
-            JSONObject(json)
-        } catch (e: JSONException) {
-            throw IOException("Couldn't read alphaXiv response", e)
-        }
+        val root =
+            try {
+                JSONObject(json)
+            } catch (e: JSONException) {
+                throw IOException("Couldn't read alphaXiv response", e)
+            }
         return block(root)
     }
 

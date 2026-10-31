@@ -14,9 +14,13 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class FolderSourceDaoTest {
 
-    private val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), PaperDatabase::class.java)
-        .allowMainThreadQueries()
-        .build()
+    private val db =
+        Room.inMemoryDatabaseBuilder(
+                ApplicationProvider.getApplicationContext(),
+                PaperDatabase::class.java,
+            )
+            .allowMainThreadQueries()
+            .build()
     private val dao = db.folderSourceDao()
 
     @After

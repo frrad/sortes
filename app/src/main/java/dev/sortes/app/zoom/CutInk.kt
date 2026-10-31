@@ -1,6 +1,8 @@
 package dev.sortes.app.zoom
 
-/** A box around ink that a crop window leaves out: [region] in page points, [cells] of ink inside. */
+/**
+ * A box around ink that a crop window leaves out: [region] in page points, [cells] of ink inside.
+ */
 data class CutInk(val region: Region, val cells: Int)
 
 /**
@@ -8,9 +10,9 @@ data class CutInk(val region: Region, val cells: Int)
  * [cells] of the mask leaves out, grouped into boxes. Cut cells with at most [gap] blank cells
  * between them share a box, so a cut-off running head is one box rather than one per letter.
  *
- * Boxes cover only the cut part of the ink: a line straddling the window's edge gets a box from
- * the edge outwards. Given a crop's [PageCrop.cells], the cells of all boxes add up to the
- * ink the model counts as cut.
+ * Boxes cover only the cut part of the ink: a line straddling the window's edge gets a box from the
+ * edge outwards. Given a crop's [PageCrop.cells], the cells of all boxes add up to the ink the
+ * model counts as cut.
  */
 fun cutInk(
     mask: InkMask,
@@ -57,7 +59,8 @@ fun cutInk(
         }
         val sx = page.width / w
         val sy = page.height / h
-        boxes += CutInk(Region(x0 * sx, y0 * sy, (x1 + 1 - x0) * sx, (y1 + 1 - y0) * sy), cells = tail)
+        boxes +=
+            CutInk(Region(x0 * sx, y0 * sy, (x1 + 1 - x0) * sx, (y1 + 1 - y0) * sy), cells = tail)
     }
     return boxes
 }

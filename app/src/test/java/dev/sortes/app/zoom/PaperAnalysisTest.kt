@@ -1,27 +1,28 @@
 package dev.sortes.app.zoom
 
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 
 class PaperAnalysisTest {
 
     private val aspect = 0.75f
 
     /** The config without page furniture or marks, for tests of what's cut off. */
-    private val keepFurniture = CropConfig.DEFAULT.copy(pageRules = IGNORABLE_INK_RULES, furniture = false)
+    private val keepFurniture =
+        CropConfig.DEFAULT.copy(pageRules = IGNORABLE_INK_RULES, furniture = false)
 
     @Test
     fun samplesEveryPageOfShortPapers() {
@@ -49,10 +50,16 @@ class PaperAnalysisTest {
         // the same side.
         for (count in 61..480) {
             val sample = samplePages(count, MAX_ANALYZED_PAGES)
-            assertTrue("$count: ${sample.size}", sample.size in MAX_ANALYZED_PAGES - 1..MAX_ANALYZED_PAGES)
+            assertTrue(
+                "$count: ${sample.size}",
+                sample.size in MAX_ANALYZED_PAGES - 1..MAX_ANALYZED_PAGES,
+            )
             assertEquals("$count", sample.sorted().distinct(), sample)
             assertEquals("$count", 0, sample.first())
-            assertTrue("$count: ${sample.last()}", sample.last() >= count - 2 && sample.last() < count)
+            assertTrue(
+                "$count: ${sample.last()}",
+                sample.last() >= count - 2 && sample.last() < count,
+            )
             // Even, odd, even, odd... so the model sees each side every other sampled page.
             assertTrue("$count: $sample", sample.withIndex().all { (i, page) -> page % 2 == i % 2 })
         }
@@ -129,10 +136,15 @@ class PaperAnalysisTest {
     fun theArxivStampDoesNotPullTheFirstPageAside() {
         // Attention Is All You Need: page 1 has the arXiv stamp down its left margin, the rest
         // don't. Page 1's window should line up with the others, on the text, not the stamp.
-        val pages = MaskPages(listOf(maskFixture("attention-p1.txt")) + List(9) { maskFixture("attention-page2.txt") })
+        val pages =
+            MaskPages(
+                listOf(maskFixture("attention-p1.txt")) +
+                    List(9) { maskFixture("attention-page2.txt") }
+            )
         val paper = runBlocking { analyzePaper(pages, aspect) }
 
-        val (first, second) = runBlocking { listOf(0, 1).map { paper.place(it, paper.auto).window } }
+        val (first, second) =
+            runBlocking { listOf(0, 1).map { paper.place(it, paper.auto).window } }
 
         assertEquals(second.left, first.left, 0.01f)
         // The text block spans columns 33-157 of the 192-cell page (the stamp is at 5-11).
@@ -143,11 +155,18 @@ class PaperAnalysisTest {
     fun theArxivStampIsNotShownAsCutOff() {
         // Zoomed in to the text block of Attention's page 1 (columns 33-157 of 192), the window
         // leaves the stamp (columns 5-11, or 50-120 points) out, but it's ignored, not cut.
-        val pages = MaskPages(listOf(maskFixture("attention-p1.txt")) + List(3) { maskFixture("attention-page2.txt") })
+        val pages =
+            MaskPages(
+                listOf(maskFixture("attention-p1.txt")) +
+                    List(3) { maskFixture("attention-page2.txt") }
+            )
         val paper = runBlocking { analyzePaper(pages, aspect) }
         val placement = runBlocking { paper.place(0, paper.cropsAt(0.7f)) }
 
-        assertTrue("${placement.window}", placement.window.regionOn(PageSize(1920f, 2480f), aspect).left > 150f)
+        assertTrue(
+            "${placement.window}",
+            placement.window.regionOn(PageSize(1920f, 2480f), aspect).left > 150f,
+        )
         assertTrue("${placement.cut}", placement.cut.none { it.region.left < 150f })
     }
 
@@ -186,7 +205,10 @@ class PaperAnalysisTest {
             val placement = runBlocking { paper.place(index, crops) }
             assertEquals("page $index", emptyList<CutInk>(), placement.cut)
             val block = if (index % 2 == 0) 2 to 38 else 22 to 58
-            assertTrue("page $index: ${placement.window}", placement.window.covers(60, 80, aspect, block.first, 10, block.second, 70))
+            assertTrue(
+                "page $index: ${placement.window}",
+                placement.window.covers(60, 80, aspect, block.first, 10, block.second, 70),
+            )
         }
     }
 
@@ -218,8 +240,11 @@ class PaperAnalysisTest {
         assertEquals(sizes.sorted(), sizes)
         val last = curves.last()
         val scales = paper.scales
-        val wanted = (scales.indices.filter { it % PaperAnalysis.CURVE_STRIDE == 0 } + last.nearestIndex(paper.auto.scale))
-            .distinct().sorted()
+        val wanted =
+            (scales.indices.filter { it % PaperAnalysis.CURVE_STRIDE == 0 } +
+                    last.nearestIndex(paper.auto.scale))
+                .distinct()
+                .sorted()
         // Every wanted point, loosest first, up to the first cutting more than CURVE_LIMIT.
         val points = last.sortedPoints
         assertEquals(wanted.take(points.size), points.map { it.first })
@@ -282,8 +307,16 @@ class PaperAnalysisTest {
         assertEquals(CropConfig.DEFAULT, paper.config)
         val scale = 0.76f
         for (index in listOf(0, 4)) {
-            assertEquals("page $index", emptyList<CutInk>(), runBlocking { paper.place(index, paper.cropsAt(scale)) }.cut)
-            assertEquals("page $index", 1, runBlocking { kept.place(index, kept.cropsAt(scale)) }.cut.size)
+            assertEquals(
+                "page $index",
+                emptyList<CutInk>(),
+                runBlocking { paper.place(index, paper.cropsAt(scale)) }.cut,
+            )
+            assertEquals(
+                "page $index",
+                1,
+                runBlocking { kept.place(index, kept.cropsAt(scale)) }.cut.size,
+            )
         }
     }
 
@@ -297,7 +330,10 @@ class PaperAnalysisTest {
 
         val coarse = pages.renders.first { it.index == 0 }
         assertEquals(
-            listOf(MaskPages.Render(4, coarse.width, coarse.height), MaskPages.Render(4, coarse.width * 4, coarse.height * 4)),
+            listOf(
+                MaskPages.Render(4, coarse.width, coarse.height),
+                MaskPages.Render(4, coarse.width * 4, coarse.height * 4),
+            ),
             pages.renders.drop(before),
         )
     }
@@ -316,17 +352,26 @@ class PaperAnalysisTest {
     @Test
     fun biggerTextOnTheSameLayoutNeverZoomsTighter() {
         // The same column at both sizes: 10 pt glyphs need no zoom to be legible, 3 pt ones do.
-        val small = runBlocking { analyzePaper(TextPages(3, glyph = 3f, pitch = 6f, lines = 100), aspect) }
-        val big = runBlocking { analyzePaper(TextPages(3, glyph = 10f, pitch = 20f, lines = 30), aspect) }
+        val small = runBlocking {
+            analyzePaper(TextPages(3, glyph = 3f, pitch = 6f, lines = 100), aspect)
+        }
+        val big = runBlocking {
+            analyzePaper(TextPages(3, glyph = 10f, pitch = 20f, lines = 30), aspect)
+        }
         assertTrue("small ${small.glyphPx} big ${big.glyphPx}", small.glyphPx!! < big.glyphPx!!)
-        assertTrue("small ${small.auto.scale} big ${big.auto.scale}", big.auto.scale >= small.auto.scale)
+        assertTrue(
+            "small ${small.auto.scale} big ${big.auto.scale}",
+            big.auto.scale >= small.auto.scale,
+        )
     }
 
     @Test
     fun glyphHeightIsMeasuredOnTheReferenceScreen() {
         // 10 pt glyphs on a 600 pt wide page whose frame is the page (3:4): the glyph is 1/60 of
         // the frame's width, so about 31 px of the 1860 px screen (rendering rounds to pixels).
-        val paper = runBlocking { analyzePaper(TextPages(3, glyph = 10f, pitch = 20f, lines = 30), aspect) }
+        val paper = runBlocking {
+            analyzePaper(TextPages(3, glyph = 10f, pitch = 20f, lines = 30), aspect)
+        }
         assertEquals(1860.0 / 60, paper.glyphPx!!, 2.0)
     }
 
@@ -345,7 +390,11 @@ class PaperAnalysisTest {
         assertEquals(crops.k + 1, all.crops.k)
         assertEquals(all.crops.k - 1, all.crops.pages[7].windowIndex)
         assertEquals(all.masks.sumOf { it.inkCount.toLong() }, all.crops.totalInk)
-        for (i in 0 until 10) assertEquals("page $i", runBlocking { paper.place(i, crops) }.window, all.crops.pages[i].window)
+        for (i in 0 until 10) assertEquals(
+            "page $i",
+            runBlocking { paper.place(i, crops) }.window,
+            all.crops.pages[i].window,
+        )
     }
 
     @Test
@@ -378,12 +427,18 @@ class PaperAnalysisTest {
 
     @Test
     fun aRendererReturningTheWrongNumberOfPixelsIsABug() {
-        val wrong = object : PageRenderer {
-            override val pageCount = 2
-            override suspend fun pageSize(index: Int) = PageSize(600f, 800f)
-            override suspend fun renderPixels(index: Int, width: Int, height: Int) = IntArray(width * height - 1)
+        val wrong =
+            object : PageRenderer {
+                override val pageCount = 2
+
+                override suspend fun pageSize(index: Int) = PageSize(600f, 800f)
+
+                override suspend fun renderPixels(index: Int, width: Int, height: Int) =
+                    IntArray(width * height - 1)
+            }
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { analyzePaper(wrong, aspect) }
         }
-        assertThrows(IllegalArgumentException::class.java) { runBlocking { analyzePaper(wrong, aspect) } }
     }
 
     @Test
@@ -396,7 +451,11 @@ class PaperAnalysisTest {
         val fresh = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
         val freshCrops = runBlocking { fresh.cropsAt(0.75f) }
         val together = runBlocking {
-            (0 until 12).flatMap { i -> List(3) { async(Dispatchers.Default) { i to fresh.place(i, freshCrops) } } }.awaitAll()
+            (0 until 12)
+                .flatMap { i ->
+                    List(3) { async(Dispatchers.Default) { i to fresh.place(i, freshCrops) } }
+                }
+                .awaitAll()
         }
         for ((i, placement) in together) assertEquals("page $i", alone[i], placement)
     }
@@ -404,15 +463,21 @@ class PaperAnalysisTest {
     @Test
     fun cancellingTheAnalysisStopsIt() {
         val gate = CompletableDeferred<Unit>()
-        val pages = object : PageRenderer {
-            val inner = MaskPages(List(10) { textPage().mask() })
-            override val pageCount = 10
-            override suspend fun pageSize(index: Int) = inner.pageSize(index)
-            override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
-                if (index == 2) { gate.complete(Unit); awaitCancellation() }
-                return inner.renderPixels(index, width, height)
+        val pages =
+            object : PageRenderer {
+                val inner = MaskPages(List(10) { textPage().mask() })
+                override val pageCount = 10
+
+                override suspend fun pageSize(index: Int) = inner.pageSize(index)
+
+                override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
+                    if (index == 2) {
+                        gate.complete(Unit)
+                        awaitCancellation()
+                    }
+                    return inner.renderPixels(index, width, height)
+                }
             }
-        }
         runBlocking {
             val job = launch(Dispatchers.Default) { analyzePaper(pages, aspect) }
             gate.await()

@@ -7,6 +7,10 @@ import dev.sortes.app.data.FolderSource
 import dev.sortes.app.data.Paper
 import dev.sortes.app.importing.ArxivImport
 import dev.sortes.app.importing.FakePaperDao
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -24,10 +28,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.coroutines.CoroutineContext
 
 class FolderSourcesTest {
 
@@ -38,12 +38,13 @@ class FolderSourcesTest {
     private val sourceDao = FakeFolderSourceDao()
     private val paperDao = FakePaperDao()
 
-    private val folders = ConcurrentHashMap(
-        mapOf(
-            folderA to AlphaxivFolder("Sortes", listOf("2311.08105", "2609.20807")),
-            folderB to AlphaxivFolder("Other", listOf("2311.08105", "2512.03442")),
-        ),
-    )
+    private val folders =
+        ConcurrentHashMap(
+            mapOf(
+                folderA to AlphaxivFolder("Sortes", listOf("2311.08105", "2609.20807")),
+                folderB to AlphaxivFolder("Other", listOf("2311.08105", "2512.03442")),
+            )
+        )
 
     /** When set, folder fetches wait on it, so a sync can be observed in flight. */
     @Volatile private var folderGate: CompletableDeferred<Unit>? = null
@@ -73,18 +74,27 @@ class FolderSourcesTest {
     /** arXiv IDs whose import fails. */
     private val failingImports = ConcurrentHashMap.newKeySet<String>()
 
-    private val syncer = FolderSyncer(client) { arxivId ->
-        importsStarted.trySend(arxivId.id)
-        importGate?.await()
-        if (arxivId.id in failingImports) throw java.io.IOException("HTTP 503")
-        val paper = Paper(title = arxivId.id, authors = emptyList(), abstract = "", year = null, venue = null,
-            pdfUrl = arxivId.pdfUrl)
-        val id = paperDao.insert(paper)
-        if (id != -1L) imported += arxivId.id
-        ArxivImport(paper.copy(id = id), inserted = id != -1L)
-    }
+    private val syncer =
+        FolderSyncer(client) { arxivId ->
+            importsStarted.trySend(arxivId.id)
+            importGate?.await()
+            if (arxivId.id in failingImports) throw java.io.IOException("HTTP 503")
+            val paper =
+                Paper(
+                    title = arxivId.id,
+                    authors = emptyList(),
+                    abstract = "",
+                    year = null,
+                    venue = null,
+                    pdfUrl = arxivId.pdfUrl,
+                )
+            val id = paperDao.insert(paper)
+            if (id != -1L) imported += arxivId.id
+            ArxivImport(paper.copy(id = id), inserted = id != -1L)
+        }
 
-    private fun sources(scope: CoroutineScope = this.scope) = FolderSources(scope, sourceDao, syncer, clock = { 1_000L })
+    private fun sources(scope: CoroutineScope = this.scope) =
+        FolderSources(scope, sourceDao, syncer, clock = { 1_000L })
 
     private val sources = sources()
 
@@ -93,7 +103,8 @@ class FolderSourcesTest {
         scope.cancel()
     }
 
-    private fun source(folderId: String) = sourceDao.sources.value.single { it.folderId == folderId }
+    private fun source(folderId: String) =
+        sourceDao.sources.value.single { it.folderId == folderId }
 
     private fun fetches(folderId: String) = fetchCounts[folderId]?.get() ?: 0
 
@@ -106,7 +117,13 @@ class FolderSourcesTest {
         sources.addAndSync(folderA).join()
 
         assertEquals(
-            FolderSource(id = 1, folderId = folderA, name = "Sortes", lastSyncedAt = 1_000L, lastResult = "2 added"),
+            FolderSource(
+                id = 1,
+                folderId = folderA,
+                name = "Sortes",
+                lastSyncedAt = 1_000L,
+                lastResult = "2 added",
+            ),
             source(folderA),
         )
         assertEquals(2, paperDao.papers.value.size)
@@ -140,7 +157,10 @@ class FolderSourcesTest {
 
         val source = source(folderA)
         assertEquals("Sortes", source.name)
-        assertEquals("Sync failed: alphaXiv folder $folderA not found or not shared", source.lastResult)
+        assertEquals(
+            "Sync failed: alphaXiv folder $folderA not found or not shared",
+            source.lastResult,
+        )
     }
 
     // --- concurrency ---
@@ -265,11 +285,12 @@ class FolderSourcesTest {
         // A dispatcher that runs tasks only when asked, so the job is cancelled before its body
         // starts.
         val queue = ArrayDeque<Runnable>()
-        val manual = object : CoroutineDispatcher() {
-            override fun dispatch(context: CoroutineContext, block: Runnable) {
-                queue.addLast(block)
+        val manual =
+            object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) {
+                    queue.addLast(block)
+                }
             }
-        }
         val manualScope = CoroutineScope(SupervisorJob() + manual)
         val id = sourceDao.insert(FolderSource(folderId = folderA))
         val sources = sources(manualScope)

@@ -31,7 +31,10 @@ class BelowAnchorEndTest {
 
     @Test
     fun withoutMarginLinesUpWithTheEdge() {
-        assertEquals(IntOffset(700, 150), position(IntRect(900, 50, 1000, 150), IntSize(300, 400), margin = 0))
+        assertEquals(
+            IntOffset(700, 150),
+            position(IntRect(900, 50, 1000, 150), IntSize(300, 400), margin = 0),
+        )
     }
 
     @Test
@@ -49,7 +52,10 @@ class BelowAnchorEndTest {
 
     @Test
     fun goesAboveWhenThereIsNoRoomBelow() {
-        assertEquals(IntOffset(500, 1450), position(IntRect(700, 1850, 800, 1950), IntSize(300, 400)))
+        assertEquals(
+            IntOffset(500, 1450),
+            position(IntRect(700, 1850, 800, 1950), IntSize(300, 400)),
+        )
     }
 
     @Test

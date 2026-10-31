@@ -29,8 +29,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(qualifiers = "night")
 class ReaderFrameDarkThemeTest {
 
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private var contentColor = Color.Unspecified
 
@@ -52,8 +51,9 @@ class ReaderFrameDarkThemeTest {
     // captureToImage() times out under Robolectric, so draw the window ourselves.
     private fun drawWindow(): Bitmap {
         val view = composeRule.activity.window.decorView
-        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-            .also { view.draw(Canvas(it)) }
+        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888).also {
+            view.draw(Canvas(it))
+        }
     }
 
     private fun Bitmap.color(x: Int, y: Int) = Color(getPixel(x, y))
@@ -74,14 +74,18 @@ class ReaderFrameDarkThemeTest {
     @Test
     fun backButtonIsDarkOnLight() {
         setFailedReaderInDarkTheme()
-        val bounds = composeRule.onNodeWithContentDescription("Back to papers")
-            .fetchSemanticsNode().boundsInWindow
+        val bounds =
+            composeRule
+                .onNodeWithContentDescription("Back to papers")
+                .fetchSemanticsNode()
+                .boundsInWindow
         val window = drawWindow()
-        val luminances = (bounds.left.toInt() until bounds.right.toInt()).flatMap { x ->
-            (bounds.top.toInt() until bounds.bottom.toInt()).map { y ->
-                window.color(x, y).luminance()
+        val luminances =
+            (bounds.left.toInt() until bounds.right.toInt()).flatMap { x ->
+                (bounds.top.toInt() until bounds.bottom.toInt()).map { y ->
+                    window.color(x, y).luminance()
+                }
             }
-        }
         assertTrue("no dark arrow pixels", luminances.min() < 0.2f)
         assertTrue("no light background pixels", luminances.max() > 0.9f)
     }

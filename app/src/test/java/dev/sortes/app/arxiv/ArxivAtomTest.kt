@@ -1,5 +1,6 @@
 package dev.sortes.app.arxiv
 
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -7,12 +8,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.IOException
 
 class ArxivAtomTest {
 
-    @get:Rule
-    val tmp = TemporaryFolder()
+    @get:Rule val tmp = TemporaryFolder()
 
     private fun parse(xml: String) = ArxivAtom.parse(xml.byteInputStream(), "1706.03762")
 
@@ -75,7 +74,8 @@ class ArxivAtomTest {
     @Test
     fun doesNotResolveExternalEntities() {
         val secret = tmp.newFile("secret.txt").apply { writeText("TOP-SECRET") }
-        val xml = """<?xml version="1.0"?>
+        val xml =
+            """<?xml version="1.0"?>
             <!DOCTYPE feed [<!ENTITY xxe SYSTEM "${secret.toURI()}">]>
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry><id>x</id><title>&xxe;</title></entry>
@@ -90,7 +90,8 @@ class ArxivAtomTest {
     @Test
     fun rejectsAnyDoctypeBeforeParsing() {
         // Even a harmless DTD is refused: on Android the parser can't be told to ignore one.
-        val xml = """<?xml version="1.0"?><!doctype feed><feed xmlns="http://www.w3.org/2005/Atom"/>"""
+        val xml =
+            """<?xml version="1.0"?><!doctype feed><feed xmlns="http://www.w3.org/2005/Atom"/>"""
 
         val e = assertThrows(IOException::class.java) { parse(xml) }
         assertEquals("Unexpected DOCTYPE in arXiv response", e.message)
@@ -100,9 +101,10 @@ class ArxivAtomTest {
     fun rejectsDoctypeHiddenInUtf16() {
         val xml = """<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE feed><feed/>"""
 
-        val e = assertThrows(IOException::class.java) {
-            ArxivAtom.parse(xml.toByteArray(Charsets.UTF_16).inputStream(), "1706.03762")
-        }
+        val e =
+            assertThrows(IOException::class.java) {
+                ArxivAtom.parse(xml.toByteArray(Charsets.UTF_16).inputStream(), "1706.03762")
+            }
         assertEquals("Unexpected encoding in arXiv response", e.message)
     }
 
@@ -115,7 +117,8 @@ class ArxivAtomTest {
     }
 
     companion object {
-        fun feed(entries: String) = """<?xml version="1.0" encoding="UTF-8"?>
+        fun feed(entries: String) =
+            """<?xml version="1.0" encoding="UTF-8"?>
             <feed xmlns="http://www.w3.org/2005/Atom"
                   xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
                   xmlns:arxiv="http://arxiv.org/schemas/atom">
@@ -125,8 +128,9 @@ class ArxivAtomTest {
               $entries
             </feed>"""
 
-        val ATTENTION_FEED = feed(
-            """<entry>
+        val ATTENTION_FEED =
+            feed(
+                """<entry>
                 <id>http://arxiv.org/abs/1706.03762v7</id>
                 <updated>2023-08-02T00:41:18Z</updated>
                 <published>2017-06-12T17:57:34Z</published>
@@ -143,18 +147,19 @@ class ArxivAtomTest {
                 <link href="http://arxiv.org/abs/1706.03762v7" rel="alternate" type="text/html"/>
                 <link title="pdf" href="http://arxiv.org/pdf/1706.03762v7" rel="related" type="application/pdf"/>
                 <arxiv:primary_category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
-              </entry>""",
-        )
+              </entry>"""
+            )
 
-        val ERROR_FEED = feed(
-            """<entry>
+        val ERROR_FEED =
+            feed(
+                """<entry>
                 <id>http://arxiv.org/api/errors#incorrect_id_format_for_1234</id>
                 <title>Error</title>
                 <summary>incorrect id format for 1234</summary>
                 <updated>2026-10-28T00:00:00-04:00</updated>
                 <link href="http://arxiv.org/api/errors#incorrect_id_format_for_1234" rel="alternate" type="text/html"/>
                 <author><name>arXiv api core</name></author>
-              </entry>""",
-        )
+              </entry>"""
+            )
     }
 }

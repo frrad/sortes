@@ -7,18 +7,19 @@ package dev.sortes.app.zoom
  *
  * Furniture is the outermost block of inked rows at the top or bottom of a page (a line, or a line
  * and a rule close to it, like DiLoCo's running head) that is
- *  - right at the page edge: within the outer [FURNITURE_MAX_EDGE] of the height,
- *  - short: at most [FURNITURE_MAX_HEIGHT] of the page height,
- *  - clear of the rest: no ink at all in the [FURNITURE_MIN_GAP] of the height next to it,
- * and either narrow (at most [NUMBER_MAX_WIDTH] of the width: a page number) or at a height that
- * recurs on at least [FURNITURE_MIN_REPEATS] of the paper's pages (a running head or foot).
- * A one-off line at the edge, like a title page's conference footer, is kept. A page that is only
- * furniture (a blank page with its number) ends up blank, and takes the paper's usual window.
+ * - right at the page edge: within the outer [FURNITURE_MAX_EDGE] of the height,
+ * - short: at most [FURNITURE_MAX_HEIGHT] of the page height,
+ * - clear of the rest: no ink at all in the [FURNITURE_MIN_GAP] of the height next to it, and
+ *   either narrow (at most [NUMBER_MAX_WIDTH] of the width: a page number) or at a height that
+ *   recurs on at least [FURNITURE_MIN_REPEATS] of the paper's pages (a running head or foot). A
+ *   one-off line at the edge, like a title page's conference footer, is kept. A page that is only
+ *   furniture (a blank page with its number) ends up blank, and takes the paper's usual window.
  *
- * The recurring heights come from a paper's pages ([of]); the rule then strips any page,
- * including ones it wasn't built from.
+ * The recurring heights come from a paper's pages ([of]); the rule then strips any page, including
+ * ones it wasn't built from.
  */
-class PageFurniture internal constructor(
+class PageFurniture
+internal constructor(
     /** Centres of recurring top and bottom lines, as fractions of the page height. */
     internal val top: List<Float>,
     internal val bottom: List<Float>,
@@ -26,29 +27,43 @@ class PageFurniture internal constructor(
 
     override fun strip(mask: InkMask): InkMask {
         val (topLine, bottomLine) = mask.edgeLines()
-        val furniture = listOfNotNull(
-            topLine?.takeIf { mask.isNarrow(it) || recurs(top, mask, it) },
-            bottomLine?.takeIf { mask.isNarrow(it) || recurs(bottom, mask, it) },
-        )
+        val furniture =
+            listOfNotNull(
+                topLine?.takeIf { mask.isNarrow(it) || recurs(top, mask, it) },
+                bottomLine?.takeIf { mask.isNarrow(it) || recurs(bottom, mask, it) },
+            )
         if (furniture.isEmpty()) return mask
-        return InkMask(mask.width, mask.height, BooleanArray(mask.width * mask.height) { i ->
-            val y = i / mask.width
-            mask[i % mask.width, y] && furniture.none { y in it }
-        })
+        return InkMask(
+            mask.width,
+            mask.height,
+            BooleanArray(mask.width * mask.height) { i ->
+                val y = i / mask.width
+                mask[i % mask.width, y] && furniture.none { y in it }
+            },
+        )
     }
 
-    private fun recurs(centres: List<Float>, mask: InkMask, line: IntRange) =
-        centres.any { kotlin.math.abs(it - mask.centreOf(line)) <= FURNITURE_REPEAT_TOLERANCE }
+    private fun recurs(centres: List<Float>, mask: InkMask, line: IntRange) = centres.any {
+        kotlin.math.abs(it - mask.centreOf(line)) <= FURNITURE_REPEAT_TOLERANCE
+    }
 
     companion object {
         /** Furniture as it recurs on [masks], the pages of one paper. */
         fun of(masks: List<InkMask>): PageFurniture {
-            val lines = masks.map { mask -> mask.edgeLines().let { (t, b) -> t?.let { mask.centreOf(it) } to b?.let { mask.centreOf(it) } } }
-            val needed = maxOf(FURNITURE_MIN_REPEATS_ABSOLUTE.toFloat(), masks.size * FURNITURE_MIN_REPEATS)
+            val lines = masks.map { mask ->
+                mask.edgeLines().let { (t, b) ->
+                    t?.let { mask.centreOf(it) } to b?.let { mask.centreOf(it) }
+                }
+            }
+            val needed =
+                maxOf(FURNITURE_MIN_REPEATS_ABSOLUTE.toFloat(), masks.size * FURNITURE_MIN_REPEATS)
             fun recurring(centres: List<Float>) = centres.filter { c ->
                 centres.count { kotlin.math.abs(it - c) <= FURNITURE_REPEAT_TOLERANCE } >= needed
             }
-            return PageFurniture(recurring(lines.mapNotNull { it.first }), recurring(lines.mapNotNull { it.second }))
+            return PageFurniture(
+                recurring(lines.mapNotNull { it.first }),
+                recurring(lines.mapNotNull { it.second }),
+            )
         }
 
         /** No recurring lines known: only narrow page numbers go. */
@@ -73,13 +88,14 @@ private fun InkMask.edgeLines(): Pair<IntRange?, IntRange?> {
 }
 
 /**
- * The block at one edge, from [runs] ordered outermost first: the outermost run and any runs
- * close inside it, if together they're short, at the edge, and clear of what comes next.
+ * The block at one edge, from [runs] ordered outermost first: the outermost run and any runs close
+ * inside it, if together they're short, at the edge, and clear of what comes next.
  */
 private fun InkMask.edgeBlock(runs: List<IntRange>, top: Boolean): IntRange? {
     val minGap = maxOf(2f, height * FURNITURE_MIN_GAP)
     val maxHeight = maxOf(1f, height * FURNITURE_MAX_HEIGHT)
-    fun gapBetween(a: IntRange, b: IntRange) = if (top) b.first - a.last - 1 else a.first - b.last - 1
+    fun gapBetween(a: IntRange, b: IntRange) =
+        if (top) b.first - a.last - 1 else a.first - b.last - 1
     var block = runs.first()
     var i = 1
     while (i < runs.size && gapBetween(block, runs[i]) < minGap) {
@@ -116,8 +132,10 @@ private fun InkMask.inkedRowRuns(): List<IntRange> {
     return runs
 }
 
-/** How far into the page, as a fraction of its height, furniture may reach from the edge: PDLT's A4
- * book pages put their numbers 16% up. */
+/**
+ * How far into the page, as a fraction of its height, furniture may reach from the edge: PDLT's A4
+ * book pages put their numbers 16% up.
+ */
 const val FURNITURE_MAX_EDGE = 0.18f
 
 /** Tallest a line of furniture may be, as a fraction of the page height. */
@@ -132,7 +150,9 @@ const val FURNITURE_MIN_GAP = 0.015f
  */
 const val NUMBER_MAX_WIDTH = 0.06f
 
-/** Share of a paper's pages a line must recur on, at the same height, to be a running head or foot. */
+/**
+ * Share of a paper's pages a line must recur on, at the same height, to be a running head or foot.
+ */
 const val FURNITURE_MIN_REPEATS = 0.3f
 
 /** ...and at least this many pages. */

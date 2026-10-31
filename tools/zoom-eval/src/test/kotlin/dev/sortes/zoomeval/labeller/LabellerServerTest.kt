@@ -1,14 +1,14 @@
 package dev.sortes.zoomeval.labeller
 
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.file.Files
 
 class LabellerServerTest {
     private lateinit var root: File
@@ -22,7 +22,8 @@ class LabellerServerTest {
         File(root, "data/1706.03762").mkdirs()
         File(root, "data/1706.03762/paper.json").writeText("{\"id\": \"1706.03762\"}")
         File(root, "secret.txt").writeText("not served")
-        server = LabellerServer(File(root, "web"), File(root, "data"), File(root, "labels"), port = 0)
+        server =
+            LabellerServer(File(root, "web"), File(root, "data"), File(root, "labels"), port = 0)
         server.start()
     }
 
@@ -34,7 +35,12 @@ class LabellerServerTest {
 
     private data class Response(val code: Int, val body: String, val revision: String? = null)
 
-    private fun request(method: String, path: String, body: String? = null, ifMatch: String? = null): Response {
+    private fun request(
+        method: String,
+        path: String,
+        body: String? = null,
+        ifMatch: String? = null,
+    ): Response {
         val c = URL("http://127.0.0.1:${server.port}$path").openConnection() as HttpURLConnection
         c.requestMethod = method
         if (ifMatch != null) c.setRequestProperty("If-Match", ifMatch)
@@ -43,29 +49,40 @@ class LabellerServerTest {
             c.outputStream.use { it.write(body.toByteArray()) }
         }
         val code = c.responseCode
-        val text = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
+        val text =
+            (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
         return Response(code, text, c.getHeaderField(LabellerServer.REVISION_HEADER))
     }
 
     @Test
     fun servesThePageAndTheData() {
-        assertEquals(Response(200, "<html>labeller</html>"), request("GET", "/").copy(revision = null))
+        assertEquals(
+            Response(200, "<html>labeller</html>"),
+            request("GET", "/").copy(revision = null),
+        )
         assertEquals(200, request("GET", "/data/1706.03762/paper.json").code)
         assertEquals(404, request("GET", "/data/nope.json").code)
     }
 
     @Test
     fun unchangedFilesAreAnswered304() {
-        val first = URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection() as HttpURLConnection
+        val first =
+            URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection()
+                as HttpURLConnection
         assertEquals(200, first.responseCode)
         val etag = first.getHeaderField("ETag")
         assertTrue(etag != null && etag.startsWith("\""))
-        val again = URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection() as HttpURLConnection
+        val again =
+            URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection()
+                as HttpURLConnection
         again.setRequestProperty("If-None-Match", etag)
         assertEquals(304, again.responseCode)
         // Changed: served afresh.
-        File(root, "data/1706.03762/paper.json").writeText("{\"id\": \"1706.03762\", \"changed\": true}")
-        val changed = URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection() as HttpURLConnection
+        File(root, "data/1706.03762/paper.json")
+            .writeText("{\"id\": \"1706.03762\", \"changed\": true}")
+        val changed =
+            URL("http://127.0.0.1:${server.port}/data/1706.03762/paper.json").openConnection()
+                as HttpURLConnection
         changed.setRequestProperty("If-None-Match", etag)
         assertEquals(200, changed.responseCode)
     }
@@ -86,10 +103,22 @@ class LabellerServerTest {
 
     @Test
     fun savedLabelsReloadAndSavingAgainChangesNothing() {
-        val labels = PaperLabels(
-            "1706.03762", null, 0.8, "zoom in",
-            mapOf(3 to PageLabel(Verdict.BAD, setOf(Tag.SIDE_CUT), "right column cut", Point(300.0, 410.0))),
-        )
+        val labels =
+            PaperLabels(
+                "1706.03762",
+                null,
+                0.8,
+                "zoom in",
+                mapOf(
+                    3 to
+                        PageLabel(
+                            Verdict.BAD,
+                            setOf(Tag.SIDE_CUT),
+                            "right column cut",
+                            Point(300.0, 410.0),
+                        )
+                ),
+            )
         val saved = request("PUT", "/api/labels/1706.03762", labels.toText())
         assertEquals(200, saved.code)
         assertEquals(labels.toText(), saved.body)
@@ -106,12 +135,26 @@ class LabellerServerTest {
         val first = request("GET", "/api/labels/1706.03762")
         assertEquals("none", first.revision)
         // Tab A saves a comment, from the revision it loaded.
-        val a = PaperLabels("1706.03762", null, null, "", mapOf(1 to PageLabel(null, emptySet(), "from tab A", null)))
+        val a =
+            PaperLabels(
+                "1706.03762",
+                null,
+                null,
+                "",
+                mapOf(1 to PageLabel(null, emptySet(), "from tab A", null)),
+            )
         val savedA = request("PUT", "/api/labels/1706.03762", a.toText(), ifMatch = first.revision)
         assertEquals(200, savedA.code)
         assertTrue(savedA.revision != "none")
         // Tab B loaded before A saved: its save, from the old revision, is refused...
-        val b = PaperLabels("1706.03762", null, null, "", mapOf(2 to PageLabel(null, emptySet(), "from tab B", null)))
+        val b =
+            PaperLabels(
+                "1706.03762",
+                null,
+                null,
+                "",
+                mapOf(2 to PageLabel(null, emptySet(), "from tab B", null)),
+            )
         val refused = request("PUT", "/api/labels/1706.03762", b.toText(), ifMatch = first.revision)
         assertEquals(409, refused.code)
         assertEquals(savedA.revision, refused.revision)
@@ -119,14 +162,23 @@ class LabellerServerTest {
         // ...and A's comment is still there.
         assertEquals(a, PaperLabels.fromText(request("GET", "/api/labels/1706.03762").body))
         // From the current revision it goes through.
-        assertEquals(200, request("PUT", "/api/labels/1706.03762", b.toText(), ifMatch = refused.revision).code)
+        assertEquals(
+            200,
+            request("PUT", "/api/labels/1706.03762", b.toText(), ifMatch = refused.revision).code,
+        )
     }
 
     @Test
     fun badSavesAreRefusedAndChangeNothing() {
         assertEquals(400, request("PUT", "/api/labels/1706.03762", "not json").code)
-        assertEquals(400, request("PUT", "/api/labels/1706.03762", PaperLabels.empty("other").toText()).code)
-        assertEquals(400, request("PUT", "/api/labels/..%2Fx", PaperLabels.empty("x").toText()).code)
+        assertEquals(
+            400,
+            request("PUT", "/api/labels/1706.03762", PaperLabels.empty("other").toText()).code,
+        )
+        assertEquals(
+            400,
+            request("PUT", "/api/labels/..%2Fx", PaperLabels.empty("x").toText()).code,
+        )
         assertEquals(405, request("POST", "/api/labels/1706.03762", "{}").code)
         assertEquals(405, request("PUT", "/index.html", "x").code)
         assertTrue(!File(root, "labels").exists() || File(root, "labels").list()!!.isEmpty())

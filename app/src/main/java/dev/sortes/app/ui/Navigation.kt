@@ -17,17 +17,18 @@ import dev.sortes.app.importing.ShareRequest
  */
 internal data class ShareLanding(val seq: Int, val toFolderSources: Boolean) {
     companion object {
-        fun after(previous: ShareLanding?, request: ShareRequest) = ShareLanding(
-            seq = (previous?.seq ?: 0) + 1,
-            toFolderSources = request is ShareRequest.AlphaxivFolder,
-        )
+        fun after(previous: ShareLanding?, request: ShareRequest) =
+            ShareLanding(
+                seq = (previous?.seq ?: 0) + 1,
+                toFolderSources = request is ShareRequest.AlphaxivFolder,
+            )
     }
 }
 
 /**
  * Switches between the paper list, the folder sources screen (opened from the list's ⋮ menu) and
- * the reader. Which one is showing survives rotation and process death. The ← arrow and the
- * system Back both return from folder sources or the reader to the list.
+ * the reader. Which one is showing survives rotation and process death. The ← arrow and the system
+ * Back both return from folder sources or the reader to the list.
  */
 @Composable
 internal fun SortesNavigation(
@@ -57,6 +58,12 @@ internal fun SortesNavigation(
         BackHandler(onBack = closeFolderSources)
         folderSources(closeFolderSources)
     } else {
-        paperList({ OpenTimeline.tapped(it.id); openPaperId = it.id }, { showFolderSources = true })
+        paperList(
+            {
+                OpenTimeline.tapped(it.id)
+                openPaperId = it.id
+            },
+            { showFolderSources = true },
+        )
     }
 }

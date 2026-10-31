@@ -4,12 +4,14 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 
-/** Remembers the zoom level chosen by hand for each paper; papers without one use automatic zoom. */
+/**
+ * Remembers the zoom level chosen by hand for each paper; papers without one use automatic zoom.
+ */
 class ZoomStore(private val prefs: SharedPreferences) {
 
-    constructor(context: Context) : this(
-        context.applicationContext.getSharedPreferences("reader_zoom", Context.MODE_PRIVATE),
-    )
+    constructor(
+        context: Context
+    ) : this(context.applicationContext.getSharedPreferences("reader_zoom", Context.MODE_PRIVATE))
 
     /** The chosen crop scale for [paperId], or null for automatic. */
     fun get(paperId: Long): Float? {

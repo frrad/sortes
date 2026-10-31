@@ -31,26 +31,37 @@ application {
 }
 
 // The labeller's JavaScript geometry, unit-tested with Node's built-in runner.
-val labellerJsTest by tasks.registering(Exec::class) {
-    description = "Runs the labeller's JavaScript unit tests (node --test)."
-    workingDir = projectDir
-    commandLine("node", "--test", "labeller/geometry.test.js", "labeller/labels.test.js")
-    inputs.files(fileTree("labeller") { include("*.js") })
-}
+val labellerJsTest by
+    tasks.registering(Exec::class) {
+        description = "Runs the labeller's JavaScript unit tests (node --test)."
+        workingDir = projectDir
+        commandLine("node", "--test", "labeller/geometry.test.js", "labeller/labels.test.js")
+        inputs.files(fileTree("labeller") { include("*.js") })
+    }
 
 // PdfiumTest's render tests skip when the pinned pdfium isn't installed, and fail instead under
 // SORTES_REQUIRE_PDFIUM (CI). Both decide what the tests do, so both are inputs: otherwise the
 // build cache can replay a run that skipped them into one that should have run them.
-val pdfiumDir = providers.environmentVariable("SORTES_PDFIUM")
-    .orElse(providers.systemProperty("user.home").map { "$it/.cache/sortes-zoom-eval/pdfium-chromium-5731" })
-    .map(::File)
+val pdfiumDir =
+    providers
+        .environmentVariable("SORTES_PDFIUM")
+        .orElse(
+            providers.systemProperty("user.home").map {
+                "$it/.cache/sortes-zoom-eval/pdfium-chromium-5731"
+            }
+        )
+        .map(::File)
 
 tasks.test {
     dependsOn(labellerJsTest)
-    inputs.property("requirePdfium", providers.environmentVariable("SORTES_REQUIRE_PDFIUM").map { true }.orElse(false))
+    inputs.property(
+        "requirePdfium",
+        providers.environmentVariable("SORTES_REQUIRE_PDFIUM").map { true }.orElse(false),
+    )
     // A file collection, unlike inputs.file, may name files that don't exist: a missing install
     // is fingerprinted as missing.
-    inputs.files(pdfiumDir.map { listOf(File(it, "VERSION"), File(it, "lib/libpdfium.so")) })
+    inputs
+        .files(pdfiumDir.map { listOf(File(it, "VERSION"), File(it, "lib/libpdfium.so")) })
         .withPropertyName("pdfiumInstall")
         .withPathSensitivity(PathSensitivity.NONE)
 }

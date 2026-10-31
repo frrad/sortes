@@ -21,19 +21,26 @@ class AlphaxivFolderLinkTest {
 
     @Test
     fun parsesLinkEmbeddedInSharedText() {
-        val text = "Check out my folder \"Sortes\" on alphaXiv:\nhttps://www.alphaxiv.org/shared/folder/$id"
+        val text =
+            "Check out my folder \"Sortes\" on alphaXiv:\nhttps://www.alphaxiv.org/shared/folder/$id"
         assertEquals(id, AlphaxivFolderLink.parse(text))
     }
 
     @Test
     fun ignoresTrailingQueryFragmentAndSlash() {
-        assertEquals(id, AlphaxivFolderLink.parse("https://www.alphaxiv.org/shared/folder/$id/?ref=x#top"))
+        assertEquals(
+            id,
+            AlphaxivFolderLink.parse("https://www.alphaxiv.org/shared/folder/$id/?ref=x#top"),
+        )
         assertEquals(id, AlphaxivFolderLink.parse("(https://www.alphaxiv.org/shared/folder/$id)"))
     }
 
     @Test
     fun normalisesCase() {
-        assertEquals(id, AlphaxivFolderLink.parse("HTTPS://WWW.ALPHAXIV.ORG/shared/folder/${id.uppercase()}"))
+        assertEquals(
+            id,
+            AlphaxivFolderLink.parse("HTTPS://WWW.ALPHAXIV.ORG/shared/folder/${id.uppercase()}"),
+        )
     }
 
     @Test
@@ -54,7 +61,9 @@ class AlphaxivFolderLinkTest {
     @Test
     fun rejectsMalformedIds() {
         assertNull(AlphaxivFolderLink.parse("https://www.alphaxiv.org/shared/folder/not-a-uuid"))
-        assertNull(AlphaxivFolderLink.parse("https://www.alphaxiv.org/shared/folder/${id.dropLast(1)}"))
+        assertNull(
+            AlphaxivFolderLink.parse("https://www.alphaxiv.org/shared/folder/${id.dropLast(1)}")
+        )
         assertNull(AlphaxivFolderLink.parse("https://www.alphaxiv.org/shared/folder/${id}0"))
     }
 

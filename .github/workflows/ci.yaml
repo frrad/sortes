@@ -27,6 +27,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Formatting
+        run: ./gradlew spotlessCheck
+
       - name: Lint
         run: ./gradlew lintDebug
 

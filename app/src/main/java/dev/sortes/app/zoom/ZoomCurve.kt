@@ -3,8 +3,8 @@ package dev.sortes.app.zoom
 import kotlin.math.abs
 
 /**
- * The crop model's lost-ink curve, as far as it has been computed: for some of [scales], the
- * share of ink the model's crops cut off and on how many pages.
+ * The crop model's lost-ink curve, as far as it has been computed: for some of [scales], the share
+ * of ink the model's crops cut off and on how many pages.
  */
 class ZoomCurve(
     /** Every scale the zoom slider offers, loosest (1) first. */
@@ -24,5 +24,6 @@ class ZoomCurve(
     fun nearestPoint(i: Int): Point? = points.minByOrNull { abs(it.key - i) }?.value
 
     /** Computed points in order of index. */
-    val sortedPoints: List<Pair<Int, Point>> get() = points.toSortedMap().map { it.key to it.value }
+    val sortedPoints: List<Pair<Int, Point>>
+        get() = points.toSortedMap().map { it.key to it.value }
 }

@@ -22,18 +22,44 @@ class CropConfigTest {
     @Test
     fun theConfigUsesBlocksTheCostBasedZoomAndTheTextModel() {
         val w = CropConfig.DEFAULT.weights
-        assertEquals(CropModelWeights(beta = 0.5, epsilon = 0.0, gamma = 0.1, delta = 0.005, kappa = 0.2, splitInk = 0.005, zeta = 0.5, autoMargin = 0.01), w)
-        // As labelled in round 5 (labels/ROUND-5.md), with the component weight re-fitted on pdfium's
+        assertEquals(
+            CropModelWeights(
+                beta = 0.5,
+                epsilon = 0.0,
+                gamma = 0.1,
+                delta = 0.005,
+                kappa = 0.2,
+                splitInk = 0.005,
+                zeta = 0.5,
+                autoMargin = 0.01,
+            ),
+            w,
+        )
+        // As labelled in round 5 (labels/ROUND-5.md), with the component weight re-fitted on
+        // pdfium's
         // renders (tools/zoom-eval/notes/pdfium-refit.md).
         val t = CropConfig.DEFAULT.text
-        assertEquals(TextWeights(comfortable = 28.0, power = 16.0, floor = 0.1, elements = 0.016, lines = 0.1, factor = 4), t)
+        assertEquals(
+            TextWeights(
+                comfortable = 28.0,
+                power = 16.0,
+                floor = 0.1,
+                elements = 0.016,
+                lines = 0.1,
+                factor = 4,
+            ),
+            t,
+        )
         assertEquals("tuned+text", CropConfig.DEFAULT.name)
     }
 
     @Test
     fun withoutFurnitureThePaperRuleChangesNothing() {
         val page = body().mask()
-        assertSame(page, CropConfig.DEFAULT.copy(furniture = false).paperRule(listOf(page)).strip(page))
+        assertSame(
+            page,
+            CropConfig.DEFAULT.copy(furniture = false).paperRule(listOf(page)).strip(page),
+        )
     }
 
     @Test

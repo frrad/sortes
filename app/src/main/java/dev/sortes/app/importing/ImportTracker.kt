@@ -16,7 +16,9 @@ import kotlinx.coroutines.launch
 sealed interface ImportStatus {
     /** [count] imports are still in flight. */
     data class Running(val count: Int) : ImportStatus
+
     data class Done(val title: String) : ImportStatus
+
     data class Failed(val message: String) : ImportStatus
 }
 
@@ -47,13 +49,14 @@ class ImportTracker(private val scope: CoroutineScope) {
             var result: ImportStatus? = null
             try {
                 ensureActive() // don't start an import cancelled before it was dispatched
-                result = try {
-                    ImportStatus.Done(block().title)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    ImportStatus.Failed(e.message ?: e.toString())
-                }
+                result =
+                    try {
+                        ImportStatus.Done(block().title)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        ImportStatus.Failed(e.message ?: e.toString())
+                    }
             } finally {
                 synchronized(lock) {
                     running--

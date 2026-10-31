@@ -21,15 +21,19 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class HideSystemBarsTest {
 
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    private val decorView get() = composeRule.activity.window.decorView
+    private val decorView
+        get() = composeRule.activity.window.decorView
+
     private val controller
         get() = WindowCompat.getInsetsController(composeRule.activity.window, decorView)
 
-    private fun visible(type: Int): Boolean = ViewCompat.getRootWindowInsets(decorView)!!.isVisible(type)
+    private fun visible(type: Int): Boolean =
+        ViewCompat.getRootWindowInsets(decorView)!!.isVisible(type)
+
     private fun statusBarVisible() = visible(WindowInsetsCompat.Type.statusBars())
+
     private fun navigationBarVisible() = visible(WindowInsetsCompat.Type.navigationBars())
 
     @Test
@@ -63,7 +67,15 @@ class HideSystemBarsTest {
     fun readerHidesBothBarsAndRestoresThemOnLeaving() {
         var reading by mutableStateOf(true)
         // An imported paper whose file is missing: the reader opens straight to its error.
-        val paper = Paper(title = "Missing", authors = emptyList(), abstract = "", year = null, venue = null, localFile = "missing.pdf")
+        val paper =
+            Paper(
+                title = "Missing",
+                authors = emptyList(),
+                abstract = "",
+                year = null,
+                venue = null,
+                localFile = "missing.pdf",
+            )
         composeRule.setContent { if (reading) ReaderScreen(paper = paper, onClose = {}) }
         composeRule.waitForIdle()
         assertFalse(statusBarVisible())

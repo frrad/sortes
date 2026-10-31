@@ -1,6 +1,8 @@
 package dev.sortes.app.pdf
 
 import dev.sortes.app.zoom.CropConfig
+import java.io.File
+import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -12,21 +14,23 @@ import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import kotlin.random.Random
 
 class PageSnapshotsTest {
 
-    @get:Rule
-    val temp = TemporaryFolder()
+    @get:Rule val temp = TemporaryFolder()
 
-    private val dir get() = File(temp.root, "pages")
+    private val dir
+        get() = File(temp.root, "pages")
 
     private fun store(build: String = BUILD, maxBytes: Long = PageSnapshots.DEFAULT_MAX_BYTES) =
         PageSnapshots(dir, build, maxBytes)
 
-    private fun key(file: String = "/papers/a.pdf|1000|5", index: Int = 0, scale: Float? = null, config: CropConfig = CropConfig.DEFAULT) =
-        PageSnapshots.Key(file, config, index, scale)
+    private fun key(
+        file: String = "/papers/a.pdf|1000|5",
+        index: Int = 0,
+        scale: Float? = null,
+        config: CropConfig = CropConfig.DEFAULT,
+    ) = PageSnapshots.Key(file, config, index, scale)
 
     /** A page's pixels: white with [seed]-random dark marks, opaque, like a rendered page. */
     private fun pixels(width: Int, height: Int, seed: Int = 1): ByteArray {
@@ -85,7 +89,9 @@ class PageSnapshotsTest {
         assertNull(runBlocking { store().load(1, key(file = "/papers/a.pdf|1000|6")) })
         assertNull(runBlocking { store().load(1, key(index = 1)) })
         assertNull(runBlocking { store().load(1, key(scale = 0.8f)) })
-        assertNull(runBlocking { store().load(1, key(config = CropConfig.DEFAULT.copy(name = "other"))) })
+        assertNull(
+            runBlocking { store().load(1, key(config = CropConfig.DEFAULT.copy(name = "other"))) }
+        )
         // ...but still there for what it was stored for.
         assertNotNull(runBlocking { store().load(1, key()) })
     }
@@ -121,14 +127,20 @@ class PageSnapshotsTest {
     @Test
     fun damagedFilesAreMissesAndDeleted() {
         val page = pixels(30, 40)
-        val corruptions = mapOf<String, (ByteArray) -> ByteArray>(
-            "truncated" to { it.copyOf(it.size - 7) },
-            "cut in the header" to { it.copyOf(20) },
-            "empty" to { ByteArray(0) },
-            "a pixel byte flipped" to { b -> b.copyOf().also { it[it.size - 30] = (it[it.size - 30].toInt() xor 0x5a).toByte() } },
-            "trailing bytes" to { it + ByteArray(5) },
-            "not a page" to { "%PDF-1.4 not a page".toByteArray() },
-        )
+        val corruptions =
+            mapOf<String, (ByteArray) -> ByteArray>(
+                "truncated" to { it.copyOf(it.size - 7) },
+                "cut in the header" to { it.copyOf(20) },
+                "empty" to { ByteArray(0) },
+                "a pixel byte flipped" to
+                    { b ->
+                        b.copyOf().also {
+                            it[it.size - 30] = (it[it.size - 30].toInt() xor 0x5a).toByte()
+                        }
+                    },
+                "trailing bytes" to { it + ByteArray(5) },
+                "not a page" to { "%PDF-1.4 not a page".toByteArray() },
+            )
         for ((what, corrupt) in corruptions) {
             val store = store()
             runBlocking { store.save(1, key(), 30, 40, page) }
@@ -155,7 +167,9 @@ class PageSnapshotsTest {
         assertFalse(file.exists())
     }
 
-    /** Where the first band's CRC is in a stored page: after its row count, after the band count. */
+    /**
+     * Where the first band's CRC is in a stored page: after its row count, after the band count.
+     */
     private fun crcOffset(bytes: ByteArray): Int {
         val input = java.io.DataInputStream(bytes.inputStream())
         input.readInt()

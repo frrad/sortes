@@ -11,6 +11,7 @@ import dev.sortes.app.zoom.Region
 import dev.sortes.app.zoom.analyzePaper
 import dev.sortes.app.zoom.regionOn
 import dev.sortes.app.zoom.renderMask
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -19,7 +20,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /** Runs against the real PdfRenderer, on a PDF drawn by the test. */
 @RunWith(AndroidJUnit4::class)
@@ -82,7 +82,13 @@ class PdfPagesTest {
 
     @Test
     fun paddingOutsideThePageRendersWhite() = runBlocking {
-        val bitmap = pages.renderRegion(0, CropWindow(0f, 0f, 1f).regionOn(pages.pageSize(0), 0.5f), 200, 400)
+        val bitmap =
+            pages.renderRegion(
+                0,
+                CropWindow(0f, 0f, 1f).regionOn(pages.pageSize(0), 0.5f),
+                200,
+                400,
+            )
 
         // On a 1:2 screen the 600x800 page is padded to 600x1200: white above and below.
         assertEquals(Color.WHITE, bitmap.getPixel(100, 10))

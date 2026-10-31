@@ -5,17 +5,17 @@ import java.io.DataOutput
 import java.io.IOException
 
 /**
- * A [PaperAnalysis] as bytes, for [AnalysisCache]: everything [analyzePaper] rendered and
- * measured (the sampled pages' masks and text measures, the paper's furniture and density) and
- * the automatic crops it solved for, and any crops solved since at other scales (a saved zoom's,
- * the zoom curve's), so opening at a saved zoom solves nothing either. Read back, it is the
- * analysis it was: the same crops at every scale, the same placements on every page, without
- * rendering the sample again.
+ * A [PaperAnalysis] as bytes, for [AnalysisCache]: everything [analyzePaper] rendered and measured
+ * (the sampled pages' masks and text measures, the paper's furniture and density) and the automatic
+ * crops it solved for, and any crops solved since at other scales (a saved zoom's, the zoom
+ * curve's), so opening at a saved zoom solves nothing either. Read back, it is the analysis it was:
+ * the same crops at every scale, the same placements on every page, without rendering the sample
+ * again.
  *
  * Doubles are written whole, so the costs and crops read back are bit-for-bit the ones computed.
  * The config isn't written: the cache's key names it, and [read] is given it. Reading checks
- * everything an index or size depends on, so corrupt bytes fail here, as an [IOException], and
- * not later while solving.
+ * everything an index or size depends on, so corrupt bytes fail here, as an [IOException], and not
+ * later while solving.
  */
 internal object AnalysisCodec {
 
@@ -52,34 +52,61 @@ internal object AnalysisCodec {
      * The analysis [write] wrote to [input], for a screen of [aspect] with [config], placing
      * unsampled pages from [source].
      */
-    suspend fun read(input: BytesInput, source: PageRenderer, aspect: Float, config: CropConfig): PaperAnalysis {
+    suspend fun read(
+        input: BytesInput,
+        source: PageRenderer,
+        aspect: Float,
+        config: CropConfig,
+    ): PaperAnalysis {
         val pageCount = input.readInt()
-        if (pageCount != source.pageCount) throw IOException("Cached for $pageCount pages, the paper has ${source.pageCount}")
+        if (pageCount != source.pageCount)
+            throw IOException("Cached for $pageCount pages, the paper has ${source.pageCount}")
         val density = input.readFloat()
         if (!(density > 0f && density.isFinite())) throw IOException("Bad density $density")
         val glyphPx = input.readNullableDouble()
-        if (glyphPx != null && !(glyphPx > 0 && glyphPx.isFinite())) throw IOException("Bad glyph size $glyphPx")
+        if (glyphPx != null && !(glyphPx > 0 && glyphPx.isFinite()))
+            throw IOException("Bad glyph size $glyphPx")
         val readable = input.readCountedInts(pageCount).asList()
         val sample = input.readCountedInts(pageCount).asList()
-        if (sample.isEmpty() || !readable.containsAll(sample) || readable.any { it !in 0 until pageCount } ||
-            readable.distinct().size != readable.size
+        if (
+            sample.isEmpty() ||
+                !readable.containsAll(sample) ||
+                readable.any { it !in 0 until pageCount } ||
+                readable.distinct().size != readable.size
         ) {
             throw IOException("Bad sample")
         }
         val masks = sample.map { readMask(input) }
-        val texts = masks.map { mask -> if (input.readBoolean()) readText(input, mask, config.text) else null }
-        val paperRule = when (val tag = input.readByte().toInt()) {
-            RULE_FURNITURE -> PageFurniture(input.readFloats(), input.readFloats())
-            RULE_NONE -> IgnorableInkRule { it }
-            else -> throw IOException("Unknown paper rule $tag")
+        val texts = masks.map { mask ->
+            if (input.readBoolean()) readText(input, mask, config.text) else null
         }
-        if ((paperRule is PageFurniture) != config.furniture) throw IOException("Paper rule doesn't match the config")
+        val paperRule =
+            when (val tag = input.readByte().toInt()) {
+                RULE_FURNITURE -> PageFurniture(input.readFloats(), input.readFloats())
+                RULE_NONE -> IgnorableInkRule { it }
+                else -> throw IOException("Unknown paper rule $tag")
+            }
+        if ((paperRule is PageFurniture) != config.furniture)
+            throw IOException("Paper rule doesn't match the config")
         val auto = readCrops(input, masks.size, config.weights)
         val otherCount = input.readInt()
         if (otherCount !in 0..MAX_SOLVED) throw IOException("Bad count of solved crops $otherCount")
         val others = List(otherCount) { readCrops(input, masks.size, config.weights) }
-        if ((others.map { it.scale } + auto.scale).distinct().size != otherCount + 1) throw IOException("Crops solved twice")
-        return assemble(PaperRaster(source, density, readable), aspect, config, pageCount, sample, masks, texts, glyphPx, paperRule, auto, others)
+        if ((others.map { it.scale } + auto.scale).distinct().size != otherCount + 1)
+            throw IOException("Crops solved twice")
+        return assemble(
+            PaperRaster(source, density, readable),
+            aspect,
+            config,
+            pageCount,
+            sample,
+            masks,
+            texts,
+            glyphPx,
+            paperRule,
+            auto,
+            others,
+        )
     }
 
     internal fun writeMask(mask: InkMask, out: DataOutput) {
@@ -97,7 +124,8 @@ internal object AnalysisCodec {
     internal fun readMask(input: DataInput): InkMask {
         val width = input.readInt()
         val height = input.readInt()
-        if (width !in 1..MAX_SIDE || height !in 1..MAX_SIDE) throw IOException("Bad mask size ${width}x$height")
+        if (width !in 1..MAX_SIDE || height !in 1..MAX_SIDE)
+            throw IOException("Bad mask size ${width}x$height")
         val bits = ByteArray((width * height + 7) / 8).also { input.readFully(it) }
         // Byte by byte: in a process just started this runs interpreted, a bit at a time slowly.
         val cells = BooleanArray(width * height)
@@ -115,7 +143,8 @@ internal object AnalysisCodec {
             cells[i + 6] = v and 64 != 0
             cells[i + 7] = v and 128 != 0
         }
-        for (i in whole * 8 until cells.size) cells[i] = (bits[i / 8].toInt() shr (i % 8)) and 1 == 1
+        for (i in whole * 8 until cells.size) cells[i] =
+            (bits[i / 8].toInt() shr (i % 8)) and 1 == 1
         return InkMask(width, height, cells)
     }
 
@@ -141,11 +170,13 @@ internal object AnalysisCodec {
     /** A page's text measures, checked against its analysis [mask]. */
     private fun readText(input: BytesInput, mask: InkMask, weights: TextWeights): PageText {
         val glyph = input.readNullableDouble()
-        if (glyph != null && !(glyph > 0 && glyph.isFinite())) throw IOException("Bad glyph height $glyph")
+        if (glyph != null && !(glyph > 0 && glyph.isFinite()))
+            throw IOException("Bad glyph height $glyph")
         val cellCount = mask.width * mask.height
         val ew = input.readInt()
         val eh = input.readInt()
-        if (ew != mask.width || eh != mask.height) throw IOException("Element costs are ${ew}x$eh, the mask ${mask.width}x${mask.height}")
+        if (ew != mask.width || eh != mask.height)
+            throw IOException("Element costs are ${ew}x$eh, the mask ${mask.width}x${mask.height}")
         val elements = input.readInt()
         if (elements < 0) throw IOException("Bad element count $elements")
         val cells = input.readCountedInts(cellCount)
@@ -154,18 +185,23 @@ internal object AnalysisCodec {
         if (masses.any { !(it >= 0.0 && it.isFinite()) }) throw IOException("Bad element mass")
         val lw = input.readInt()
         val lh = input.readInt()
-        if (lw != mask.width || lh != mask.height) throw IOException("Line costs are ${lw}x$lh, the mask ${mask.width}x${mask.height}")
+        if (lw != mask.width || lh != mask.height)
+            throw IOException("Line costs are ${lw}x$lh, the mask ${mask.width}x${mask.height}")
         val saturation = input.readDouble()
-        if (!(saturation > 0 && saturation.isFinite())) throw IOException("Bad saturation $saturation")
+        if (!(saturation > 0 && saturation.isFinite()))
+            throw IOException("Bad saturation $saturation")
         val segmentCount = input.readInt()
         if (segmentCount !in 0..MAX_COUNT) throw IOException("Bad segment count $segmentCount")
         val segments = List(segmentCount) { input.readCountedInts() }
         val cl = input.readCountedInts()
         val cr = input.readCountedInts(cl.size)
         val rows = input.readCountedInts(segmentCount)
-        if (cr.size != cl.size || rows.size != segmentCount) throw IOException("Line tables don't match")
-        if (segments.any { s -> s.any { it !in cl.indices } }) throw IOException("Bad segment member")
-        if (cl.any { it !in 0..lw } || cr.any { it !in 0..lw } || rows.any { it !in 0 until lh }) throw IOException("Bad line position")
+        if (cr.size != cl.size || rows.size != segmentCount)
+            throw IOException("Line tables don't match")
+        if (segments.any { s -> s.any { it !in cl.indices } })
+            throw IOException("Bad segment member")
+        if (cl.any { it !in 0..lw } || cr.any { it !in 0..lw } || rows.any { it !in 0 until lh })
+            throw IOException("Bad line position")
         return PageText(
             glyph,
             ElementLoss(ew, eh, elements, cells, masses),
@@ -201,25 +237,34 @@ internal object AnalysisCodec {
         val scale = input.readFloat()
         if (!(scale > 0f && scale <= 1f)) throw IOException("Bad scale $scale")
         val windowCount = input.readInt()
-        if (windowCount !in 1..weights.maxWindows) throw IOException("Bad window count $windowCount")
+        if (windowCount !in 1..weights.maxWindows)
+            throw IOException("Bad window count $windowCount")
         val windows = List(windowCount) { readWindow(input) }
         if (input.readInt() != pages) throw IOException("Not one crop per sampled page")
-        val crops = List(pages) {
-            val windowIndex = input.readInt()
-            if (windowIndex !in windows.indices) throw IOException("Bad window index $windowIndex")
-            PageCrop(
-                windowIndex = windowIndex,
-                window = readWindow(input),
-                cells = CellRect(input.readInt(), input.readInt(), input.readInt(), input.readInt()),
-                cutCells = input.readInt(),
-                cut = input.readDouble(),
-                pageCut = input.readDouble(),
-                offCentre = input.readDouble(),
-                splitBlocks = input.readInt(),
-                split = input.readDouble(),
-                additionalCost = input.readDouble(),
-            )
-        }
+        val crops =
+            List(pages) {
+                val windowIndex = input.readInt()
+                if (windowIndex !in windows.indices)
+                    throw IOException("Bad window index $windowIndex")
+                PageCrop(
+                    windowIndex = windowIndex,
+                    window = readWindow(input),
+                    cells =
+                        CellRect(
+                            input.readInt(),
+                            input.readInt(),
+                            input.readInt(),
+                            input.readInt(),
+                        ),
+                    cutCells = input.readInt(),
+                    cut = input.readDouble(),
+                    pageCut = input.readDouble(),
+                    offCentre = input.readDouble(),
+                    splitBlocks = input.readInt(),
+                    split = input.readDouble(),
+                    additionalCost = input.readDouble(),
+                )
+            }
         return ModelCrops(scale, windows, crops, weights, input.readLong())
     }
 
@@ -231,7 +276,8 @@ internal object AnalysisCodec {
 
     private fun readWindow(input: DataInput): CropWindow {
         val w = CropWindow(input.readFloat(), input.readFloat(), input.readFloat())
-        if (!(w.scale > 0f && w.scale <= 1f) || !w.left.isFinite() || !w.top.isFinite()) throw IOException("Bad window $w")
+        if (!(w.scale > 0f && w.scale <= 1f) || !w.left.isFinite() || !w.top.isFinite())
+            throw IOException("Bad window $w")
         return w
     }
 
@@ -263,13 +309,17 @@ internal object AnalysisCodec {
     private fun DataInput.readFloats(): List<Float> {
         val n = readInt()
         if (n !in 0..MAX_COUNT) throw IOException("Bad count $n")
-        return List(n) { readFloat().also { if (!it.isFinite()) throw IOException("Bad value $it") } }
+        return List(n) {
+            readFloat().also { if (!it.isFinite()) throw IOException("Bad value $it") }
+        }
     }
 
     private const val RULE_NONE = 0
     private const val RULE_FURNITURE = 1
 
-    /** Longest mask side read back: analysis masks are [ANALYSIS_LONG_SIDE] on their longer side. */
+    /**
+     * Longest mask side read back: analysis masks are [ANALYSIS_LONG_SIDE] on their longer side.
+     */
     private const val MAX_SIDE = 4 * ANALYSIS_LONG_SIDE
 
     /** Most crops at other scales read back: there are fewer zoom scales than this. */

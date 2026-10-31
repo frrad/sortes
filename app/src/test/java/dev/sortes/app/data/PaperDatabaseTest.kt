@@ -3,6 +3,7 @@ package dev.sortes.app.data
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -11,15 +12,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class PaperDatabaseTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val db = Room.inMemoryDatabaseBuilder(context, PaperDatabase::class.java)
-        .allowMainThreadQueries()
-        .build()
+    private val db =
+        Room.inMemoryDatabaseBuilder(context, PaperDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
     private val dao = db.paperDao()
 
     @After
@@ -28,8 +29,15 @@ class PaperDatabaseTest {
     }
 
     private fun paper(title: String, pdfUrl: String? = null, localFile: String? = null) =
-        Paper(title = title, authors = listOf("A"), abstract = "", year = null, venue = null,
-            pdfUrl = pdfUrl, localFile = localFile)
+        Paper(
+            title = title,
+            authors = listOf("A"),
+            abstract = "",
+            year = null,
+            venue = null,
+            pdfUrl = pdfUrl,
+            localFile = localFile,
+        )
 
     @Test
     fun duplicatePdfUrlIsIgnored() = runBlocking {
@@ -74,9 +82,12 @@ class PaperDatabaseTest {
             it.version = 2
         }
 
-        val upgraded = PaperDatabase.configure(
-            Room.databaseBuilder(context, PaperDatabase::class.java, name).allowMainThreadQueries(),
-        ).build()
+        val upgraded =
+            PaperDatabase.configure(
+                    Room.databaseBuilder(context, PaperDatabase::class.java, name)
+                        .allowMainThreadQueries()
+                )
+                .build()
         try {
             assertEquals(0, runBlocking { upgraded.paperDao().count() })
         } finally {
@@ -88,9 +99,12 @@ class PaperDatabaseTest {
     fun v3DataSurvivesReopening() {
         val name = "v3.db"
         context.deleteDatabase(name)
-        fun open() = PaperDatabase.configure(
-            Room.databaseBuilder(context, PaperDatabase::class.java, name).allowMainThreadQueries(),
-        ).build()
+        fun open() =
+            PaperDatabase.configure(
+                    Room.databaseBuilder(context, PaperDatabase::class.java, name)
+                        .allowMainThreadQueries()
+                )
+                .build()
 
         open().apply {
             runBlocking { paperDao().insert(paper("Mine", localFile = "paper-1.pdf")) }
@@ -98,7 +112,10 @@ class PaperDatabaseTest {
         }
         val reopened = open()
         try {
-            assertEquals(listOf("Mine"), runBlocking { reopened.paperDao().observeAll().first() }.map { it.title })
+            assertEquals(
+                listOf("Mine"),
+                runBlocking { reopened.paperDao().observeAll().first() }.map { it.title },
+            )
         } finally {
             reopened.close()
         }

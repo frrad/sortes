@@ -58,18 +58,15 @@ internal fun InkTopBar(
     Column(modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .padding(horizontal = 4.dp),
+            modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp),
         ) {
             navigationIcon?.invoke()
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = if (navigationIcon == null) 12.dp else 4.dp),
+                modifier =
+                    Modifier.weight(1f)
+                        .padding(start = if (navigationIcon == null) 12.dp else 4.dp),
             )
             actions()
         }
@@ -90,8 +87,8 @@ internal const val OVERFLOW_MENU_TAG = "overflowMenu"
 /**
  * A ⋮ button whose menu drops down below it. Unlike Material's DropdownMenu, the menu appears
  * without animation and is flat white with a black outline, with no shadow or elevation tint.
- * Nothing behind it is dimmed. Tapping outside it or pressing Back closes it; [items] get a
- * `close` to call when they're chosen.
+ * Nothing behind it is dimmed. Tapping outside it or pressing Back closes it; [items] get a `close`
+ * to call when they're chosen.
  */
 @Composable
 internal fun OverflowMenu(items: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
@@ -111,13 +108,13 @@ internal fun OverflowMenu(items: @Composable ColumnScope.(close: () -> Unit) -> 
             ) {
                 val shape = RoundedCornerShape(4.dp)
                 Column(
-                    modifier = Modifier
-                        .testTag(OVERFLOW_MENU_TAG)
-                        .width(IntrinsicSize.Max)
-                        .widthIn(min = 200.dp)
-                        .background(Paper, shape)
-                        .border(InkBorder, shape)
-                        .padding(vertical = 8.dp),
+                    modifier =
+                        Modifier.testTag(OVERFLOW_MENU_TAG)
+                            .width(IntrinsicSize.Max)
+                            .widthIn(min = 200.dp)
+                            .background(Paper, shape)
+                            .border(InkBorder, shape)
+                            .padding(vertical = 8.dp)
                 ) {
                     items(close)
                 }
@@ -128,8 +125,8 @@ internal fun OverflowMenu(items: @Composable ColumnScope.(close: () -> Unit) -> 
 
 /**
  * Puts a popup under its anchor with their end edges lined up, kept [margin] pixels inside the
- * window, so its outline doesn't run into the screen edge or under the status bar: it shifts
- * rather than run off an edge, and goes above the anchor if there's no room below.
+ * window, so its outline doesn't run into the screen edge or under the status bar: it shifts rather
+ * than run off an edge, and goes above the anchor if there's no room below.
  */
 internal class BelowAnchorEnd(private val margin: Int) : PopupPositionProvider {
     override fun calculatePosition(
@@ -140,12 +137,18 @@ internal class BelowAnchorEnd(private val margin: Int) : PopupPositionProvider {
     ): IntOffset {
         val width = popupContentSize.width
         val height = popupContentSize.height
-        val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.right - width else anchorBounds.left
-        val y = if (anchorBounds.bottom + height <= windowSize.height - margin || anchorBounds.top - height < margin) {
-            anchorBounds.bottom
-        } else {
-            anchorBounds.top - height
-        }
+        val x =
+            if (layoutDirection == LayoutDirection.Ltr) anchorBounds.right - width
+            else anchorBounds.left
+        val y =
+            if (
+                anchorBounds.bottom + height <= windowSize.height - margin ||
+                    anchorBounds.top - height < margin
+            ) {
+                anchorBounds.bottom
+            } else {
+                anchorBounds.top - height
+            }
         return IntOffset(
             x.coerceIn(margin, (windowSize.width - width - margin).coerceAtLeast(margin)),
             y.coerceIn(margin, (windowSize.height - height - margin).coerceAtLeast(margin)),

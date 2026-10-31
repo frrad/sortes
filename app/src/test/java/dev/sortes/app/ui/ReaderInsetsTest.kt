@@ -26,16 +26,15 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * The reader's content takes exactly the part of the window the system leaves visible: the
- * whole window with the system bars hidden, and none of a bar that shows or a display cutout.
- * The crop is analysed and drawn for that area, so if part of it were under a bar, the crop's
- * top rows would be hidden there.
+ * The reader's content takes exactly the part of the window the system leaves visible: the whole
+ * window with the system bars hidden, and none of a bar that shows or a display cutout. The crop is
+ * analysed and drawn for that area, so if part of it were under a bar, the crop's top rows would be
+ * hidden there.
  */
 @RunWith(RobolectricTestRunner::class)
 class ReaderInsetsTest {
 
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private var barsHiding by mutableStateOf(false)
 
@@ -45,10 +44,13 @@ class ReaderInsetsTest {
 
     @Before
     fun edgeToEdge() {
-        // As MainActivity's enableEdgeToEdge does: the app draws under the bars and gets their insets.
+        // As MainActivity's enableEdgeToEdge does: the app draws under the bars and gets their
+        // insets.
         WindowCompat.setDecorFitsSystemWindows(composeRule.activity.window, false)
         composeRule.setContent {
-            ReaderFrame(onClose = {}, barsHiding = barsHiding) { Box(Modifier.fillMaxSize().testTag("content")) }
+            ReaderFrame(onClose = {}, barsHiding = barsHiding) {
+                Box(Modifier.fillMaxSize().testTag("content"))
+            }
         }
         composeRule.waitForIdle()
     }
@@ -62,12 +64,16 @@ class ReaderInsetsTest {
     }
 
     private fun bars(visible: Boolean, cutout: DisplayCutoutCompat? = null): WindowInsetsCompat {
-        val builder = WindowInsetsCompat.Builder()
-            .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars(), statusBar)
-            .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars(), navigationBar)
-            .setVisible(WindowInsetsCompat.Type.statusBars(), visible)
-            .setVisible(WindowInsetsCompat.Type.navigationBars(), visible)
-            .setDisplayCutout(cutout)
+        val builder =
+            WindowInsetsCompat.Builder()
+                .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars(), statusBar)
+                .setInsetsIgnoringVisibility(
+                    WindowInsetsCompat.Type.navigationBars(),
+                    navigationBar,
+                )
+                .setVisible(WindowInsetsCompat.Type.statusBars(), visible)
+                .setVisible(WindowInsetsCompat.Type.navigationBars(), visible)
+                .setDisplayCutout(cutout)
         if (visible) {
             builder.setInsets(WindowInsetsCompat.Type.statusBars(), statusBar)
             builder.setInsets(WindowInsetsCompat.Type.navigationBars(), navigationBar)
@@ -75,7 +81,12 @@ class ReaderInsetsTest {
         if (cutout != null) {
             builder.setInsets(
                 WindowInsetsCompat.Type.displayCutout(),
-                Insets.of(cutout.safeInsetLeft, cutout.safeInsetTop, cutout.safeInsetRight, cutout.safeInsetBottom),
+                Insets.of(
+                    cutout.safeInsetLeft,
+                    cutout.safeInsetTop,
+                    cutout.safeInsetRight,
+                    cutout.safeInsetBottom,
+                ),
             )
         }
         return builder.build()
@@ -84,7 +95,12 @@ class ReaderInsetsTest {
     private fun contentPx(): IntArray {
         val bounds = composeRule.onNodeWithTag("content").getBoundsInRoot()
         return with(composeRule.density) {
-            intArrayOf(bounds.left.roundToPx(), bounds.top.roundToPx(), bounds.right.roundToPx(), bounds.bottom.roundToPx())
+            intArrayOf(
+                bounds.left.roundToPx(),
+                bounds.top.roundToPx(),
+                bounds.right.roundToPx(),
+                bounds.bottom.roundToPx(),
+            )
         }
     }
 
@@ -113,7 +129,12 @@ class ReaderInsetsTest {
         assertEquals(windowPx().toList(), contentPx().toList())
 
         // But clear of a cutout, which stays.
-        dispatch(bars(visible = true, cutout = DisplayCutoutCompat(android.graphics.Rect(0, 80, 0, 0), null)))
+        dispatch(
+            bars(
+                visible = true,
+                cutout = DisplayCutoutCompat(android.graphics.Rect(0, 80, 0, 0), null),
+            )
+        )
         val (_, _, width, height) = windowPx()
         assertEquals(listOf(0, 80, width, height), contentPx().toList())
     }
@@ -125,6 +146,9 @@ class ReaderInsetsTest {
         val (_, _, width, height) = windowPx()
         assertEquals(listOf(0, 80, width, height), contentPx().toList())
         val button = composeRule.onNodeWithContentDescription("Back to papers").getBoundsInRoot()
-        assertTrue("Back button at ${button.top}", with(composeRule.density) { button.top.roundToPx() } >= 80)
+        assertTrue(
+            "Back button at ${button.top}",
+            with(composeRule.density) { button.top.roundToPx() } >= 80,
+        )
     }
 }

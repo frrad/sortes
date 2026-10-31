@@ -6,21 +6,22 @@ import kotlin.math.min
 /**
  * The text model's line cost ([PageText]): lines a window's left or right edge truncates.
  *
- * A "line segment" is a horizontal run of fine connected components (glyphs, roughly) that
- * overlap vertically by at least half the shorter one's height and are separated by at most
- * [gap] glyph heights: a line of a paragraph, an equation, a row of a table cell. Column gutters
- * and the space before an equation number are wider, so they split segments. A window's edge
- * TRUNCATES a segment when it keeps some of its components and loses others: the end of an
- * equation clipped off, rather than a whole line left out (which [ElementLoss] already counts).
- * Each truncated segment costs min(1, lost components / [saturation]), so clipping one or two
- * symbols costs nearly as much as clipping half the line: the reader can't see what's missing.
+ * A "line segment" is a horizontal run of fine connected components (glyphs, roughly) that overlap
+ * vertically by at least half the shorter one's height and are separated by at most [gap] glyph
+ * heights: a line of a paragraph, an equation, a row of a table cell. Column gutters and the space
+ * before an equation number are wider, so they split segments. A window's edge TRUNCATES a segment
+ * when it keeps some of its components and loses others: the end of an equation clipped off, rather
+ * than a whole line left out (which [ElementLoss] already counts). Each truncated segment costs
+ * min(1, lost components / [saturation]), so clipping one or two symbols costs nearly as much as
+ * clipping half the line: the reader can't see what's missing.
  *
- * Only the left and right edges count: a top or bottom edge slices a line through its glyphs,
- * which the ink and block costs already see. Components are kept only when wholly inside the
- * kept cells. The edges are costed separately (a segment truncated at both ends costs twice) so
- * the cost is a sum of per-edge tables ([table]), O(1) per window.
+ * Only the left and right edges count: a top or bottom edge slices a line through its glyphs, which
+ * the ink and block costs already see. Components are kept only when wholly inside the kept cells.
+ * The edges are costed separately (a segment truncated at both ends costs twice) so the cost is a
+ * sum of per-edge tables ([table]), O(1) per window.
  */
-class LineTruncation internal constructor(
+class LineTruncation
+internal constructor(
     internal val width: Int,
     internal val height: Int,
     internal val saturation: Double,
@@ -49,12 +50,14 @@ class LineTruncation internal constructor(
             var lost = 0
             for (x in lefts.first() + 1..lefts.last()) {
                 while (lost < lefts.size && lefts[lost] < x) lost++
-                if (lost in 1 until members.size) left[x * s + row + 1] += min(1.0, lost / saturation)
+                if (lost in 1 until members.size)
+                    left[x * s + row + 1] += min(1.0, lost / saturation)
             }
             lost = 0
             for (x in rights.first() - 1 downTo rights.last()) {
                 while (lost < rights.size && rights[lost] > x) lost++
-                if (lost in 1 until members.size) right[x * s + row + 1] += min(1.0, lost / saturation)
+                if (lost in 1 until members.size)
+                    right[x * s + row + 1] += min(1.0, lost / saturation)
             }
         }
         for (x in 0..w) for (y in 1..h) {
@@ -64,7 +67,8 @@ class LineTruncation internal constructor(
         return Table(left, right)
     }
 
-    inner class Table internal constructor(private val left: DoubleArray, private val right: DoubleArray) {
+    inner class Table
+    internal constructor(private val left: DoubleArray, private val right: DoubleArray) {
         /** The cost of keeping [cells]. */
         fun cost(cells: CellRect): Double {
             val t = cells.top.coerceIn(0, height)
@@ -80,21 +84,23 @@ class LineTruncation internal constructor(
     fun truncated(cells: CellRect): Int = truncatedSegments(cells).size
 
     /** The segments [cells] truncates at its left or right edge, by index. */
-    fun truncatedSegments(cells: CellRect): Set<Int> = segments.indices.filterTo(HashSet()) { i ->
-        if (segmentRow[i] !in cells.top until cells.bottom) return@filterTo false
-        val members = segments[i]
-        val kept = members.count { cl[it] >= cells.left && cr[it] <= cells.right }
-        kept in 1 until members.size
-    }
+    fun truncatedSegments(cells: CellRect): Set<Int> =
+        segments.indices.filterTo(HashSet()) { i ->
+            if (segmentRow[i] !in cells.top until cells.bottom) return@filterTo false
+            val members = segments[i]
+            val kept = members.count { cl[it] >= cells.left && cr[it] <= cells.right }
+            kept in 1 until members.size
+        }
 
     /**
-     * Segments [shown] truncates that [ideal] keeps whole: lines the owner's crop shows in full
-     * and the model's clips. A line [ideal] leaves out entirely, or clips too, doesn't count.
+     * Segments [shown] truncates that [ideal] keeps whole: lines the owner's crop shows in full and
+     * the model's clips. A line [ideal] leaves out entirely, or clips too, doesn't count.
      */
     fun clippedAgainst(shown: CellRect, ideal: CellRect): Int {
         val idealCut = truncatedSegments(ideal)
         return truncatedSegments(shown).count { i ->
-            i !in idealCut && segmentRow[i] in ideal.top until ideal.bottom &&
+            i !in idealCut &&
+                segmentRow[i] in ideal.top until ideal.bottom &&
                 segments[i].all { cl[it] >= ideal.left && cr[it] <= ideal.right }
         }
     }
@@ -102,16 +108,26 @@ class LineTruncation internal constructor(
     companion object {
         /**
          * The line segments of [c]'s components that aren't [FineComponents.ignored], given the
-         * page's [glyphHeight] in fine pixels ([TextSize.glyphHeight]; null for no text). The
-         * fine render must be a whole multiple of the analysis mask.
+         * page's [glyphHeight] in fine pixels ([TextSize.glyphHeight]; null for no text). The fine
+         * render must be a whole multiple of the analysis mask.
          */
-        fun of(c: FineComponents, gap: Double, saturation: Double, glyphHeight: Double?): LineTruncation {
+        fun of(
+            c: FineComponents,
+            gap: Double,
+            saturation: Double,
+            glyphHeight: Double?,
+        ): LineTruncation {
             val fine = c.fine
             val raw = c.raw
             val comps = c.blocks
             val factorX = fine.width / raw.width
             val factorY = fine.height / raw.height
-            require(factorX >= 1 && factorY >= 1 && fine.width == raw.width * factorX && fine.height == raw.height * factorY) {
+            require(
+                factorX >= 1 &&
+                    factorY >= 1 &&
+                    fine.width == raw.width * factorX &&
+                    fine.height == raw.height * factorY
+            ) {
                 "Fine mask must be a whole multiple of the solver mask"
             }
             val glyph = glyphHeight ?: (2.0 * factorY)
@@ -124,7 +140,11 @@ class LineTruncation internal constructor(
                 var r = i
                 while (parent[r] != r) r = parent[r]
                 var j = i
-                while (parent[j] != r) { val next = parent[j]; parent[j] = r; j = next }
+                while (parent[j] != r) {
+                    val next = parent[j]
+                    parent[j] = r
+                    j = next
+                }
                 return r
             }
             val tall = max(3.0 * glyph, 4.0)
@@ -134,7 +154,9 @@ class LineTruncation internal constructor(
             for (i in 0 until n) {
                 val bx = boxes[i]
                 if (bx.bottom - bx.top > tall) continue
-                for (k in bx.top / band..(bx.bottom - 1) / band) buckets.getOrPut(k) { ArrayList() } += i
+                for (k in bx.top / band..(bx.bottom - 1) / band) buckets.getOrPut(k) {
+                    ArrayList()
+                } += i
             }
             for (list in buckets.values) {
                 list.sortBy { boxes[it].left }
@@ -145,7 +167,8 @@ class LineTruncation internal constructor(
                         val j = list[c]
                         val bj = boxes[j]
                         if (bj.left - bi.right > maxGap) {
-                            // Sorted by left, but a wide component can reach past a later one: only stop
+                            // Sorted by left, but a wide component can reach past a later one: only
+                            // stop
                             // once nothing more can be close.
                             break
                         }
@@ -159,12 +182,13 @@ class LineTruncation internal constructor(
             val cl = IntArray(n) { boxes[it].left / factorX }
             val cr = IntArray(n) { (boxes[it].right + factorX - 1) / factorX }
             val h = raw.height
-            val rows = IntArray(groups.size) { g ->
-                val members = groups[g]
-                val top = members.minOf { boxes[it].top }
-                val bottom = members.maxOf { boxes[it].bottom }
-                ((top + bottom) / 2 / factorY).coerceIn(0, h - 1)
-            }
+            val rows =
+                IntArray(groups.size) { g ->
+                    val members = groups[g]
+                    val top = members.minOf { boxes[it].top }
+                    val bottom = members.maxOf { boxes[it].bottom }
+                    ((top + bottom) / 2 / factorY).coerceIn(0, h - 1)
+                }
             return LineTruncation(raw.width, h, saturation, groups, cl, cr, rows)
         }
     }

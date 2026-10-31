@@ -98,10 +98,10 @@ internal fun SourcesList(
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onDismissError)
-                            .padding(vertical = 4.dp),
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .clickable(onClick = onDismissError)
+                                .padding(vertical = 4.dp),
                     )
                 }
             }
@@ -147,11 +147,12 @@ private fun AddSourceField(onAdd: (folderId: String) -> Unit) {
             },
             label = { Text("alphaXiv folder link") },
             isError = invalid,
-            supportingText = if (invalid) {
-                { Text("Not an alphaXiv shared-folder link") }
-            } else {
-                null
-            },
+            supportingText =
+                if (invalid) {
+                    { Text("Not an alphaXiv shared-folder link") }
+                } else {
+                    null
+                },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { if (text.isNotBlank()) submit() }),
@@ -164,27 +165,34 @@ private fun AddSourceField(onAdd: (folderId: String) -> Unit) {
 internal const val SOURCE_CARD_TAG = "sourceCard"
 
 @Composable
-private fun SourceCard(source: FolderSource, isSyncing: Boolean, onSync: () -> Unit, onRemove: () -> Unit) {
+private fun SourceCard(
+    source: FolderSource,
+    isSyncing: Boolean,
+    onSync: () -> Unit,
+    onRemove: () -> Unit,
+) {
     OutlinedCard(
         border = InkBorder,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(SOURCE_CARD_TAG),
+        modifier = Modifier.fillMaxWidth().testTag(SOURCE_CARD_TAG),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(text = source.name ?: "alphaXiv folder", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = source.name ?: "alphaXiv folder",
+                style = MaterialTheme.typography.titleMedium,
+            )
             Text(
                 text = AlphaxivFolderLink.url(source.folderId),
                 style = MaterialTheme.typography.labelSmall,
             )
-            val status = when {
-                isSyncing -> "Syncing…"
-                source.lastSyncedAt == null -> "Never synced"
-                else -> "${formatTime(source.lastSyncedAt)}: ${source.lastResult.orEmpty()}"
-            }
+            val status =
+                when {
+                    isSyncing -> "Syncing…"
+                    source.lastSyncedAt == null -> "Never synced"
+                    else -> "${formatTime(source.lastSyncedAt)}: ${source.lastResult.orEmpty()}"
+                }
             Text(text = status, style = MaterialTheme.typography.bodyMedium)
             Row {
                 TextButton(onClick = onSync, enabled = !isSyncing) { Text("Sync") }

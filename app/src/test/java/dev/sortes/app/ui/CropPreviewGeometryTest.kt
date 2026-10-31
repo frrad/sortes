@@ -78,7 +78,10 @@ class CropPreviewGeometryTest {
     fun boxesAwayFromTheCropArePadded() {
         val headline = Rect(150f, 20f, 250f, 40f)
 
-        assertEquals(Rect(147f, 17f, 253f, 43f), cutBox(headline, crop, frame, padding = 3f, reach = 10f))
+        assertEquals(
+            Rect(147f, 17f, 253f, 43f),
+            cutBox(headline, crop, frame, padding = 3f, reach = 10f),
+        )
     }
 
     @Test

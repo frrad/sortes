@@ -21,10 +21,10 @@ import dev.sortes.app.importing.toShareRequest
 import dev.sortes.app.ui.PapersScreen
 import dev.sortes.app.ui.PapersViewModel
 import dev.sortes.app.ui.ReaderScreen
-import dev.sortes.app.ui.prefetchFirstPage
 import dev.sortes.app.ui.ShareLanding
 import dev.sortes.app.ui.SortesNavigation
 import dev.sortes.app.ui.SourcesScreen
+import dev.sortes.app.ui.prefetchFirstPage
 import dev.sortes.app.ui.theme.SortesTheme
 
 class MainActivity : ComponentActivity() {
@@ -61,9 +61,13 @@ class MainActivity : ComponentActivity() {
                                 viewModel = viewModel,
                             )
                         },
-                        folderSources = { onBack -> SourcesScreen(onBack = onBack, modifier = contentModifier) },
+                        folderSources = { onBack ->
+                            SourcesScreen(onBack = onBack, modifier = contentModifier)
+                        },
                         // The reader hides the system bars and keeps clear of any that show itself.
-                        reader = { paper, onClose -> ReaderScreen(paper = paper, onClose = onClose) },
+                        reader = { paper, onClose ->
+                            ReaderScreen(paper = paper, onClose = onClose)
+                        },
                     )
                 }
             }

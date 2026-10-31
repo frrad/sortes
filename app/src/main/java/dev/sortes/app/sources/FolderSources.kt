@@ -44,9 +44,9 @@ class FolderSources(
     private val _unseenFailure = MutableStateFlow(false)
 
     /**
-     * Whether something has failed since [markFailuresSeen]: a sync that failed outright or
-     * for some of its papers, or anything reported through [error]. Lets the paper list point
-     * to the folder sources screen, where the failure shows.
+     * Whether something has failed since [markFailuresSeen]: a sync that failed outright or for
+     * some of its papers, or anything reported through [error]. Lets the paper list point to the
+     * folder sources screen, where the failure shows.
      */
     val unseenFailure: StateFlow<Boolean> = _unseenFailure.asStateFlow()
 
@@ -58,10 +58,11 @@ class FolderSources(
 
     /** Saves [folderId] (a no-op if it's already saved) and syncs it. */
     fun addAndSync(folderId: String): Job = scope.launch {
-        val id = reporting("Couldn't save source") {
-            dao.insert(FolderSource(folderId = folderId)).takeIf { it != -1L }
-                ?: dao.findByFolderId(folderId)?.id
-        } ?: return@launch
+        val id =
+            reporting("Couldn't save source") {
+                dao.insert(FolderSource(folderId = folderId)).takeIf { it != -1L }
+                    ?: dao.findByFolderId(folderId)?.id
+            } ?: return@launch
         sync(id)?.join()
     }
 
@@ -75,18 +76,20 @@ class FolderSources(
             // the state is cleared in a finally block before the job completes: join() on a job
             // that has completed returns without waiting for completion handlers, so clearing it
             // in one let a sync just joined still show as syncing, and a resync be ignored.
-            val job = scope.launch(start = CoroutineStart.ATOMIC) {
-                try {
-                    ensureActive() // withLock doesn't check, if the lock is free
-                    syncLock.withLock { syncNow(id) }
-                } finally {
-                    // Waits for stateLock, so on another thread it runs after the job is registered.
-                    synchronized(stateLock) {
-                        jobs.remove(id, coroutineContext.job)
-                        _syncing.value = _syncing.value - id
+            val job =
+                scope.launch(start = CoroutineStart.ATOMIC) {
+                    try {
+                        ensureActive() // withLock doesn't check, if the lock is free
+                        syncLock.withLock { syncNow(id) }
+                    } finally {
+                        // Waits for stateLock, so on another thread it runs after the job is
+                        // registered.
+                        synchronized(stateLock) {
+                            jobs.remove(id, coroutineContext.job)
+                            _syncing.value = _syncing.value - id
+                        }
                     }
                 }
-            }
             // Unless an immediate dispatcher already ran the body to the end, on this thread.
             if (id in _syncing.value) jobs[id] = job
             return job
@@ -114,28 +117,31 @@ class FolderSources(
     }
 
     private suspend fun syncNow(id: Long) {
-        val source = reporting("Couldn't load source") { dao.findById(id) } ?: return // removed while queued
-        val (name, summary) = try {
-            val result = syncer.sync(source.folderId)
-            if (result.failures.isNotEmpty()) _unseenFailure.value = true
-            result.folderName to result.summary()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            _unseenFailure.value = true
-            null to "Sync failed: ${e.message ?: e}"
-        }
+        val source =
+            reporting("Couldn't load source") { dao.findById(id) } ?: return // removed while queued
+        val (name, summary) =
+            try {
+                val result = syncer.sync(source.folderId)
+                if (result.failures.isNotEmpty()) _unseenFailure.value = true
+                result.folderName to result.summary()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _unseenFailure.value = true
+                null to "Sync failed: ${e.message ?: e}"
+            }
         reporting("Couldn't save sync result") { dao.recordSync(id, name, clock(), summary) }
     }
 
     /** Runs [block], turning a failure into [error] and a null result. */
-    private suspend fun <T> reporting(what: String, block: suspend () -> T): T? = try {
-        block()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        _error.value = "$what: ${e.message ?: e}"
-        _unseenFailure.value = true
-        null
-    }
+    private suspend fun <T> reporting(what: String, block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _error.value = "$what: ${e.message ?: e}"
+            _unseenFailure.value = true
+            null
+        }
 }

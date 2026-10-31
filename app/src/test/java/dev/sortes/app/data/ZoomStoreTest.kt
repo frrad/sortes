@@ -10,7 +10,8 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ZoomStoreTest {
 
-    private fun store() = ZoomStore(ApplicationProvider.getApplicationContext<android.content.Context>())
+    private fun store() =
+        ZoomStore(ApplicationProvider.getApplicationContext<android.content.Context>())
 
     @Test
     fun papersStartOnAutomaticZoom() {

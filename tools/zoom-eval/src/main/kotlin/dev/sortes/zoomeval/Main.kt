@@ -12,27 +12,38 @@ import java.util.Properties
 data class Paper(val id: String, val file: String, val category: String, val title: String)
 
 /** Reads corpus.tsv: id, file name, category, title; '#' starts a comment. */
-fun readCorpus(file: File): List<Paper> = file.readLines()
-    .filter { it.isNotBlank() && !it.startsWith("#") }
-    .map { line ->
-        val f = line.split('\t')
-        require(f.size >= 4) { "Bad corpus line: $line" }
-        Paper(f[0].trim(), f[1].trim(), f[2].trim(), f[3].trim())
-    }
+fun readCorpus(file: File): List<Paper> =
+    file
+        .readLines()
+        .filter { it.isNotBlank() && !it.startsWith("#") }
+        .map { line ->
+            val f = line.split('\t')
+            require(f.size >= 4) { "Bad corpus line: $line" }
+            Paper(f[0].trim(), f[1].trim(), f[2].trim(), f[3].trim())
+        }
 
-/** [base] weights (the reader's by default), then a properties file's, then `--name=value` overrides. */
-fun readWeights(file: File?, overrides: Map<String, String>, base: CropModelWeights = CropConfig.DEFAULT.weights): CropModelWeights {
+/**
+ * [base] weights (the reader's by default), then a properties file's, then `--name=value`
+ * overrides.
+ */
+fun readWeights(
+    file: File?,
+    overrides: Map<String, String>,
+    base: CropModelWeights = CropConfig.DEFAULT.weights,
+): CropModelWeights {
     val props = Properties()
     file?.takeIf { it.exists() }?.reader()?.use { props.load(it) }
     val fromFile = props.stringPropertyNames().associateWith { props.getProperty(it).trim() }
     return base.with(fromFile).with(overrides)
 }
 
-private val USAGE = """
+private val USAGE =
+    """
     Usage: zoom-eval review ... | labeller-export ... | labeller-serve ... (see labeller/README.md)
            | fit ... | zoom-experiment ... | text-size ... | bench ... | crops ... | device-check ...
     See tools/zoom-eval/README.md. Weights: ${WEIGHT_NAMES.joinToString(", ")}
-""".trimIndent()
+"""
+        .trimIndent()
 
 fun main(args: Array<String>) {
     when (args.firstOrNull()) {

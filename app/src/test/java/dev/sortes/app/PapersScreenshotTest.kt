@@ -16,8 +16,8 @@ import androidx.test.espresso.Espresso
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import dev.sortes.app.data.Paper
-import dev.sortes.app.ui.AddPaperDialog
 import dev.sortes.app.importing.ImportStatus
+import dev.sortes.app.ui.AddPaperDialog
 import dev.sortes.app.ui.OVERFLOW_MENU_TAG
 import dev.sortes.app.ui.PapersList
 import dev.sortes.app.ui.theme.SortesTheme
@@ -35,8 +35,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PapersScreenshotTest {
 
-    @get:Rule
-    val composeRule = createComposeRule()
+    @get:Rule val composeRule = createComposeRule()
 
     @Test
     fun papersList() {
@@ -57,7 +56,9 @@ class PapersScreenshotTest {
                 PapersList(papers = SAMPLE)
             }
         }
-        composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list_dark_system_theme.png")
+        composeRule
+            .onRoot()
+            .captureRoboImage("build/outputs/roborazzi/papers_list_dark_system_theme.png")
     }
 
     @Test
@@ -77,11 +78,16 @@ class PapersScreenshotTest {
     fun papersListWithImportStatus() {
         composeRule.setContent {
             SortesTheme {
-                PapersList(papers = SAMPLE, importStatus = ImportStatus.Failed("Not an arXiv ID or URL"))
+                PapersList(
+                    papers = SAMPLE,
+                    importStatus = ImportStatus.Failed("Not an arXiv ID or URL"),
+                )
             }
         }
         composeRule.onNodeWithText("Import failed: Not an arXiv ID or URL").assertExists()
-        composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list_import_failed.png")
+        composeRule
+            .onRoot()
+            .captureRoboImage("build/outputs/roborazzi/papers_list_import_failed.png")
     }
 
     @Test
@@ -99,7 +105,11 @@ class PapersScreenshotTest {
         var status by mutableStateOf<ImportStatus?>(ImportStatus.Done("Attention Is All You Need"))
         composeRule.setContent {
             SortesTheme {
-                PapersList(papers = SAMPLE, importStatus = status, onDismissImportStatus = { status = null })
+                PapersList(
+                    papers = SAMPLE,
+                    importStatus = status,
+                    onDismissImportStatus = { status = null },
+                )
             }
         }
 
@@ -114,7 +124,11 @@ class PapersScreenshotTest {
         var picked = false
         composeRule.setContent {
             SortesTheme {
-                AddPaperDialog(onImportArxiv = { imported = it }, onPickPdf = { picked = true }, onDismiss = {})
+                AddPaperDialog(
+                    onImportArxiv = { imported = it },
+                    onPickPdf = { picked = true },
+                    onDismiss = {},
+                )
             }
         }
         composeRule.onNodeWithText("Import").assertIsNotEnabled()
@@ -153,7 +167,11 @@ class PapersScreenshotTest {
         var opened = false
         composeRule.setContent {
             SortesTheme {
-                PapersList(papers = SAMPLE, onOpenFolderSources = { opened = true }, onSyncAllFolders = { synced++ })
+                PapersList(
+                    papers = SAMPLE,
+                    onOpenFolderSources = { opened = true },
+                    onSyncAllFolders = { synced++ },
+                )
             }
         }
 
@@ -196,7 +214,9 @@ class PapersScreenshotTest {
         var syncing by mutableStateOf(false)
         var status by mutableStateOf<ImportStatus?>(null)
         composeRule.setContent {
-            SortesTheme { PapersList(papers = MANY, syncingFolders = syncing, importStatus = status) }
+            SortesTheme {
+                PapersList(papers = MANY, syncingFolders = syncing, importStatus = status)
+            }
         }
         composeRule.onNodeWithText(MANY.first().title).assertIsDisplayed()
 
@@ -219,14 +239,21 @@ class PapersScreenshotTest {
         var opened = false
         composeRule.setContent {
             SortesTheme {
-                PapersList(papers = MANY, folderSyncFailed = failed, onOpenFolderSources = { opened = true })
+                PapersList(
+                    papers = MANY,
+                    folderSyncFailed = failed,
+                    onOpenFolderSources = { opened = true },
+                )
             }
         }
         composeRule.onNodeWithText("Folder sync failed", substring = true).assertDoesNotExist()
 
         failed = true
 
-        composeRule.onNodeWithText("Folder sync failed — see Folder sources").assertIsDisplayed().performClick()
+        composeRule
+            .onNodeWithText("Folder sync failed — see Folder sources")
+            .assertIsDisplayed()
+            .performClick()
         assertTrue(opened)
     }
 
@@ -242,33 +269,46 @@ class PapersScreenshotTest {
                 )
             }
         }
-        composeRule.onRoot().captureRoboImage("build/outputs/roborazzi/papers_list_status_lines.png")
+        composeRule
+            .onRoot()
+            .captureRoboImage("build/outputs/roborazzi/papers_list_status_lines.png")
     }
 
     private companion object {
-        val MANY = (1L..8L).map {
-            Paper(id = it, title = "Paper $it", authors = listOf("Author $it"), abstract = "Abstract $it.", year = 2020, venue = null)
-        }
+        val MANY =
+            (1L..8L).map {
+                Paper(
+                    id = it,
+                    title = "Paper $it",
+                    authors = listOf("Author $it"),
+                    abstract = "Abstract $it.",
+                    year = 2020,
+                    venue = null,
+                )
+            }
 
-        val SAMPLE = listOf(
-            Paper(
-                id = 1,
-                title = "Attention Is All You Need",
-                authors = listOf("Ashish Vaswani", "Noam Shazeer", "Niki Parmar"),
-                abstract = "We propose a new simple network architecture, the " +
-                    "Transformer, based solely on attention mechanisms.",
-                year = 2017,
-                venue = "NeurIPS",
-            ),
-            Paper(
-                id = 2,
-                title = "Deep Residual Learning for Image Recognition",
-                authors = listOf("Kaiming He", "Xiangyu Zhang", "Shaoqing Ren"),
-                abstract = "We present a residual learning framework to ease the " +
-                    "training of substantially deeper networks.",
-                year = 2016,
-                venue = "CVPR",
-            ),
-        )
+        val SAMPLE =
+            listOf(
+                Paper(
+                    id = 1,
+                    title = "Attention Is All You Need",
+                    authors = listOf("Ashish Vaswani", "Noam Shazeer", "Niki Parmar"),
+                    abstract =
+                        "We propose a new simple network architecture, the " +
+                            "Transformer, based solely on attention mechanisms.",
+                    year = 2017,
+                    venue = "NeurIPS",
+                ),
+                Paper(
+                    id = 2,
+                    title = "Deep Residual Learning for Image Recognition",
+                    authors = listOf("Kaiming He", "Xiangyu Zhang", "Shaoqing Ren"),
+                    abstract =
+                        "We present a residual learning framework to ease the " +
+                            "training of substantially deeper networks.",
+                    year = 2016,
+                    venue = "CVPR",
+                ),
+            )
     }
 }

@@ -22,19 +22,25 @@ class PapersViewModel(application: Application) : AndroidViewModel(application) 
     // Imports outlive this ViewModel; it only forwards requests and observes their status.
     private val imports = PaperImports.get(application)
 
-    val papers: StateFlow<List<Paper>> = repository.observeAll()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val papers: StateFlow<List<Paper>> =
+        repository
+            .observeAll()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val importStatus: StateFlow<ImportStatus?> = imports.status
 
     private val folders = FolderSyncs.get(application)
 
     /** Whether there are any folder sources, so "Sync all folders" has something to do. */
-    val hasFolders: StateFlow<Boolean> = folders.sources.map { it.isNotEmpty() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val hasFolders: StateFlow<Boolean> =
+        folders.sources
+            .map { it.isNotEmpty() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val syncingFolders: StateFlow<Boolean> = folders.syncing.map { it.isNotEmpty() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val syncingFolders: StateFlow<Boolean> =
+        folders.syncing
+            .map { it.isNotEmpty() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** A folder sync failed and the folder sources screen hasn't been opened since. */
     val folderSyncFailed: StateFlow<Boolean> = folders.unseenFailure

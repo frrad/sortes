@@ -14,8 +14,8 @@ class SourcesViewModel(application: Application) : AndroidViewModel(application)
     // Syncs outlive this ViewModel; it only forwards requests and observes state.
     private val folders = FolderSyncs.get(application)
 
-    val sources: StateFlow<List<FolderSource>> = folders.sources
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val sources: StateFlow<List<FolderSource>> =
+        folders.sources.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val syncing: StateFlow<Set<Long>> = folders.syncing
 

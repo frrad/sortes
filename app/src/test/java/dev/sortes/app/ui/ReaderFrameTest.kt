@@ -21,8 +21,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ReaderFrameTest {
 
-    @get:Rule
-    val composeRule = createComposeRule()
+    @get:Rule val composeRule = createComposeRule()
 
     private var closes = 0
     private var pageTaps = 0
@@ -32,10 +31,9 @@ class ReaderFrameTest {
             ReaderFrame(onClose = { closes++ }) {
                 // Stands in for the page, which turns on any tap.
                 Box(
-                    Modifier
-                        .fillMaxSize()
-                        .testTag("page")
-                        .pointerInput(Unit) { detectTapGestures { pageTaps++ } },
+                    Modifier.fillMaxSize().testTag("page").pointerInput(Unit) {
+                        detectTapGestures { pageTaps++ }
+                    }
                 )
             }
         }

@@ -5,6 +5,10 @@ import dev.sortes.app.arxiv.ArxivClient
 import dev.sortes.app.arxiv.ArxivId
 import dev.sortes.app.data.Paper
 import dev.sortes.app.data.PaperDao
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -12,10 +16,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 
 /** Result of an arXiv import: the paper, and whether this call added it to the library. */
 data class ArxivImport(val paper: Paper, val inserted: Boolean)
@@ -27,21 +27,26 @@ class PaperImporter(
     private val libraryDir: File,
     private val maxPdfBytes: Long = MAX_PDF_BYTES,
 ) {
-    // Avoids needless duplicate fetches; the unique index on pdfUrl is what guarantees no duplicates.
+    // Avoids needless duplicate fetches; the unique index on pdfUrl is what guarantees no
+    // duplicates.
     private val arxivLock = Mutex()
 
-    /** Imports the paper named by an arXiv ID or URL in [text], or returns it if already present. */
+    /**
+     * Imports the paper named by an arXiv ID or URL in [text], or returns it if already present.
+     */
     suspend fun importArxiv(text: String): Paper {
         val arxivId = ArxivId.parse(text) ?: throw IOException("Not an arXiv ID or URL")
         return importArxiv(arxivId).paper
     }
 
     /** Imports [arxivId] unless it's already present; [ArxivImport.inserted] tells which. */
-    suspend fun importArxiv(arxivId: ArxivId): ArxivImport =
-        arxivLock.withLock {
-            dao.findByPdfUrl(arxivId.pdfUrl)?.let { return@withLock ArxivImport(it, inserted = false) }
-            val entry = arxiv.fetch(arxivId.id)
-            val paper = Paper(
+    suspend fun importArxiv(arxivId: ArxivId): ArxivImport = arxivLock.withLock {
+        dao.findByPdfUrl(arxivId.pdfUrl)?.let {
+            return@withLock ArxivImport(it, inserted = false)
+        }
+        val entry = arxiv.fetch(arxivId.id)
+        val paper =
+            Paper(
                 title = entry.title,
                 authors = entry.authors,
                 abstract = entry.abstract,
@@ -49,18 +54,21 @@ class PaperImporter(
                 venue = "arXiv",
                 pdfUrl = arxivId.pdfUrl,
             )
-            val id = dao.insert(paper)
-            // -1: another importer (e.g. another activity instance) added it first.
-            if (id == -1L) {
-                ArxivImport(dao.findByPdfUrl(arxivId.pdfUrl) ?: throw IOException("Couldn't save paper"), inserted = false)
-            } else {
-                ArxivImport(paper.copy(id = id), inserted = true)
-            }
+        val id = dao.insert(paper)
+        // -1: another importer (e.g. another activity instance) added it first.
+        if (id == -1L) {
+            ArxivImport(
+                dao.findByPdfUrl(arxivId.pdfUrl) ?: throw IOException("Couldn't save paper"),
+                inserted = false,
+            )
+        } else {
+            ArxivImport(paper.copy(id = id), inserted = true)
         }
+    }
 
     /**
-     * Copies a PDF into the library and adds it, titled after [displayName]. [open] is called
-     * once, right away on the IO dispatcher, so short-lived content URI grants are still valid.
+     * Copies a PDF into the library and adds it, titled after [displayName]. [open] is called once,
+     * right away on the IO dispatcher, so short-lived content URI grants are still valid.
      */
     suspend fun importPdf(displayName: String?, open: () -> InputStream?): Paper =
         withContext(Dispatchers.IO) {
@@ -80,14 +88,15 @@ class PaperImporter(
                         out.write(header)
                         copyLimited(src, out, maxPdfBytes - header.size)
                     }
-                    val paper = Paper(
-                        title = titleFrom(displayName),
-                        authors = emptyList(),
-                        abstract = "",
-                        year = null,
-                        venue = null,
-                        localFile = file.name,
-                    )
+                    val paper =
+                        Paper(
+                            title = titleFrom(displayName),
+                            authors = emptyList(),
+                            abstract = "",
+                            year = null,
+                            venue = null,
+                            localFile = file.name,
+                        )
                     // Once Room commits, the row must keep its file even if we're cancelled now.
                     val id = withContext(NonCancellable) { dao.insert(paper) }
                     if (id == -1L) throw IOException("Couldn't save paper")
@@ -116,11 +125,11 @@ class PaperImporter(
         fun libraryDir(context: Context): File = File(context.filesDir, "papers")
 
         internal fun titleFrom(displayName: String?): String =
-            displayName?.trim()
+            displayName
+                ?.trim()
                 ?.replace(Regex("""\.pdf$""", RegexOption.IGNORE_CASE), "")
                 ?.trim()
-                ?.ifEmpty { null }
-                ?: "Untitled PDF"
+                ?.ifEmpty { null } ?: "Untitled PDF"
 
         const val MAX_PDF_BYTES = 200L * 1024 * 1024
 

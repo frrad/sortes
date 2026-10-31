@@ -60,9 +60,10 @@ fun PapersScreen(
     val syncingFolders by viewModel.syncingFolders.collectAsStateWithLifecycle()
     val folderSyncFailed by viewModel.folderSyncFailed.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
-    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importPdf(uri)
-    }
+    val pickPdf =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) viewModel.importPdf(uri)
+        }
 
     Box(modifier = modifier.fillMaxSize()) {
         PapersList(
@@ -79,10 +80,10 @@ fun PapersScreen(
         FloatingActionButton(
             onClick = { showAddDialog = true },
             elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .border(InkBorder, FloatingActionButtonDefaults.shape),
+            modifier =
+                Modifier.align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .border(InkBorder, FloatingActionButtonDefaults.shape),
         ) {
             Icon(Icons.Filled.Add, contentDescription = "Add paper")
         }
@@ -122,7 +123,8 @@ internal fun AddPaperDialog(
                 label = { Text("arXiv ID or URL") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (text.isNotBlank()) onImportArxiv(text) }),
+                keyboardActions =
+                    KeyboardActions(onDone = { if (text.isNotBlank()) onImportArxiv(text) }),
             )
         },
         confirmButton = {
@@ -140,9 +142,9 @@ internal fun AddPaperDialog(
 }
 
 /**
- * The paper list under a title bar whose ⋮ menu opens folder sources and, if there are any
- * folders ([onSyncAllFolders] isn't null), syncs them all. [folderSyncFailed] shows a line that
- * leads to folder sources, where the failure is detailed.
+ * The paper list under a title bar whose ⋮ menu opens folder sources and, if there are any folders
+ * ([onSyncAllFolders] isn't null), syncs them all. [folderSyncFailed] shows a line that leads to
+ * folder sources, where the failure is detailed.
  */
 @Composable
 internal fun PapersList(
@@ -229,10 +231,10 @@ private fun StatusLines(
             Text(
                 text = "Folder sync failed — see Folder sources",
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenFolderSources)
-                    .padding(vertical = 4.dp),
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .clickable(onClick = onOpenFolderSources)
+                        .padding(vertical = 4.dp),
             )
         }
         if (importStatus != null) {
@@ -243,21 +245,22 @@ private fun StatusLines(
 
 @Composable
 private fun ImportStatusLine(status: ImportStatus, onDismiss: () -> Unit) {
-    val text = when (status) {
-        is ImportStatus.Running -> {
-            val count = if (status.count > 1) " (${status.count})" else ""
-            "Importing…$count"
+    val text =
+        when (status) {
+            is ImportStatus.Running -> {
+                val count = if (status.count > 1) " (${status.count})" else ""
+                "Importing…$count"
+            }
+            is ImportStatus.Done -> "Added: ${status.title}"
+            is ImportStatus.Failed -> "Import failed: ${status.message}"
         }
-        is ImportStatus.Done -> "Added: ${status.title}"
-        is ImportStatus.Failed -> "Import failed: ${status.message}"
-    }
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = status !is ImportStatus.Running, onClick = onDismiss)
-            .padding(vertical = 4.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .clickable(enabled = status !is ImportStatus.Running, onClick = onDismiss)
+                .padding(vertical = 4.dp),
     )
 }
 
@@ -268,9 +271,7 @@ private fun PaperCard(paper: Paper, onClick: () -> Unit) {
     OutlinedCard(
         onClick = onClick,
         border = InkBorder,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(PAPER_CARD_TAG),
+        modifier = Modifier.fillMaxWidth().testTag(PAPER_CARD_TAG),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -284,8 +285,7 @@ private fun PaperCard(paper: Paper, onClick: () -> Unit) {
                 text = paper.authors.joinToString(", "),
                 style = MaterialTheme.typography.labelMedium,
             )
-            val meta = listOfNotNull(paper.venue, paper.year?.toString())
-                .joinToString(" · ")
+            val meta = listOfNotNull(paper.venue, paper.year?.toString()).joinToString(" · ")
             if (meta.isNotEmpty()) {
                 Text(
                     text = meta,
@@ -305,17 +305,19 @@ private fun PaperCard(paper: Paper, onClick: () -> Unit) {
 private fun PapersListPreview() {
     SortesTheme {
         PapersList(
-            papers = listOf(
-                Paper(
-                    id = 1,
-                    title = "Attention Is All You Need",
-                    authors = listOf("Ashish Vaswani", "Noam Shazeer"),
-                    abstract = "We propose a new simple network architecture, " +
-                        "the Transformer, based solely on attention mechanisms.",
-                    year = 2017,
-                    venue = "NeurIPS",
-                ),
-            ),
+            papers =
+                listOf(
+                    Paper(
+                        id = 1,
+                        title = "Attention Is All You Need",
+                        authors = listOf("Ashish Vaswani", "Noam Shazeer"),
+                        abstract =
+                            "We propose a new simple network architecture, " +
+                                "the Transformer, based solely on attention mechanisms.",
+                        year = 2017,
+                        venue = "NeurIPS",
+                    )
+                )
         )
     }
 }

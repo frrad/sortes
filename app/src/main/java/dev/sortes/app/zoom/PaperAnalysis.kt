@@ -1,19 +1,20 @@
 package dev.sortes.app.zoom
 
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * A paper's zoom analysis: the crop model's crops at the automatic scale, plus what's needed to
- * solve other scales and to place windows on any of the paper's pages. Made by [analyzePaper],
- * the one entry point the reader and zoom-eval share.
+ * solve other scales and to place windows on any of the paper's pages. Made by [analyzePaper], the
+ * one entry point the reader and zoom-eval share.
  */
-class PaperAnalysis internal constructor(
+class PaperAnalysis
+internal constructor(
     private val paper: SampledPaper,
     internal val raster: PaperRaster,
     val config: CropConfig,
@@ -21,9 +22,15 @@ class PaperAnalysis internal constructor(
     val pageCount: Int,
     /** The crops at the automatic scale. */
     val auto: ModelCrops,
-    /** The paper's body glyph height on the reference screen at scale 1 ([PageText.glyphPx]), or null without text. */
+    /**
+     * The paper's body glyph height on the reference screen at scale 1 ([PageText.glyphPx]), or
+     * null without text.
+     */
     val glyphPx: Double?,
-    /** What was measured on each sampled page's fine render, in the order of [sample]; null where it couldn't be rendered. */
+    /**
+     * What was measured on each sampled page's fine render, in the order of [sample]; null where it
+     * couldn't be rendered.
+     */
     internal val sampleText: List<PageText?>,
     /** Time spent finding [auto] once the pages were rendered and measured, for diagnostics. */
     val solveMillis: Long,
@@ -34,51 +41,70 @@ class PaperAnalysis internal constructor(
     /** Crops already solved at other scales ([cropsAt]), e.g. kept with a stored analysis. */
     solvedCrops: List<ModelCrops> = emptyList(),
 ) {
-    /** A rendered page as the model sees it: without the config's ignorable ink ([CropConfig.preparer]). */
+    /**
+     * A rendered page as the model sees it: without the config's ignorable ink
+     * ([CropConfig.preparer]).
+     */
     private val prepare: (InkMask) -> InkMask = config.preparer(paperRule)
 
     /** The sampled pages' masks as the model sees them, in the order of [sample]. */
-    internal val masks: List<InkMask> get() = paper.masks
+    internal val masks: List<InkMask>
+        get() = paper.masks
 
     init {
-        require(paper.masks.size == auto.pages.size && sampleText.size == auto.pages.size) { "One crop per sampled page" }
+        require(paper.masks.size == auto.pages.size && sampleText.size == auto.pages.size) {
+            "One crop per sampled page"
+        }
     }
 
-    val model: CropModel get() = paper.model
-    val aspect: Float get() = model.aspect
+    val model: CropModel
+        get() = paper.model
+
+    val aspect: Float
+        get() = model.aspect
 
     /** Pixels per point the masks are rendered at. */
-    val density: Float get() = raster.density
+    val density: Float
+        get() = raster.density
 
     /** The pages that were sampled and could be rendered. */
-    val sample: List<Int> get() = paper.sample
+    val sample: List<Int>
+        get() = paper.sample
 
     /** The scales the zoom slider offers, loosest (1) first. */
     val scales: FloatArray = ZoomScales.defaultScales()
 
     /** Pages the analysis rendered and solved for. */
-    val pagesAnalyzed: Int get() = paper.masks.size
+    val pagesAnalyzed: Int
+        get() = paper.masks.size
 
     /** Of those, the pages whose text could be measured (their fine render didn't fail). */
-    val pagesMeasured: Int get() = sampleText.count { it != null }
+    val pagesMeasured: Int
+        get() = sampleText.count { it != null }
 
     /**
      * Whether every page of the sample was rendered and measured. A render can fail for a passing
      * reason (memory), so an incomplete analysis isn't worth keeping ([AnalysisCache]).
      */
-    val complete: Boolean get() = pagesAnalyzed == raster.sample.size && pagesMeasured == pagesAnalyzed
+    val complete: Boolean
+        get() = pagesAnalyzed == raster.sample.size && pagesMeasured == pagesAnalyzed
 
     // Guarded by itself: read by AnalysisCodec while a solve may add to it.
-    private val solved = HashMap<Float, ModelCrops>().apply {
-        for (crops in solvedCrops) put(crops.scale, crops)
-        put(auto.scale, auto)
-    }
+    private val solved =
+        HashMap<Float, ModelCrops>().apply {
+            for (crops in solvedCrops) put(crops.scale, crops)
+            put(auto.scale, auto)
+        }
     private val solving = Mutex()
 
-    /** The crops at [scale]: the model re-solved for it, so a manual zoom still gets the model's windows. */
+    /**
+     * The crops at [scale]: the model re-solved for it, so a manual zoom still gets the model's
+     * windows.
+     */
     suspend fun cropsAt(scale: Float): ModelCrops = solving.withLock {
-        synchronized(solved) { solved[scale] } ?: withContext(Dispatchers.Default) { paper.solve(scale) }
-            .also { synchronized(solved) { solved[scale] = it } }
+        synchronized(solved) { solved[scale] }
+            ?: withContext(Dispatchers.Default) { paper.solve(scale) }
+                .also { synchronized(solved) { solved[scale] = it } }
     }
 
     /** The crops at [scale] if they're solved already (as [cropsAt] solves them), else null. */
@@ -86,7 +112,10 @@ class PaperAnalysis internal constructor(
 
     /** The crops solved so far at scales other than the automatic one, loosest first. */
     internal val otherCrops: List<ModelCrops>
-        get() = synchronized(solved) { solved.values.filter { it.scale != auto.scale }.sortedByDescending { it.scale } }
+        get() =
+            synchronized(solved) {
+                solved.values.filter { it.scale != auto.scale }.sortedByDescending { it.scale }
+            }
 
     private val curvePoints = HashMap<Int, ModelCrops>()
 
@@ -98,48 +127,67 @@ class PaperAnalysis internal constructor(
      */
     fun curve(): Flow<ZoomCurve> = flow {
         val autoIndex = scales.indices.minBy { kotlin.math.abs(scales[it] - auto.scale) }
-        val wanted = (scales.indices.filter { it % CURVE_STRIDE == 0 } + autoIndex).distinct().sorted()
+        val wanted =
+            (scales.indices.filter { it % CURVE_STRIDE == 0 } + autoIndex).distinct().sorted()
         emit(curveOf())
         for (i in wanted) {
-            val crops = curvePoints[i] ?: cropsAt(scales[i]).also {
-                curvePoints[i] = it
-                emit(curveOf())
-            }
+            val crops =
+                curvePoints[i]
+                    ?: cropsAt(scales[i]).also {
+                        curvePoints[i] = it
+                        emit(curveOf())
+                    }
             if (crops.cutFraction > CURVE_LIMIT) break
         }
     }
 
-    private fun curveOf() = ZoomCurve(
-        scales = scales,
-        points = curvePoints.mapValues { (_, c) -> ZoomCurve.Point(c.cutFraction.toFloat(), c.pagesCut) },
-        pagesAnalyzed = pagesAnalyzed,
-        autoScale = auto.scale,
-    )
+    private fun curveOf() =
+        ZoomCurve(
+            scales = scales,
+            points =
+                curvePoints.mapValues { (_, c) ->
+                    ZoomCurve.Point(c.cutFraction.toFloat(), c.pagesCut)
+                },
+            pagesAnalyzed = pagesAnalyzed,
+            autoScale = auto.scale,
+        )
 
-    /** A page as the model sees it: its [mask] without ignorable ink, and its [text] (null if not measured). */
+    /**
+     * A page as the model sees it: its [mask] without ignorable ink, and its [text] (null if not
+     * measured).
+     */
     class Page(val mask: InkMask, val text: PageText?)
 
     // Pages outside the sample, rendered and measured as they're placed, the latest few kept:
     // paging back, or changing the zoom, doesn't render them again.
-    private val unsampled = object : LinkedHashMap<Int, Page>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Page>) = size > UNSAMPLED_KEPT
-    }
+    private val unsampled =
+        object : LinkedHashMap<Int, Page>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Page>) =
+                size > UNSAMPLED_KEPT
+        }
     private val unsampledLock = Mutex()
 
     /**
-     * Page [index] as the model sees it. A page outside the sample is rendered (and, for the
-     * text model, measured) from the pages [analyzePaper] was given, the first time it's asked
-     * for. Throws if it can't be rendered at all.
+     * Page [index] as the model sees it. A page outside the sample is rendered (and, for the text
+     * model, measured) from the pages [analyzePaper] was given, the first time it's asked for.
+     * Throws if it can't be rendered at all.
      */
     suspend fun page(index: Int): Page {
         val analysed = paper.sampled(index)
         if (analysed >= 0) return Page(paper.masks[analysed], sampleText[analysed])
         return unsampledLock.withLock {
-            unsampled[index] ?: run {
-                val raw = raster.coarse(index)
-                val mask = withContext(Dispatchers.Default) { prepare(raw) }
-                Page(mask, if (config.text.placesWindows) measure(raster, index, raw, mask, config.text) else null)
-            }.also { unsampled[index] = it }
+            unsampled[index]
+                ?: run {
+                    val raw = raster.coarse(index)
+                    val mask = withContext(Dispatchers.Default) { prepare(raw) }
+                    Page(
+                        mask,
+                        if (config.text.placesWindows)
+                            measure(raster, index, raw, mask, config.text)
+                        else null,
+                    )
+                }
+                    .also { unsampled[index] = it }
         }
     }
 
@@ -149,33 +197,49 @@ class PaperAnalysis internal constructor(
         val analysed = paper.sampled(index)
         if (analysed >= 0) return crops.pages[analysed] to page
         // Pure: safe alongside solves and other placements.
-        return withContext(Dispatchers.Default) { paper.cropFor(index, crops, page.mask, page.text) } to page
+        return withContext(Dispatchers.Default) {
+            paper.cropFor(index, crops, page.mask, page.text)
+        } to page
     }
 
     /** Places page [index] of the paper in [crops]' windows, with the ink its window cuts off. */
     suspend fun place(index: Int, crops: ModelCrops): Placement {
         val (crop, page) = cropOf(index, crops)
         val size = raster.source.pageSize(index)
-        return withContext(Dispatchers.Default) { Placement(crop.window, cutInk(page.mask, size, crop.cells)) }
+        return withContext(Dispatchers.Default) {
+            Placement(crop.window, cutInk(page.mask, size, crop.cells))
+        }
     }
 
     /**
-     * Every page's crop in [crops], placed as [place] places it, as one [ModelCrops] over the
-     * whole paper: a page with a window of its own adds it to the windows. For tools that look at
-     * every page; the reader places pages as they're shown.
+     * Every page's crop in [crops], placed as [place] places it, as one [ModelCrops] over the whole
+     * paper: a page with a window of its own adds it to the windows. For tools that look at every
+     * page; the reader places pages as they're shown.
      */
     suspend fun placeAll(crops: ModelCrops): PlacedPaper {
         val windows = crops.windows.toMutableList()
         val pages = ArrayList<Page>(pageCount)
-        val placed = (0 until pageCount).map { i ->
-            val (crop, page) = cropOf(i, crops)
-            pages += page
-            if (crop.windowIndex != CropModel.OWN_WINDOW) crop else {
-                windows += crop.window
-                crop.copy(windowIndex = windows.lastIndex)
+        val placed =
+            (0 until pageCount).map { i ->
+                val (crop, page) = cropOf(i, crops)
+                pages += page
+                if (crop.windowIndex != CropModel.OWN_WINDOW) crop
+                else {
+                    windows += crop.window
+                    crop.copy(windowIndex = windows.lastIndex)
+                }
             }
-        }
-        return PlacedPaper(this, ModelCrops(crops.scale, windows, placed, crops.weights, pages.sumOf { it.mask.inkCount.toLong() }), pages)
+        return PlacedPaper(
+            this,
+            ModelCrops(
+                crops.scale,
+                windows,
+                placed,
+                crops.weights,
+                pages.sumOf { it.mask.inkCount.toLong() },
+            ),
+            pages,
+        )
     }
 
     companion object {
@@ -193,37 +257,62 @@ class PaperAnalysis internal constructor(
 /** Where a page's crop window sits, and the ink it [cut]s off. */
 data class Placement(val window: CropWindow, val cut: List<CutInk>)
 
-/** Every page's crop in one [ModelCrops] ([PaperAnalysis.placeAll]), from [analysis], and each page as the model saw it. */
-class PlacedPaper(val analysis: PaperAnalysis, val crops: ModelCrops, val pages: List<PaperAnalysis.Page>) {
+/**
+ * Every page's crop in one [ModelCrops] ([PaperAnalysis.placeAll]), from [analysis], and each page
+ * as the model saw it.
+ */
+class PlacedPaper(
+    val analysis: PaperAnalysis,
+    val crops: ModelCrops,
+    val pages: List<PaperAnalysis.Page>,
+) {
     /** Each page's mask as the model saw it (the config's ignorable ink stripped). */
-    val masks: List<InkMask> get() = pages.map { it.mask }
+    val masks: List<InkMask>
+        get() = pages.map { it.mask }
 }
 
 /**
  * The crop pipeline, shared by the reader and zoom-eval: renders a sample of at most [maxPages]
  * pages of [source] ([samplePages]) at low resolution, strips [config]'s ignorable ink, measures
- * each sampled page's text on a finer render (released page by page), and solves the crop model
- * for a screen of [aspect] at its automatic scale. Pages that fail to render are left out; a page
- * whose fine render fails is solved without its text.
+ * each sampled page's text on a finer render (released page by page), and solves the crop model for
+ * a screen of [aspect] at its automatic scale. Pages that fail to render are left out; a page whose
+ * fine render fails is solved without its text.
  */
 suspend fun analyzePaper(
     source: PageRenderer,
     aspect: Float,
     config: CropConfig = CropConfig.DEFAULT,
     maxPages: Int = MAX_ANALYZED_PAGES,
-): PaperAnalysis = withContext(Dispatchers.Default) {
-    val raster = paperRaster(source, aspect, maxPages)
-    val rendered = raster.sample.mapNotNull { index -> orNull { index to raster.coarse(index) } }
-    if (rendered.isEmpty()) throw java.io.IOException("No pages could be rendered")
-    // Paper-level rules learn from the sample, then apply to any page.
-    val paperRule = config.paperRule(rendered.map { it.second.withoutIgnorableInk(config.pageRules) })
-    val prepare = config.preparer(paperRule)
-    val masks = rendered.map { prepare(it.second) }
-    // One fine render alive at a time: each page keeps only what's measured on it.
-    val text = rendered.indices.map { i -> measure(raster, rendered[i].first, rendered[i].second, masks[i], config.text) }
-    val glyphPx = PageText.glyphPx(text, masks, aspect, config.text)
-    assemble(raster, aspect, config, source.pageCount, rendered.map { it.first }, masks, text, glyphPx, paperRule, auto = null)
-}
+): PaperAnalysis =
+    withContext(Dispatchers.Default) {
+        val raster = paperRaster(source, aspect, maxPages)
+        val rendered =
+            raster.sample.mapNotNull { index -> orNull { index to raster.coarse(index) } }
+        if (rendered.isEmpty()) throw java.io.IOException("No pages could be rendered")
+        // Paper-level rules learn from the sample, then apply to any page.
+        val paperRule =
+            config.paperRule(rendered.map { it.second.withoutIgnorableInk(config.pageRules) })
+        val prepare = config.preparer(paperRule)
+        val masks = rendered.map { prepare(it.second) }
+        // One fine render alive at a time: each page keeps only what's measured on it.
+        val text =
+            rendered.indices.map { i ->
+                measure(raster, rendered[i].first, rendered[i].second, masks[i], config.text)
+            }
+        val glyphPx = PageText.glyphPx(text, masks, aspect, config.text)
+        assemble(
+            raster,
+            aspect,
+            config,
+            source.pageCount,
+            rendered.map { it.first },
+            masks,
+            text,
+            glyphPx,
+            paperRule,
+            auto = null,
+        )
+    }
 
 /**
  * A [PaperAnalysis] from its parts: what [analyzePaper] renders and measures, or what an
@@ -241,50 +330,84 @@ internal suspend fun assemble(
     paperRule: IgnorableInkRule,
     auto: ModelCrops?,
     solved: List<ModelCrops> = emptyList(),
-): PaperAnalysis = withContext(Dispatchers.Default) {
-    val legibility = config.text.legibility(config.weights.zeta)
-    val paper = SampledPaper(
-        CropModel(aspect, config.weights),
-        masks,
-        sample,
-        extras = texts.takeIf { config.text.placesWindows },
-        zoomCost = glyphPx?.let { k -> { s -> legibility.cost(s.toDouble(), k) } },
-    )
-    val started = System.nanoTime()
-    val crops = auto ?: paper.auto()
-    val solveMillis = if (auto == null) (System.nanoTime() - started) / 1_000_000 else 0
-    PaperAnalysis(paper, raster, config, pageCount, crops, glyphPx, texts, solveMillis, paperRule, restored = auto != null, solvedCrops = solved)
-}
+): PaperAnalysis =
+    withContext(Dispatchers.Default) {
+        val legibility = config.text.legibility(config.weights.zeta)
+        val paper =
+            SampledPaper(
+                CropModel(aspect, config.weights),
+                masks,
+                sample,
+                extras = texts.takeIf { config.text.placesWindows },
+                zoomCost = glyphPx?.let { k -> { s -> legibility.cost(s.toDouble(), k) } },
+            )
+        val started = System.nanoTime()
+        val crops = auto ?: paper.auto()
+        val solveMillis = if (auto == null) (System.nanoTime() - started) / 1_000_000 else 0
+        PaperAnalysis(
+            paper,
+            raster,
+            config,
+            pageCount,
+            crops,
+            glyphPx,
+            texts,
+            solveMillis,
+            paperRule,
+            restored = auto != null,
+            solvedCrops = solved,
+        )
+    }
 
 /**
  * How the pipeline renders [source]: its [PaperRaster.sample] ([samplePages], at most [maxPages],
  * those whose sizes can be read), at the density ([analysisDensity]) those pages give.
  */
-suspend fun paperRaster(source: PageRenderer, aspect: Float, maxPages: Int = MAX_ANALYZED_PAGES): PaperRaster {
+suspend fun paperRaster(
+    source: PageRenderer,
+    aspect: Float,
+    maxPages: Int = MAX_ANALYZED_PAGES,
+): PaperRaster {
     val sample = samplePages(source.pageCount, maxPages)
     val sizes = sample.associateWith { index -> orNull { source.pageSize(index) } }
     val readable = sizes.filterValues { it != null }
     if (readable.isEmpty()) throw java.io.IOException("No readable pages")
-    return PaperRaster(source, analysisDensity(readable.values.map { it!! }, aspect), readable.keys.toList())
+    return PaperRaster(
+        source,
+        analysisDensity(readable.values.map { it!! }, aspect),
+        readable.keys.toList(),
+    )
 }
 
-/** Page [index]'s text, from a render [TextWeights.factor] times finer than [raw]; null if it can't be rendered. */
-private suspend fun measure(raster: PaperRaster, index: Int, raw: InkMask, prepared: InkMask, text: TextWeights): PageText? =
-    orNull { raster.fine(index, raw, text.factor) }?.let { fine ->
+/**
+ * Page [index]'s text, from a render [TextWeights.factor] times finer than [raw]; null if it can't
+ * be rendered.
+ */
+private suspend fun measure(
+    raster: PaperRaster,
+    index: Int,
+    raw: InkMask,
+    prepared: InkMask,
+    text: TextWeights,
+): PageText? = orNull {
+    raster.fine(index, raw, text.factor)
+}
+    ?.let { fine ->
         withContext(Dispatchers.Default) { PageText.of(fine, raw, prepared, text) }
     }
 
 /**
  * [block]'s result, or null if it fails as a page of a broken PDF can (pdfium throws various
- * exceptions). Cancellation and [IllegalArgumentException] (a bug, such as a render of the
- * wrong size) propagate.
+ * exceptions). Cancellation and [IllegalArgumentException] (a bug, such as a render of the wrong
+ * size) propagate.
  */
-private inline fun <T> orNull(block: () -> T): T? = try {
-    block()
-} catch (e: CancellationException) {
-    throw e
-} catch (e: IllegalArgumentException) {
-    throw e
-} catch (e: Exception) {
-    null
-}
+private inline fun <T> orNull(block: () -> T): T? =
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: IllegalArgumentException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }

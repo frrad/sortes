@@ -31,15 +31,17 @@ data class SyncResult(
 }
 
 /**
- * Adds every paper in an alphaXiv shared folder to the library through [importArxiv], which
- * must dedupe and say whether it inserted (see PaperImporter.importArxiv). Papers are imported
- * one by one; a failing paper doesn't stop the rest, and re-syncing retries it.
+ * Adds every paper in an alphaXiv shared folder to the library through [importArxiv], which must
+ * dedupe and say whether it inserted (see PaperImporter.importArxiv). Papers are imported one by
+ * one; a failing paper doesn't stop the rest, and re-syncing retries it.
  */
 class FolderSyncer(
     private val client: AlphaxivClient,
     private val importArxiv: suspend (ArxivId) -> ArxivImport,
 ) {
-    /** Throws [java.io.IOException] if the folder itself can't be read; then nothing is imported. */
+    /**
+     * Throws [java.io.IOException] if the folder itself can't be read; then nothing is imported.
+     */
     suspend fun sync(folderId: String): SyncResult {
         val folder = client.fetchFolder(folderId)
         var result = SyncResult(folder.name, complete = folder.complete)
@@ -49,17 +51,18 @@ class FolderSyncer(
                 result = result.copy(skipped = result.skipped + 1)
                 continue
             }
-            result = try {
-                if (importArxiv(arxivId).inserted) {
-                    result.copy(added = result.added + 1)
-                } else {
-                    result.copy(alreadyPresent = result.alreadyPresent + 1)
+            result =
+                try {
+                    if (importArxiv(arxivId).inserted) {
+                        result.copy(added = result.added + 1)
+                    } else {
+                        result.copy(alreadyPresent = result.alreadyPresent + 1)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    result.copy(failures = result.failures + (e.message ?: e.toString()))
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                result.copy(failures = result.failures + (e.message ?: e.toString()))
-            }
         }
         return result
     }
