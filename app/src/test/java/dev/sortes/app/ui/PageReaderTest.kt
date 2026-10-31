@@ -739,6 +739,196 @@ class PageReaderTest {
         awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
     }
 
+    /**
+     * A reader whose [pages] and stored [firstPage] are set by the test, as [ReaderScreen] passes
+     * them: the pages are null until the PDF is open. Records the first pages it reports shown
+     * and the bitmaps it draws.
+     */
+    private inner class StoredFirstPage(
+        private val analyze: (suspend (FakePages, Float, () -> Unit) -> dev.sortes.app.zoom.PaperAnalysis)? = null,
+    ) {
+        var current by mutableStateOf<FakePages?>(null)
+        var firstPage by mutableStateOf<FirstPage?>(null)
+        var opening by mutableStateOf(0)
+        val shown = Collections.synchronizedList(mutableListOf<Pair<FirstPage, Boolean>>())
+        val drawn = mutableListOf<Bitmap>()
+        val timelines = mutableListOf<OpenTimeline>()
+
+        fun show() {
+            composeRule.setContent {
+                SortesTheme {
+                    ReaderFrame(onClose = {}) {
+                        key(opening) {
+                            val pages = current
+                            val timeline = remember { OpenTimeline(paperId = 1, startedAt = 0, clock = { 0 }, log = {}).also { timelines += it } }
+                            PageReader(
+                                pages, saved, onSaveScale = {},
+                                timeline = timeline,
+                                analyze = { aspect, onFresh ->
+                                    val p = checkNotNull(pages)
+                                    analyze?.invoke(p, aspect, onFresh) ?: run {
+                                        onFresh()
+                                        dev.sortes.app.zoom.analyzePaper(p, aspect)
+                                    }
+                                },
+                                firstPage = firstPage,
+                                onFirstPageShown = { page, stored -> shown += page to stored },
+                                onDrawn = { drawn += it },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        /** Draws the window (Robolectric draws only when asked) and returns the page bitmap drawn. */
+        fun draw(): Bitmap? {
+            drawn.clear()
+            composeRule.runOnIdle { drawWindow() }
+            return drawn.lastOrNull()
+        }
+    }
+
+    /**
+     * The zoomed first page as a reader shows it, from a first opening of [pages]; [pages] is
+     * then a new copy of them, as if the PDF were opened again.
+     */
+    private fun firstPageShown(reader: StoredFirstPage): FirstPage {
+        reader.current = pages
+        reader.show()
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        idle()
+        val (page, stored) = reader.shown.single()
+        assertEquals(false, stored)
+        reader.shown.clear()
+        pages = FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
+        return page
+    }
+
+    @Test
+    fun aStoredFirstPageShowsBeforeThePagesOpenAndStaysWhenTheyRenderIt() {
+        val reader = StoredFirstPage()
+        val firstOpening = pages
+        val first = firstPageShown(reader)
+        val zoomed = firstOpening.renders.last().region
+
+        // Opened again: the stored page shows before the PDF is open.
+        reader.current = null
+        reader.firstPage = first
+        reader.opening++
+        idle()
+        composeRule.onNodeWithContentDescription("Page 1").assertExists()
+        assertTrue(reader.draw() === first.bitmap)
+        assertEquals(emptyList<Pair<Int, Region>>(), readerRenders())
+        assertEquals(listOf("zoomed page 1"), reader.timelines.last().frames)
+        assertTrue(reader.timelines.last().steps.any { it.first == "showing stored page 1" })
+
+        // The PDF opens; the page renders as always, identical, so the stored bitmap stays: not
+        // drawn again.
+        reader.current = pages
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        idle()
+
+        assertEquals(listOf(0 to zoomed), readerRenders())
+        assertEquals(listOf(first to true), reader.shown.toList())
+        assertTrue(reader.draw() === first.bitmap)
+        // Pages turn as ever.
+        tapForward()
+        awaitRendered { it.first == 1 }
+        assertEquals(1 to zoomed, lastRendered())
+    }
+
+    @Test
+    fun aStoredFirstPageThatDiffersFromTheRenderIsReplaced() {
+        val reader = StoredFirstPage()
+        val first = firstPageShown(reader)
+        val blank = Bitmap.createBitmap(first.bitmap.width, first.bitmap.height, Bitmap.Config.ARGB_8888)
+            .apply { eraseColor(android.graphics.Color.WHITE) }
+
+        reader.current = null
+        reader.firstPage = FirstPage(first.key, blank)
+        reader.opening++
+        idle()
+        assertTrue(reader.draw() === blank)
+
+        reader.current = pages
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        idle()
+
+        val (page, stored) = reader.shown.single()
+        assertEquals(false, stored)
+        assertTrue(page.bitmap.sameAs(first.bitmap))
+        assertTrue(reader.draw() === page.bitmap)
+    }
+
+    @Test
+    fun aStoredFirstPageForAnotherSizeOrZoomIsNotShown() {
+        val reader = StoredFirstPage()
+        val first = firstPageShown(reader)
+        val others = listOf(
+            first.key.copy(width = first.key.width + 1),
+            first.key.copy(height = first.key.height - 1),
+            first.key.copy(scale = 0.9f),
+            first.key.copy(index = 1),
+        )
+        for (key in others) {
+            reader.current = null
+            reader.firstPage = FirstPage(key, first.bitmap)
+            reader.opening++
+            idle()
+
+            composeRule.onNodeWithContentDescription("Page 1").assertDoesNotExist()
+            assertEquals("$key", null, reader.draw())
+        }
+    }
+
+    @Test
+    fun aStoredFirstPageStaysWhileTheAnalysisIsComputedAfresh() {
+        val reader = StoredFirstPage()
+        val first = firstPageShown(reader)
+        val gate = CompletableDeferred<Unit>()
+        pages.maskGate = gate
+
+        // The PDF is open but its analysis wasn't stored: no whole page 1 replaces the stored one.
+        reader.current = pages
+        reader.firstPage = first
+        reader.opening++
+        idle()
+        Thread.sleep(100)
+        idle()
+        assertEquals(emptyList<Pair<Int, Region>>(), readerRenders())
+        assertTrue(reader.draw() === first.bitmap)
+
+        gate.complete(Unit)
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        idle()
+
+        assertEquals(listOf(first to true), reader.shown.toList())
+        assertTrue(reader.draw() === first.bitmap)
+    }
+
+    @Test
+    fun aStoredFirstPageGivesWayToTheWholePageIfTheAnalysisFails() {
+        var fail = false
+        val reader = StoredFirstPage(analyze = { p, aspect, onFresh ->
+            if (fail) throw java.io.IOException("No analysis")
+            onFresh()
+            dev.sortes.app.zoom.analyzePaper(p, aspect)
+        })
+        val first = firstPageShown(reader)
+        fail = true
+
+        reader.current = pages
+        reader.firstPage = first
+        reader.opening++
+        awaitRendered { (index, region) -> index == 0 && !region.isZoomed() }
+        idle()
+
+        assertEquals(listOf(false), readerRenders().map { it.second.isZoomed() })
+        val drawn = reader.draw()
+        assertTrue(drawn != null && drawn !== first.bitmap)
+    }
+
     @Test
     fun zeroSizeLayoutRendersNothing() {
         readerSize = 0.dp to 0.dp

@@ -41,6 +41,15 @@ android {
                 "proguard-rules.pro",
             )
         }
+        // Release code (minified, optimised, not debuggable) signed with the debug key, so it
+        // installs over a debug build with `adb install -r`, keeping the library, to measure
+        // how fast the app really is: debug builds run unoptimised.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
     }
 
     compileOptions {

@@ -19,6 +19,14 @@ and install time), so every new build recomputes them. Still bump
 `AnalysisCache.PIPELINE_VERSION` when a change alters what `analyzePaper` computes (it also
 keys zoom-eval and tests), and `FORMAT_VERSION` when the file format changes.
 
+## Stored first pages
+
+The reader also stores each paper's first page as shown (`pdf/PageSnapshots.kt`), keyed by the
+app build, `CropConfig`, `PIPELINE_VERSION`, the PDF file's path, size and mtime, and the zoom,
+and draws it on reopening before the PDF opens; the normal render then confirms it pixel for
+pixel. Bump `PageSnapshots.FORMAT_VERSION` when its file format changes. Never show it unless it
+is exactly what the reader would render. See `tools/zoom-eval/notes/open-latency.md`.
+
 ## Design for e-ink
 
 The app is used on e-ink tablets (a Boox Note Air5 C), colour and black-and-white

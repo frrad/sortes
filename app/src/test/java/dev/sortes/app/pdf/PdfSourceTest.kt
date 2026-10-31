@@ -185,4 +185,21 @@ class PdfSourceTest {
     private companion object {
         val PDF_BYTES = "%PDF-1.4\nnot a real pdf body\n%%EOF\n".toByteArray()
     }
+
+    @Test
+    fun cachedFileIsTheImportOrAnEarlierDownloadAndNeverDownloads() {
+        val imported = importedFile("paper-3.pdf")
+        assertEquals(imported, source.cachedFile(localPaper(id = 7, name = "paper-3.pdf")))
+        // Not downloaded yet: nothing, and no download.
+        assertEquals(null, source.cachedFile(paper(id = 8)))
+        assertEquals(0, server.requestCount)
+
+        server.enqueue(pdfResponse())
+        val downloaded = runBlocking { source.fetch(paper(id = 8)) }
+
+        assertEquals(downloaded, source.cachedFile(paper(id = 8)))
+        // A missing or path-like import is no file, not an error.
+        assertEquals(null, source.cachedFile(localPaper(id = 7, name = "gone.pdf")))
+        assertEquals(null, source.cachedFile(localPaper(id = 7, name = "../pdfs/8.pdf")))
+    }
 }
