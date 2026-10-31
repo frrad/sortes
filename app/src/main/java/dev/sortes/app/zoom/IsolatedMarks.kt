@@ -11,7 +11,7 @@ package dev.sortes.app.zoom
  *  - alone: no other ink within [MARK_MIN_GAP] of the page height around its bounding box,
  * on a page with other ink.
  *
- * Not one of [IGNORABLE_INK_RULES] yet: it is being evaluated against the owner's labels.
+ * Used by [CropConfig.DEFAULT], after [IGNORABLE_INK_RULES].
  */
 object IsolatedMarks : IgnorableInkRule {
     override fun strip(mask: InkMask): InkMask {

@@ -110,6 +110,8 @@ class MaskPages(
     private val masks: List<InkMask>,
     /** Pages that can't be read at all. */
     private val broken: Set<Int> = emptySet(),
+    /** Renders bigger than this many pixels fail, as a big render can on a device short of memory. */
+    private val maxPixels: Int = Int.MAX_VALUE,
 ) : PageRenderer {
     data class Render(val index: Int, val width: Int, val height: Int)
 
@@ -127,6 +129,7 @@ class MaskPages(
 
     override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
         if (index in broken) throw java.io.IOException("Can't render page $index")
+        if (width.toLong() * height > maxPixels) throw IllegalStateException("Out of memory rendering page $index")
         renders += Render(index, width, height)
         val mask = masks[index]
         return IntArray(width * height) {

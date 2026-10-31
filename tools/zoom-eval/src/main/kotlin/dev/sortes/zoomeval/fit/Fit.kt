@@ -57,15 +57,21 @@ suspend fun labelledPaper(
 ): LabelledPaper {
     // Every render is remembered, so trials don't re-render.
     val pages = MemoPages(pdf)
-    val raster = paperRaster(pages, aspect).second
+    val raster = paperRaster(pages, aspect)
     val rendered = pdf.pageSizes.indices.map { raster.coarse(it) }
     val judged = requireNotNull(labels.labelledAgainst?.takeIf { it.centres?.size == rendered.size }) {
         "${labels.paper}: the labels don't record the ${rendered.size} pages' judged crops (labelledAgainst.centres)"
     }
     val targets = targets(labels, interpretation, judged.scale, judged.centres!!)
-    val bare = CropConfig.DEFAULT.copy(pageRules = IGNORABLE_INK_RULES + IsolatedMarks, furniture = true).prepare(rendered)
+    val bare = SCORING_RULES.prepare(rendered)
     return LabelledPaper(paper, pages, rendered, bare, pdf.pageSizes, labels, targets, aspect)
 }
+
+/**
+ * What scoring ignores when it counts a page's ink: margin stamps, isolated marks and page
+ * furniture, which the owner doesn't mind losing. Fixed, whatever the config being scored.
+ */
+val SCORING_RULES = CropConfig("scoring", IGNORABLE_INK_RULES + IsolatedMarks, furniture = true, CropConfig.DEFAULT.weights, CropConfig.DEFAULT.text)
 
 /** A candidate's per-paper scores. */
 class Trial(val config: CropConfig, val scores: List<PaperScore>) {

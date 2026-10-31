@@ -45,42 +45,23 @@ class ElementLoss private constructor(
         }
     }
 
-    /** Lost element equivalents keeping [cells]; builds the [table] each call, so for one-off queries. */
-    fun lost(cells: CellRect): Double = table().lost(cells)
-
     companion object {
         /**
-         * Exclude whole fine components whose ink mostly belongs to the existing coarse exclusions.
+         * Every component of the fine render that isn't [FineComponents.ignored] has mass one.
          * Fine ink in a coarse blank still counts: dots/thin symbols can disappear on downsampling.
          */
-        fun of(fine: InkMask, raw: InkMask, prepared: InkMask): ElementLoss = of(fine, raw, prepared, PageBlocks.of(fine, 0))
-
-        /** As [of], given [fine]'s components ([PageBlocks] at gap 0), so they're found once per page. */
-        fun of(fine: InkMask, raw: InkMask, prepared: InkMask, components: PageBlocks, labels: IntArray = components.labels()): ElementLoss {
-            require(raw.width == prepared.width && raw.height == prepared.height) { "Mask sizes differ" }
-            require(fine.width >= raw.width && fine.height >= raw.height) { "Fine mask is smaller than the solver mask" }
-            // Segment BEFORE applying coarse exclusions. Erasing coarse pixels first would
-            // turn the anti-aliased fringe of an ignored stamp into dozens of new "elements".
-            val removed = IntArray(components.boxes.size)
-            for (y in 0 until fine.height) for (x in 0 until fine.width) {
-                val b = labels[y * fine.width + x]
-                if (b < 0) continue
-                val cx = x * raw.width / fine.width
-                val cy = y * raw.height / fine.height
-                if (raw[cx, cy] && !prepared[cx, cy]) removed[b]++
-            }
-            // A component belongs to the existing exclusions if at least half its ink does.
-            // Keep its fine fringe out too; do not invent fragments at coarse cell boundaries.
-            val ignored = BooleanArray(removed.size) { removed[it] * 2 >= components.inks[it] }
+        fun of(c: FineComponents): ElementLoss {
+            val fine = c.fine
+            val raw = c.raw
             val masses = DoubleArray(raw.width * raw.height)
             for (y in 0 until fine.height) for (x in 0 until fine.width) {
-                val b = labels[y * fine.width + x]
-                if (b < 0 || ignored[b]) continue
+                val b = c.labels[y * fine.width + x]
+                if (b < 0 || c.ignored[b]) continue
                 val cell = (y * raw.height / fine.height) * raw.width + x * raw.width / fine.width
-                masses[cell] += 1.0 / components.inks[b]
+                masses[cell] += 1.0 / c.blocks.inks[b]
             }
             val inked = masses.indices.filter { masses[it] != 0.0 }.toIntArray()
-            return ElementLoss(raw.width, raw.height, ignored.count { !it }, inked, DoubleArray(inked.size) { masses[inked[it]] })
+            return ElementLoss(raw.width, raw.height, c.ignored.count { !it }, inked, DoubleArray(inked.size) { masses[inked[it]] })
         }
     }
 }

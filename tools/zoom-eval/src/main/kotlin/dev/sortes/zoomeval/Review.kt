@@ -38,7 +38,7 @@ data class ConfigSpec(val label: String, val config: CropConfig) {
 }
 
 /**
- * `review --configs=reader,tuned[,tuned:gamma=0.2;kappa=0.1] [--only=id,id] [--out=DIR] [--width=360] [--scale=S]
+ * `review [--configs=tuned+text,tuned+text:gamma=0.2;kappa=0.1] [--only=id,id] [--out=DIR] [--width=360] [--scale=S]
  * [--corpus=] [--pdfs=] [--aspect=]`: writes, for every paper, one readable image per page and
  * config (the padded frame with the page, the window outlined, what's off screen shaded and cut
  * ink boxed in red), a per-paper HTML grid, and an index with each config's zoom, windows and
@@ -57,7 +57,7 @@ fun reviewMain(args: List<String>) {
     val out = File(opts["out"] ?: "$home/sortes-review/model/fable").apply { mkdirs() }
     val aspect = (opts["aspect"] ?: "0.75").toFloat()
     val width = (opts["width"] ?: "360").toInt()
-    val specs = (opts["configs"] ?: "reader,tuned").split(',').map { ConfigSpec.parse(it.trim()) }
+    val specs = (opts["configs"] ?: CropConfig.DEFAULT.name).split(',').map { ConfigSpec.parse(it.trim()) }
     val only = opts["only"]?.split(',')?.toSet()
     val title = opts["title"] ?: "Crop review"
     // Outline each page's blocks (PageBlocks at this gap) in blue, to judge the segmentation.

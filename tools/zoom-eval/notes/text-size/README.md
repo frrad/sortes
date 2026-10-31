@@ -25,9 +25,9 @@ PDFs, 12 pages each):
 | --- | --- | --- |
 | glyph height, 4× render | 0.65 | 5.1% |
 | glyph height, 2× render | 0.80 | 2.3% |
-| line pitch (`TextSize.linePitch`), 4× | 1.18 | 8.4% |
+| line pitch (`LinePitch`, zoom-eval only), 4× | 1.18 | 8.4% |
 
-The pitch estimator recovers the PDF's baseline-to-baseline distance almost exactly, but
+The pitch estimator (`LinePitch`) recovers the PDF's baseline-to-baseline distance almost exactly, but
 leading isn't font size (Maldacena is nearly double-spaced), so glyph height is the better
 proxy. Some of glyph height's spread is real (fonts' x-heights differ). The experiment uses the
 4× render because it is already made for the component cost; the 2× estimate is tighter and

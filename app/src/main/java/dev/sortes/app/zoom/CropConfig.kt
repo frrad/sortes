@@ -18,12 +18,18 @@ data class CropConfig(
     fun paperRule(pages: List<InkMask>): IgnorableInkRule =
         if (furniture) PageFurniture.of(pages) else IgnorableInkRule { it }
 
-    /** A paper's [rendered] pages (all of them, or its sample) as the model sees them. */
-    fun prepare(rendered: List<InkMask>): List<InkMask> {
-        val pages = rendered.map { it.withoutIgnorableInk(pageRules) }
-        val rule = paperRule(pages)
-        return pages.map { rule.strip(it) }
+    /**
+     * How a paper's pages are seen by the model, given its [sample] of rendered pages: without
+     * [pageRules]' ink, then without the paper rule's (furniture, learnt from the sample). The
+     * one place the rules are applied, to sampled pages and the rest alike.
+     */
+    fun preparer(sample: List<InkMask>): (InkMask) -> InkMask {
+        val rule = paperRule(sample.map { it.withoutIgnorableInk(pageRules) })
+        return { rule.strip(it.withoutIgnorableInk(pageRules)) }
     }
+
+    /** A paper's [rendered] pages (all of them, or its sample) as the model sees them. */
+    fun prepare(rendered: List<InkMask>): List<InkMask> = rendered.map(preparer(rendered))
 
     companion object {
         /**

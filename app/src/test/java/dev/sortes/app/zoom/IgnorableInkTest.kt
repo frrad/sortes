@@ -37,7 +37,7 @@ class IgnorableInkTest {
     }
 
     @Test
-    fun theReaderIgnoresMarginStamps() {
+    fun everyConfigIgnoresMarginStamps() {
         assertTrue(MarginStampRule in IGNORABLE_INK_RULES)
         val stamped = maskFixture("attention-p1.txt")
 

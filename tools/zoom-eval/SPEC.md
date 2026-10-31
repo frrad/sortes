@@ -159,12 +159,8 @@ reader renders.
   assignment (K² states, K predecessors each).
 - Per scale: a few tens of millions of operations.
 
-**Scale search.** The bound (the tightest scale at which each page's own best window is within
-budget) is found by bisecting on per-page best fits, so the reader no longer computes
-`CropAnalysis`'s whole curve. The search starts at that bound and gallops looser (1, 2, 4, …
-steps) until the model's crops are within budget. It then bisects back between the last miss
-and the first fit, treating the model's cut as rising with zoom. That is a handful of solves
-even when the bound is far off.
+**Scale search.** Exhaustive over 0.60–0.97 (see "Scale" above). *Historically* (with the
+cut budget) a bound found by bisection and a gallop; the times below are from then.
 
 Measured times for the analysis plus the automatic solve, not counting rendering:
 
@@ -181,6 +177,10 @@ fills in within about 10 s on PDLT.
 
 ## Default weights (`CropModelWeights`)
 
+*The bare model's defaults, which the model's tests build on. The reader's weights are
+`CropConfig.DEFAULT`'s (β 0.5, ε 0, γ 0.1, δ 0.005, κ 0.2, ζ 0.5, margin 0.01; `BLOCKS.md`,
+`CropConfig.kt`).*
+
 | weight | value | reasoning |
 | --- | --- | --- |
 | α | 1 | Sets the unit: cost is measured in pages of ink cut. |
@@ -190,8 +190,8 @@ fills in within about 10 s on PDLT.
 | δ₂ | 0.02 | One-off windows and jitter cost 2·δ₂ per excursion on top of γ. At 0.02 (and at 0.05), K > 1 survives only on the two two-sided books, with exact parity. At 0 it also fired on Latent Diffusion (jitter), and on BatchNorm without the stamp rule (to keep the stamp). |
 | ε | 300 | With this, Attention p1 gets its own window and keeps its two-line permission notice. With ε = 0 (the board's "stay put" column), p1 stays on the shared window and loses 3% of its ink. The owner chooses. |
 | a | 0.01 | A page may lose 1% of its own ink (a page number, a stray mark) at no extra cost. |
-| κ, `splitInk`, `blockGap` | 0, 0.005, 2 | The block term, off in the reader; `TUNED` sets κ 0.2 (`BLOCKS.md`). |
-| ζ | 0 | The legibility reward, off in the reader: the zoom comes from the cut budget. `TUNED` sets 0.5. |
+| κ, `splitInk`, `blockGap` | 0, 0.005, 2 | The block term, off here; the reader's config sets κ 0.2 (`BLOCKS.md`). |
+| ζ, margin | 0.5, 0.01 | The legibility reward and the zoom's margin (`BLOCKS.md`, `Legibility`). |
 
 **Reading of γ (confirmed by the owner).** Cutting one page's page number beats giving that
 page its own window: α·0.004 ≪ γ.

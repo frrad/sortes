@@ -2,7 +2,6 @@ package dev.sortes.zoomeval
 
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModelWeights
-import dev.sortes.app.zoom.InkMask
 import dev.sortes.app.zoom.PageRenderer
 import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.PaperAnalysis
@@ -15,17 +14,9 @@ import dev.sortes.app.zoom.renderMask
  * entry point), then every page placed ([PaperAnalysis.placeAll]); at the automatic zoom, or at
  * [scale] as a manual zoom. The only way the harness gets crops.
  */
-suspend fun readerCrops(pages: PageRenderer, aspect: Float, config: CropConfig, scale: Float? = null): ReaderCrops {
+suspend fun readerCrops(pages: PageRenderer, aspect: Float, config: CropConfig, scale: Float? = null): PlacedPaper {
     val analysis = analyzePaper(pages, aspect, config)
-    val crops = if (scale == null) analysis.auto else analysis.cropsAt(scale)
-    return ReaderCrops(analysis, analysis.placeAll(crops))
-}
-
-class ReaderCrops(val analysis: PaperAnalysis, placed: PlacedPaper) {
-    val crops = placed.crops
-
-    /** Each page's mask as the model saw it (the config's ignorable ink stripped). */
-    val masks: List<InkMask> = placed.masks
+    return analysis.placeAll(if (scale == null) analysis.auto else analysis.cropsAt(scale))
 }
 
 /**

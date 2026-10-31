@@ -38,10 +38,13 @@ class PdfPages private constructor(private val renderer: PdfRenderer) : PageSour
         val bitmap = render(index, width, height) { size ->
             Matrix().apply { setScale(width / size.width, height / size.height) }
         }
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        bitmap.recycle()
-        return pixels
+        // Off the caller's thread, which may be Main: a 4x render is about a million pixels.
+        return withContext(Dispatchers.Default) {
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+            bitmap.recycle()
+            pixels
+        }
     }
 
     override suspend fun renderRegion(index: Int, region: Region, width: Int, height: Int): Bitmap =

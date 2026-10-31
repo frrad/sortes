@@ -10,7 +10,7 @@ fun interface IgnorableInkRule {
     fun strip(mask: InkMask): InkMask
 }
 
-/** The rules the reader applies, in order. */
+/** The per-page rules every config starts from: margin stamps. [CropConfig.DEFAULT] adds [IsolatedMarks]. */
 val IGNORABLE_INK_RULES: List<IgnorableInkRule> = listOf(MarginStampRule)
 
 /** This mask with each of [rules] applied in turn. */

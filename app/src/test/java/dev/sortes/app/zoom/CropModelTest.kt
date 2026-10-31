@@ -370,10 +370,7 @@ class CropModelBlocksTest {
     @Test
     fun theCostBasedZoomSacrificesOnePageForTheRest() = runBlocking {
         // One page's block is taller than the others' (56 rows). Keeping it whole costs every
-        // page rows of zoom; splitting it costs kappa plus its cut ink, on one page. With a
-        // 60-row block the cut budget's bound is a step or two above the sacrifice, which the
-        // search's tighter grid reaches; with a 64-row block, keeping it whole needs the search
-        // to go on loosening past a scale that is worse while the tall page is still split.
+        // page rows of zoom; splitting it costs kappa plus its cut ink, on one page.
         val usual = page(rect(10, 10, 50, 66))
         val keep = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(List(12) { usual } + page(rect(10, 8, 50, 68)))
         assertEquals(56, keep.pages[0].cells.bottom - keep.pages[0].cells.top)
@@ -432,7 +429,7 @@ class CropModelBlocksTest {
             }
             val weights = weights(kappa = 0.2, zeta = 0.5).copy(autoMargin = 0.01)
             val one = CropModel(aspect, weights, parallelism = 1).prepare(masks)
-            val four = CropModel(aspect, weights, parallelism = 4).prepare(masks)
+            val four = CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).prepare(masks)
             val a = one.auto()
             val b = four.auto()
             assertEquals(a.scale, b.scale, 0f)
@@ -440,6 +437,20 @@ class CropModelBlocksTest {
             assertEquals(a.pages, b.pages)
             assertEquals(one.solves, four.solves)
         }
+    }
+
+    @Test
+    fun extraCostsAreOpenedOncePerPageAndTheSameOnOneThreadAndOnFour() = runBlocking {
+        val masks = List(8) { page(rect(10 + it % 3, 10, 48 + it % 3, 70)) }
+        val opened = java.util.concurrent.atomic.AtomicInteger()
+        // Prefers windows further left on odd pages, as a text cost might.
+        val extras = masks.indices.map { p -> PageCost { opened.incrementAndGet(); CellCost { c -> if (p % 2 == 1) 0.001 * c.left.coerceAtLeast(0) else 0.0 } } }
+        val weights = weights(kappa = 0.2)
+        val one = CropModel(aspect, weights, parallelism = 1).prepare(masks, extras).solve(0.75f)
+        assertEquals(masks.size, opened.get())
+        val four = CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).prepare(masks, extras).solve(0.75f)
+        assertEquals(2 * masks.size, opened.get())
+        assertEquals(one.pages, four.pages)
     }
 
     @Test
@@ -462,14 +473,14 @@ class CropModelBlocksTest {
             val masks = List(random.nextInt(2, 10)) { page(rect(random.nextInt(4, 14), random.nextInt(4, 14), random.nextInt(46, 56), random.nextInt(60, 76))) }
             val weights = weights(kappa = 0.2)
             val one = CropModel(aspect, weights, parallelism = 1).solve(masks, 0.75f)
-            val four = CropModel(aspect, weights, parallelism = 4).solve(masks, 0.75f)
+            val four = CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).solve(masks, 0.75f)
             assertEquals(one.pages, four.pages)
             assertEquals(one.total, four.total, 0.0)
         }
     }
 
     @Test
-    fun readerWeightsIgnoreBlocks() {
+    fun theBareWeightsIgnoreBlocks() {
         val crops = solve(listOf(figurePage), 0.6f, CropModelWeights())
         assertEquals(0, crops.splitBlocks)
         assertEquals(0.0, crops.splitTerm, 0.0)

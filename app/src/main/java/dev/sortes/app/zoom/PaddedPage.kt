@@ -142,8 +142,6 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         return blocksFor
     }
 
-    /** Bytes the cached blocks and their tables take, for measuring. */
-    fun blockBytes(): Int = (found?.bytes ?: 0) + blocksFor.size * 28 + tableSums.size * 4
 
     private fun tables(f: PageBlocks?) {
         tableOffsets = IntArray(blocksFor.size) { -1 }
@@ -406,19 +404,6 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         val stride = width + 1
         return sums[(y + h) * stride + x + w] - sums[y * stride + x + w] -
             sums[(y + h) * stride + x] + sums[y * stride + x]
-    }
-
-    /** The most ink any window of [scale] can keep. */
-    fun maxInside(scale: Float): Int {
-        if (inkCount == 0) return 0
-        val w = windowWidth(scale)
-        val h = windowHeight(scale)
-        var best = 0
-        for (y in 0..height - h) for (x in 0..width - w) {
-            val v = inside(x, y, w, h)
-            if (v > best) best = v
-        }
-        return best
     }
 
     /**

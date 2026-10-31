@@ -1,7 +1,8 @@
 # The block-aware crop model (`CropConfig.TUNED`)
 
-What `CropConfig.TUNED` is since this round, why, and how it scores. The reader still runs
-`CropConfig.READER`; adopting `TUNED` is the one-line change in `analyzePaper`'s default.
+What `CropConfig.TUNED` was, why, and how it scored. *Historical: `TUNED`'s weights and rules
+live on in `CropConfig.DEFAULT`, the reader's config, with the text model added
+(`notes/text-size`, `notes/unified-pipeline.md`); `READER` and `TUNED` are gone.*
 `SPEC.md` describes the cost and solver this builds on.
 
 ## The problem

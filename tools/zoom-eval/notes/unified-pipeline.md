@@ -18,7 +18,7 @@ reached through one entry point, `analyzePaper(source, aspect, config)`:
 | fine renders | `PaperRaster.fine`: 4× each sampled page, one at a time, released after measuring |
 | text measures | `PageText` (`TextSize`, `ElementLoss`, `LineTruncation`), components found once a page |
 | zoom search | `CropModel.Prepared.auto`: every scale 0.60–0.97, the text-size `Legibility` cost |
-| placement | the text costs at the chosen zoom; unsampled pages rendered, measured and placed on demand |
+| placement | the text costs at the chosen zoom; unsampled pages rendered, measured and placed on demand (the last 8 kept) |
 
 Only the pixels differ: `PageRenderer.renderPixels` is PdfRenderer in the app (`PdfPages`) and
 mutool in zoom-eval (`MutoolPdf`). `PaperAnalysis.kt` is no longer excluded from zoom-eval; it is
@@ -42,6 +42,9 @@ pure. zoom-eval's `readerCrops` (review, labeller export, fit, zoom-experiment, 
 - **Screen width.** Glyph sizes are measured against the Boox's 1860 px width
   (`TextWeights.screenWidth`), not the device's, so the crops depend only on the paper and the
   screen's shape and zoom-eval's are the tablet's.
+- **Failed renders.** A sampled page whose 4× render fails is solved without its text (it
+  drops out of the glyph-height median); the reader's log line counts the pages measured. A
+  render of the wrong size is a bug and fails the analysis.
 - **Memory.** Neither fine renders nor the text costs' tables are kept: per sampled page the
   analysis keeps the components' masses per cell and the line segments (roughly a quarter of a
   megabyte), and builds the summed-area tables while solving, one page per thread at a time. The tables are

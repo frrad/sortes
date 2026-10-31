@@ -20,8 +20,8 @@ class CropModelPenaltyTest {
         assertEquals(c.total, rescored.total, 1e-9)
         assertEquals((if (c.pages[0].cells.top >= 1) 0.0 else 10.0), c.additionalTerm, 1e-9)
         assertEquals(model.pageCost(c.pages[0]), c.total, 1e-9)
-        assertEquals(c.total, model.pageCost(model.assign(m, c, m.inkCount.toDouble(), pageCost = extra)), 1e-9)
-        assertEquals(c.total, model.pageCost(model.ownCrop(m, 0.5f, m.inkCount.toDouble(), extra)), 1e-9)
+        assertEquals(c.total, model.pageCost(model.assign(m, c, m.inkCount.toDouble(), extra = extra.open())), 1e-9)
+        assertEquals(c.total, model.pageCost(model.ownCrop(m, 0.5f, m.inkCount.toDouble(), extra.open())), 1e-9)
         // Fixed-scale, one-window exhaustive oracle (different positions may tie).
         val p = PaddedPage(m, 2f)
         var best = Double.POSITIVE_INFINITY
@@ -49,13 +49,13 @@ class CropModelPenaltyTest {
         assertEquals(c.total,model.score(listOf(a,b),c.pages.map { it.window }, extras).total,1e-9)
     }
 
-    @Test fun `each solve opens each page's cost once per use and drops it`() = runBlocking {
+    @Test fun `a solve opens each page's cost once`() = runBlocking {
         val m = mask("####....", "####....", "........", "........")
         var opened = 0
         val extra = PageCost { opened++; CellCost { 0.0 } }
         CropModel(2f, CropModelWeights(maxWindows = 1), parallelism = 1).prepare(listOf(m), listOf(extra)).solve(0.5f)
-        // Once for the cost table, once for the chosen crop's report.
-        assertEquals(2, opened)
+        // For the cost table; the chosen crop's report reuses what it computed.
+        assertEquals(1, opened)
     }
 
     @Test fun `the automatic zoom is chosen without the extra costs, then placed with them`() = runBlocking {

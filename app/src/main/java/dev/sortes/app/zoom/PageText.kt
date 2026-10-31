@@ -56,7 +56,7 @@ data class TextWeights(
  * What the text model measures on one page's fine render: its body [glyphHeight] (fine pixels,
  * null without enough text) and its [PageCost], the weighted [ElementLoss] and [LineTruncation].
  * Neither the fine render nor the costs' tables are kept: the components' masses per cell and
- * the line segments, about 100 KB a letter page, and the tables are built while solving.
+ * the line segments, roughly a quarter of a megabyte a letter page; the tables are built while solving.
  */
 class PageText(
     val glyphHeight: Double?,
@@ -79,14 +79,12 @@ class PageText(
             require(fine.width == raw.width * weights.factor && fine.height == raw.height * weights.factor) {
                 "Fine render ${fine.width}x${fine.height} isn't ${weights.factor}x ${raw.width}x${raw.height}"
             }
-            // Components found once, for all three.
-            val components = PageBlocks.of(fine, 0)
-            val labels = components.labels()
-            val glyph = TextSize.glyphHeight(components, fine.height)
+            val components = FineComponents.of(fine, raw, prepared)
+            val glyph = TextSize.glyphHeight(components.blocks, fine.height)
             return PageText(
                 glyph,
-                ElementLoss.of(fine, raw, prepared, components, labels),
-                LineTruncation.of(fine, raw, prepared, weights.lineGap, weights.lineSaturation, components, glyph, labels),
+                ElementLoss.of(components),
+                LineTruncation.of(components, weights.lineGap, weights.lineSaturation, glyph),
                 weights,
             )
         }
@@ -100,5 +98,40 @@ class PageText(
             TextSize.median(pages.indices.map { i ->
                 pages[i]?.glyphHeight?.let { it / weights.factor / PaddedPage.frameWidth(masks[i], aspect) * weights.screenWidth }
             })
+    }
+}
+
+/**
+ * A fine render's 8-connected components ([PageBlocks] at gap 0), found once for the text
+ * model's measures, and which of them are [ignored]: those whose ink mostly lies in cells the
+ * ignorable-ink rules removed (in [raw], the analysis mask, but not in [prepared], the mask the
+ * model sees). Segmenting before excluding matters: erasing the coarse cells first would turn the
+ * anti-aliased fringe of an ignored stamp into dozens of new components.
+ */
+class FineComponents private constructor(
+    val fine: InkMask,
+    val raw: InkMask,
+    val blocks: PageBlocks,
+    /** The component each fine pixel belongs to, row-major, or -1. */
+    val labels: IntArray,
+    val ignored: BooleanArray,
+) {
+    companion object {
+        fun of(fine: InkMask, raw: InkMask, prepared: InkMask): FineComponents {
+            require(raw.width == prepared.width && raw.height == prepared.height) { "Mask sizes differ" }
+            require(fine.width >= raw.width && fine.height >= raw.height) { "Fine mask is smaller than the solver mask" }
+            val blocks = PageBlocks.of(fine, 0)
+            val labels = blocks.labels()
+            val removed = IntArray(blocks.boxes.size)
+            for (y in 0 until fine.height) for (x in 0 until fine.width) {
+                val b = labels[y * fine.width + x]
+                if (b < 0) continue
+                val cx = x * raw.width / fine.width
+                val cy = y * raw.height / fine.height
+                if (raw[cx, cy] && !prepared[cx, cy]) removed[b]++
+            }
+            // Ignored if at least half its ink is: its fine fringe goes with it.
+            return FineComponents(fine, raw, blocks, labels, BooleanArray(removed.size) { removed[it] * 2 >= blocks.inks[it] })
+        }
     }
 }

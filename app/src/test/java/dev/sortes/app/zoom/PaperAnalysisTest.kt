@@ -1,6 +1,13 @@
 package dev.sortes.app.zoom
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -301,7 +308,7 @@ class PaperAnalysisTest {
         val pages = MaskPages(List(3) { textPage().mask() })
         val paper = runBlocking { analyzePaper(pages, aspect) }
         assertEquals(null, paper.glyphPx)
-        val masks = CropConfig.DEFAULT.prepare(List(3) { runBlocking { PaperRaster(pages, paper.density).coarse(it) } })
+        val masks = runBlocking { paper.placeAll(paper.auto) }.masks
         val linear = runBlocking { CropModel(aspect, CropConfig.DEFAULT.weights).auto(masks) }
         assertEquals(linear.scale, paper.auto.scale)
     }
@@ -321,5 +328,97 @@ class PaperAnalysisTest {
         // the frame's width, so about 31 px of the 1860 px screen (rendering rounds to pixels).
         val paper = runBlocking { analyzePaper(TextPages(3, glyph = 10f, pitch = 20f, lines = 30), aspect) }
         assertEquals(1860.0 / 60, paper.glyphPx!!, 2.0)
+    }
+
+    @Test
+    fun placeAllPlacesEveryPageAsPlaceDoes() {
+        // Pages 0-9 share a centred block; page 7, unsampled, needs a window of its own.
+        val usual = TestPage(60, 80).rect(14, 10, 46, 70).mask()
+        val offset = TestPage(60, 80).rect(26, 10, 58, 70).mask()
+        val pages = MaskPages(List(10) { if (it == 7) offset else usual })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        val crops = runBlocking { paper.cropsAt(0.75f) }
+
+        val all = runBlocking { paper.placeAll(crops) }
+
+        assertEquals(10, all.crops.pages.size)
+        assertEquals(crops.k + 1, all.crops.k)
+        assertEquals(all.crops.k - 1, all.crops.pages[7].windowIndex)
+        assertEquals(all.masks.sumOf { it.inkCount.toLong() }, all.crops.totalInk)
+        for (i in 0 until 10) assertEquals("page $i", runBlocking { paper.place(i, crops) }.window, all.crops.pages[i].window)
+    }
+
+    @Test
+    fun unsampledPagesAreRenderedOnceForSeveralPlacements() {
+        val pages = MaskPages(List(10) { textPage().mask() })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        runBlocking { paper.place(4, paper.auto) }
+        val after = pages.renders.size
+
+        runBlocking { paper.place(4, paper.auto) }
+        runBlocking { paper.place(4, paper.cropsAt(0.8f)) }
+
+        assertEquals(after, pages.renders.size)
+    }
+
+    @Test
+    fun pagesWhoseFineRenderFailsAreSolvedWithoutText() {
+        // Every 4x render fails: the paper is still analysed and placed, sampled pages or not.
+        val pages = MaskPages(List(10) { textPage().mask() }, maxPixels = 100_000)
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+
+        assertEquals(4, paper.pagesAnalyzed)
+        assertEquals(0, paper.pagesMeasured)
+        assertEquals(null, paper.glyphPx)
+        assertTrue("${paper.auto.scale}", paper.auto.scale in 0.75f..0.80f)
+        val placement = runBlocking { paper.place(4, paper.auto) }
+        assertEquals(emptyList<CutInk>(), placement.cut)
+        assertEquals(null, runBlocking { paper.page(4) }.text)
+    }
+
+    @Test
+    fun aRendererReturningTheWrongNumberOfPixelsIsABug() {
+        val wrong = object : PageRenderer {
+            override val pageCount = 2
+            override suspend fun pageSize(index: Int) = PageSize(600f, 800f)
+            override suspend fun renderPixels(index: Int, width: Int, height: Int) = IntArray(width * height - 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { analyzePaper(wrong, aspect) } }
+    }
+
+    @Test
+    fun concurrentPlacementsAgreeWithOneAtATime() {
+        // As when a page turn cancels a placement whose computation still runs.
+        val pages = MaskPages(List(12) { if (it % 2 == 0) leftPage else rightPage })
+        val paper = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        val crops = runBlocking { paper.cropsAt(0.75f) }
+        val alone = (0 until 12).map { runBlocking { paper.place(it, crops) } }
+        val fresh = runBlocking { analyzePaper(pages, aspect, maxPages = 4) }
+        val freshCrops = runBlocking { fresh.cropsAt(0.75f) }
+        val together = runBlocking {
+            (0 until 12).flatMap { i -> List(3) { async(Dispatchers.Default) { i to fresh.place(i, freshCrops) } } }.awaitAll()
+        }
+        for ((i, placement) in together) assertEquals("page $i", alone[i], placement)
+    }
+
+    @Test
+    fun cancellingTheAnalysisStopsIt() {
+        val gate = CompletableDeferred<Unit>()
+        val pages = object : PageRenderer {
+            val inner = MaskPages(List(10) { textPage().mask() })
+            override val pageCount = 10
+            override suspend fun pageSize(index: Int) = inner.pageSize(index)
+            override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
+                if (index == 2) { gate.complete(Unit); awaitCancellation() }
+                return inner.renderPixels(index, width, height)
+            }
+        }
+        runBlocking {
+            val job = launch(Dispatchers.Default) { analyzePaper(pages, aspect) }
+            gate.await()
+            job.cancel()
+            withTimeout(5_000) { job.join() }
+            assertTrue(job.isCancelled)
+        }
     }
 }

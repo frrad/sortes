@@ -19,21 +19,8 @@ class TextSizeTest {
         return InkMask(width, height, ink)
     }
 
-    @Test fun `line pitch is found despite offset columns`() {
-        val p = TextSize.linePitch(page(200, 400, pitch = 11, glyph = 6, offset = 5))!!
-        assertEquals(11.0, p, 0.15)
-    }
-
-    @Test fun `line pitch is not mistaken for a multiple or half of itself`() {
-        for (pitch in listOf(5, 8, 13)) {
-            val p = TextSize.linePitch(page(200, 600, pitch = pitch, glyph = pitch / 2 + 1))!!
-            assertEquals(pitch.toDouble(), p, 0.2)
-        }
-    }
-
-    @Test fun `a blank page has no pitch or glyph height`() {
+    @Test fun `a blank page has no glyph height`() {
         val blank = InkMask(100, 100, BooleanArray(100 * 100))
-        assertNull(TextSize.linePitch(blank))
         assertNull(TextSize.glyphHeight(blank))
     }
 

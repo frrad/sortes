@@ -1,10 +1,10 @@
 package dev.sortes.zoomeval.content
 
 import dev.sortes.app.zoom.TextSize
-import dev.sortes.app.zoom.analysisDensity
-import dev.sortes.app.zoom.maskSize
+import dev.sortes.app.zoom.paperRaster
 import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.readCorpus
+import kotlinx.coroutines.runBlocking
 import java.io.File
 
 /** Validation: image-space text-size estimates per paper, in points, for comparison with the PDF's fonts. */
@@ -20,19 +20,19 @@ fun textSizeMain(args: List<String>) {
         if (only != null && paper.id !in only) continue
         if (paper.category.contains("scan", ignoreCase = true)) continue
         val pdf = MutoolPdf(File(pdfs, paper.file))
-        val density = analysisDensity(pdf.pageSizes, 0.75f)
+        // Rendered as the pipeline renders (paperRaster), at any factor; on its own page sample.
+        val raster = runBlocking { paperRaster(pdf, 0.75f, Int.MAX_VALUE) }
         val n = pdf.pageCount
         val pages = (0 until minOf(sample, n)).map { it * n / minOf(sample, n) }
         val coarse = ArrayList<Double?>()
         val fine = ArrayList<Double?>()
         val glyph = ArrayList<Double?>()
         for (i in pages) {
-            val (w, h) = maskSize(pdf.pageSizes[i], density)
-            val ptPerCell = pdf.pageSizes[i].height / h
-            val m = pdf.renderMask(i, w, h)
-            coarse += TextSize.linePitch(m)?.times(ptPerCell)
-            val f = pdf.renderMask(i, w * factor, h * factor)
-            fine += TextSize.linePitch(f)?.times(ptPerCell / factor)
+            val m = runBlocking { raster.coarse(i) }
+            val ptPerCell = pdf.pageSizes[i].height / m.height
+            coarse += LinePitch.of(m)?.times(ptPerCell)
+            val f = runBlocking { raster.fine(i, m, factor) }
+            fine += LinePitch.of(f)?.times(ptPerCell / factor)
             glyph += TextSize.glyphHeight(f)?.times(ptPerCell / factor)
         }
         fun fmt(v: Double?) = v?.let { "%.2f".format(it) } ?: "-"

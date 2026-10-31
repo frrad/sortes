@@ -76,9 +76,6 @@ class LineTruncation private constructor(
         }
     }
 
-    /** The cost of keeping [cells]; builds the [table] each call, so for one-off queries. */
-    fun cost(cells: CellRect): Double = table().cost(cells)
-
     /** How many segments [cells] truncates at its left or right edge (for reporting). */
     fun truncated(cells: CellRect): Int = truncatedSegments(cells).size
 
@@ -103,38 +100,22 @@ class LineTruncation private constructor(
     }
 
     companion object {
-        fun of(fine: InkMask, raw: InkMask, prepared: InkMask, gap: Double = 1.5, saturation: Double = 2.0): LineTruncation {
-            val comps = PageBlocks.of(fine, 0)
-            return of(fine, raw, prepared, gap, saturation, comps, TextSize.glyphHeight(comps, fine.height))
-        }
-
         /**
-         * As [of], given [fine]'s components ([PageBlocks] at gap 0) and its [glyphHeight]
-         * ([TextSize.glyphHeight]), so they're found once per page.
+         * The line segments of [c]'s components that aren't [FineComponents.ignored], given the
+         * page's [glyphHeight] in fine pixels ([TextSize.glyphHeight]; null for no text). The
+         * fine render must be a whole multiple of the analysis mask.
          */
-        fun of(
-            fine: InkMask,
-            raw: InkMask,
-            prepared: InkMask,
-            gap: Double,
-            saturation: Double,
-            comps: PageBlocks,
-            glyphHeight: Double?,
-            labels: IntArray = comps.labels(),
-        ): LineTruncation {
+        fun of(c: FineComponents, gap: Double, saturation: Double, glyphHeight: Double?): LineTruncation {
+            val fine = c.fine
+            val raw = c.raw
+            val comps = c.blocks
             val factorX = fine.width / raw.width
             val factorY = fine.height / raw.height
             require(factorX >= 1 && factorY >= 1 && fine.width == raw.width * factorX && fine.height == raw.height * factorY) {
                 "Fine mask must be a whole multiple of the solver mask"
             }
             val glyph = glyphHeight ?: (2.0 * factorY)
-            // Leave out components that are mostly ignorable ink, as ElementLoss does.
-            val removed = IntArray(comps.boxes.size)
-            for (y in 0 until fine.height) for (x in 0 until fine.width) {
-                val c = labels[y * fine.width + x]
-                if (c >= 0 && raw[x / factorX, y / factorY] && !prepared[x / factorX, y / factorY]) removed[c]++
-            }
-            val ids = comps.boxes.indices.filter { removed[it] * 2 < comps.inks[it] }
+            val ids = comps.boxes.indices.filter { !c.ignored[it] }
             val boxes = ids.map { comps.boxes[it] }
             val n = boxes.size
             // Union nearby components on a line; tall ones (figures) stay on their own.

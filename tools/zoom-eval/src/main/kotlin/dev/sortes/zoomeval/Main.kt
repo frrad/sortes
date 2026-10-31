@@ -1,5 +1,6 @@
 package dev.sortes.zoomeval
 
+import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.CropModelWeights
 import dev.sortes.zoomeval.fit.fitMain
 import dev.sortes.zoomeval.labeller.labellerExport
@@ -20,7 +21,7 @@ fun readCorpus(file: File): List<Paper> = file.readLines()
     }
 
 /** [base] weights (the reader's by default), then a properties file's, then `--name=value` overrides. */
-fun readWeights(file: File?, overrides: Map<String, String>, base: CropModelWeights = CropModelWeights()): CropModelWeights {
+fun readWeights(file: File?, overrides: Map<String, String>, base: CropModelWeights = CropConfig.DEFAULT.weights): CropModelWeights {
     val props = Properties()
     file?.takeIf { it.exists() }?.reader()?.use { props.load(it) }
     val fromFile = props.stringPropertyNames().associateWith { props.getProperty(it).trim() }

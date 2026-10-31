@@ -21,18 +21,23 @@ interface PageRenderer {
 }
 
 /** Page [index] rendered at [width] x [height] and thresholded into an ink mask ([InkMask.fromArgb]). */
-suspend fun PageRenderer.renderMask(index: Int, width: Int, height: Int): InkMask {
+suspend fun PageRenderer.renderMask(index: Int, width: Int, height: Int): InkMask = withContext(Dispatchers.Default) {
     val pixels = renderPixels(index, width, height)
     require(pixels.size == width * height) { "Page $index: expected ${width * height} pixels, got ${pixels.size}" }
-    return withContext(Dispatchers.Default) { InkMask.fromArgb(pixels, width, height) }
+    InkMask.fromArgb(pixels, width, height)
 }
 
 /**
- * How the pipeline renders one paper: one density for all its pages ([analysisDensity] over the
+ * How the pipeline renders one paper ([paperRaster]): one density for all its pages ([analysisDensity] over the
  * pages sampled), each page's analysis mask at that density, and, for the text model, a render
  * [TextWeights.factor] times finer in each dimension.
  */
-class PaperRaster(val source: PageRenderer, val density: Float) {
+class PaperRaster(
+    val source: PageRenderer,
+    val density: Float,
+    /** The pages the analysis samples, in order. */
+    val sample: List<Int>,
+) {
     /** Page [index]'s analysis mask, as rendered (before the ignorable-ink rules). */
     suspend fun coarse(index: Int): InkMask {
         val (width, height) = maskSize(source.pageSize(index), density)

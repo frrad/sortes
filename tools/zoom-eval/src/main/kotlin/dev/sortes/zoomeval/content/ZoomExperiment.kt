@@ -3,7 +3,6 @@ package dev.sortes.zoomeval.content
 import dev.sortes.app.zoom.CellRect
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.LineTruncation
-import dev.sortes.app.zoom.renderMask
 import dev.sortes.zoomeval.ConfigSpec
 import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.ReviewResult
@@ -94,11 +93,10 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
             }
             val ignored = masks.indices.map { ignoredInside(it, c.pages[it].cells) }
             val referenceIgnored = reference ?: ignored.also { reference = it }
+            // The pipeline's own line segments (PageText), as the first config measured them.
             val pageLines = lines ?: p.targets.pages.associate { t ->
                 val i = t.page - 1
-                val raw = p.rendered[i]
-                val f = config.text.factor
-                i to LineTruncation.of(p.pages.renderMask(i, raw.width * f, raw.height * f), raw, masks[i], config.text.lineGap, config.text.lineSaturation)
+                i to requireNotNull(r.pages[i].text) { "${paper.id} p${t.page}: text not measured" }.lines
             }.also { lines = it }
             val s = p.score(c)
             val agree = s.pages.count { (it.centreError ?: 0.0) <= 8.0 && it.keepCutPercent <= 0.25 }

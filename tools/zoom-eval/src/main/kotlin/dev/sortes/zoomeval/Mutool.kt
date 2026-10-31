@@ -1,6 +1,5 @@
 package dev.sortes.zoomeval
 
-import dev.sortes.app.zoom.InkMask
 import dev.sortes.app.zoom.PageRenderer
 import dev.sortes.app.zoom.PageSize
 import java.awt.image.BufferedImage
@@ -31,10 +30,6 @@ class MutoolPdf(private val file: File) : PageRenderer {
             (0xFF shl 24) or (g shl 16) or (g shl 8) or g
         }
     }
-
-    /** The page as an ink mask of exactly [width] × [height], thresholded as the pipeline does ([InkMask.fromArgb]). */
-    fun renderMask(index: Int, width: Int, height: Int): InkMask =
-        InkMask.fromArgb(grey(index, width, height), width, height)
 
     /** The page as an RGB image of exactly [width] × [height]. */
     fun renderImage(index: Int, width: Int, height: Int): BufferedImage {

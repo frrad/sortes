@@ -173,7 +173,7 @@ internal fun PageReader(
             value = catching {
                 val started = SystemClock.elapsedRealtime()
                 analyzePaper(pages, aspect).also {
-                    Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages, " +
+                    Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages (${it.pagesMeasured} measured for text), " +
                         "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
                         "(${it.solveMillis} ms solving), ${it.config.name}, body text ${it.glyphPx?.let { px -> "%.1f".format(px) }} px at scale 1")
                 }
