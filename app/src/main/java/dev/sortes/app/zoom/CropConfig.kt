@@ -23,9 +23,24 @@ data class CropConfig(
      * [pageRules]' ink, then without the paper rule's (furniture, learnt from the sample). The
      * one place the rules are applied, to sampled pages and the rest alike.
      */
-    fun preparer(sample: List<InkMask>): (InkMask) -> InkMask {
-        val rule = paperRule(sample.map { it.withoutIgnorableInk(pageRules) })
-        return { rule.strip(it.withoutIgnorableInk(pageRules)) }
+    fun preparer(sample: List<InkMask>): (InkMask) -> InkMask =
+        preparer(paperRule(sample.map { it.withoutIgnorableInk(pageRules) }))
+
+    /** As [preparer], given the paper rule ([paperRule]) learnt from the sample. */
+    fun preparer(paperRule: IgnorableInkRule): (InkMask) -> InkMask = { paperRule.strip(it.withoutIgnorableInk(pageRules)) }
+
+    /**
+     * Everything in this config that decides a paper's crops, as stable text, for keying stored
+     * analyses ([AnalysisCache]): changing any weight changes it. Rules are named by their class
+     * (they're objects), the weights by their data classes' text.
+     */
+    fun fingerprint(): String = listOf(
+        name,
+        pageRules.joinToString(",") { rule -> rule.toString().takeUnless { '@' in it } ?: rule.javaClass.name },
+        "furniture=$furniture",
+        weights.toString(),
+        text.toString(),
+    ).joinToString("|")
     }
 
     /** A paper's [rendered] pages (all of them, or its sample) as the model sees them. */

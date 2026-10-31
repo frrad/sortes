@@ -43,7 +43,9 @@ class SampledPaper(
         require(masks.isNotEmpty() && masks.size == sample.size) { "One mask per sampled page" }
     }
 
-    private val prepared = model.prepare(masks, extras)
+    // Padding and segmenting the pages takes a while: only when a scale is first solved, so a
+    // paper whose crops were cached (AnalysisCache) opens without it.
+    private val prepared by lazy { model.prepare(masks, extras) }
 
     /** The unit pages' cut ink is measured in: the sample's median ink per page. */
     val referenceInk = CropModel.referenceInk(masks)

@@ -18,10 +18,10 @@ package dev.sortes.app.zoom
  * The recurring heights come from a paper's pages ([of]); the rule then strips any page,
  * including ones it wasn't built from.
  */
-class PageFurniture private constructor(
+class PageFurniture internal constructor(
     /** Centres of recurring top and bottom lines, as fractions of the page height. */
-    private val top: List<Float>,
-    private val bottom: List<Float>,
+    internal val top: List<Float>,
+    internal val bottom: List<Float>,
 ) : IgnorableInkRule {
 
     override fun strip(mask: InkMask): InkMask {

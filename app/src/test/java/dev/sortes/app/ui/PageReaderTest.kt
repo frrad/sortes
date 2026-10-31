@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.ObserverHandle
@@ -39,6 +40,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sortes.app.ui.theme.SortesTheme
+import dev.sortes.app.zoom.AnalysisCache
 import dev.sortes.app.zoom.Region
 import dev.sortes.app.zoom.TestPage
 import dev.sortes.app.zoom.maskFixture
@@ -50,6 +52,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -68,6 +71,9 @@ class PageReaderTest {
     // A standard test dispatcher queues them to run on the main thread instead, as in the app;
     // [idle] runs the queue.
     private val effects = StandardTestDispatcher()
+
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
 
     @OptIn(ExperimentalTestApi::class)
     @get:Rule
@@ -571,6 +577,35 @@ class PageReaderTest {
         assertTrue(pages.masked.size > masksBefore)
         val region = lastRendered().second
         assertTrue("$region", region.top <= 100f && region.top + region.height >= 700f)
+    }
+
+    @Test
+    fun aPaperOpenedAgainZoomsFromItsStoredAnalysisWithoutRenderingMasks() {
+        val cache = AnalysisCache(temporaryFolder.newFolder("analyses"))
+        val masks = List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() }
+        var opening by mutableStateOf(0)
+        composeRule.setContent {
+            SortesTheme {
+                ReaderFrame(onClose = {}) {
+                    // Each opening is a new reader for a new PdfPages of the same PDF, as in the app.
+                    key(opening) {
+                        val current = pages
+                        PageReader(current, null, onSaveScale = {}, analyze = { aspect -> cache.analyze(current, "paper", aspect) })
+                    }
+                }
+            }
+        }
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        val first = lastRendered().second
+        assertTrue(pages.masked.isNotEmpty())
+
+        pages = FakePages(masks)
+        opening = 1
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+
+        assertEquals(first, lastRendered().second)
+        // Pages rendered only to be shown: none for analysis.
+        assertEquals(emptyList<Int>(), pages.masked.toList())
     }
 
     @Test

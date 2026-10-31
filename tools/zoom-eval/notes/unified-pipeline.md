@@ -76,6 +76,6 @@ as in `text-size/final.tsv` (e0.01 l0.1 T28 n16 f0.1, placed) and `labels/ROUND-
 The rest of the analysis time is measuring text on the fine renders. With rendering, the whole
 pipeline (every page of the 237-page book placed, as `crops` does) runs in a 64 MB heap and not
 in 48 MB, where a single 4× page render (pixels, luminance and labels, about 12 MB at once) is
-the peak. On the tablet, rendering 60 pages at 4× with PdfRenderer adds to this, and the
-analysis is redone each time a paper is opened (it isn't cached): pages show whole until it
-finishes. Not yet measured on the Boox.
+the peak. On the tablet, rendering 60 pages at 4× with PdfRenderer adds to this: pages show
+whole until it finishes. The reader keeps each analysis on disk, so it runs once per paper and
+screen shape ([analysis-cache.md](analysis-cache.md)).

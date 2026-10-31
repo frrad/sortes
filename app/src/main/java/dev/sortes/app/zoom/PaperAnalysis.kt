@@ -15,7 +15,7 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 class PaperAnalysis internal constructor(
     private val paper: SampledPaper,
-    private val raster: PaperRaster,
+    internal val raster: PaperRaster,
     val config: CropConfig,
     /** Total pages in the paper; the analysis may come from fewer. */
     val pageCount: Int,
@@ -24,12 +24,20 @@ class PaperAnalysis internal constructor(
     /** The paper's body glyph height on the reference screen at scale 1 ([PageText.glyphPx]), or null without text. */
     val glyphPx: Double?,
     /** What was measured on each sampled page's fine render, in the order of [sample]; null where it couldn't be rendered. */
-    private val sampleText: List<PageText?>,
+    internal val sampleText: List<PageText?>,
     /** Time spent finding [auto] once the pages were rendered and measured, for diagnostics. */
     val solveMillis: Long,
-    /** A rendered page as the model sees it: without the config's ignorable ink ([CropConfig.preparer]). */
-    private val prepare: (InkMask) -> InkMask,
+    /** The paper-level ignorable-ink rule ([CropConfig.paperRule]) learnt from the sample. */
+    internal val paperRule: IgnorableInkRule,
+    /** Whether this analysis was read back from an [AnalysisCache] rather than computed. */
+    val restored: Boolean = false,
 ) {
+    /** A rendered page as the model sees it: without the config's ignorable ink ([CropConfig.preparer]). */
+    private val prepare: (InkMask) -> InkMask = config.preparer(paperRule)
+
+    /** The sampled pages' masks as the model sees them, in the order of [sample]. */
+    internal val masks: List<InkMask> get() = paper.masks
+
     init {
         require(paper.masks.size == auto.pages.size && sampleText.size == auto.pages.size) { "One crop per sampled page" }
     }
@@ -188,23 +196,43 @@ suspend fun analyzePaper(
     val rendered = raster.sample.mapNotNull { index -> orNull { index to raster.coarse(index) } }
     if (rendered.isEmpty()) throw java.io.IOException("No pages could be rendered")
     // Paper-level rules learn from the sample, then apply to any page.
-    val prepare = config.preparer(rendered.map { it.second })
+    val paperRule = config.paperRule(rendered.map { it.second.withoutIgnorableInk(config.pageRules) })
+    val prepare = config.preparer(paperRule)
     val masks = rendered.map { prepare(it.second) }
     // One fine render alive at a time: each page keeps only what's measured on it.
     val text = rendered.indices.map { i -> measure(raster, rendered[i].first, rendered[i].second, masks[i], config.text) }
     val glyphPx = PageText.glyphPx(text, masks, aspect, config.text)
-    val started = System.nanoTime()
+    assemble(raster, aspect, config, source.pageCount, rendered.map { it.first }, masks, text, glyphPx, paperRule, auto = null)
+}
+
+/**
+ * A [PaperAnalysis] from its parts: what [analyzePaper] renders and measures, or what an
+ * [AnalysisCache] kept of it. Solves for the automatic crops unless they're given ([auto]).
+ */
+internal suspend fun assemble(
+    raster: PaperRaster,
+    aspect: Float,
+    config: CropConfig,
+    pageCount: Int,
+    sample: List<Int>,
+    masks: List<InkMask>,
+    texts: List<PageText?>,
+    glyphPx: Double?,
+    paperRule: IgnorableInkRule,
+    auto: ModelCrops?,
+): PaperAnalysis = withContext(Dispatchers.Default) {
     val legibility = config.text.legibility(config.weights.zeta)
     val paper = SampledPaper(
         CropModel(aspect, config.weights),
         masks,
-        rendered.map { it.first },
-        extras = text.takeIf { config.text.placesWindows },
+        sample,
+        extras = texts.takeIf { config.text.placesWindows },
         zoomCost = glyphPx?.let { k -> { s -> legibility.cost(s.toDouble(), k) } },
     )
-    val auto = paper.auto()
-    val solveMillis = (System.nanoTime() - started) / 1_000_000
-    PaperAnalysis(paper, raster, config, source.pageCount, auto, glyphPx, text, solveMillis, prepare)
+    val started = System.nanoTime()
+    val crops = auto ?: paper.auto()
+    val solveMillis = if (auto == null) (System.nanoTime() - started) / 1_000_000 else 0
+    PaperAnalysis(paper, raster, config, pageCount, crops, glyphPx, texts, solveMillis, paperRule, restored = auto != null)
 }
 
 /**
