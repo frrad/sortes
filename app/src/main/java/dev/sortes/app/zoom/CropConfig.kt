@@ -54,7 +54,9 @@ data class CropConfig(
          * second window (gamma); a small cost per switch (delta); no per-page convex term
          * (epsilon), since blocks do its job. The automatic zoom minimises the cost per page
          * plus a legibility cost that knows the paper's text size, then loosens by 0.01; at that
-         * zoom, windows avoid dropping components and clipping lines.
+         * zoom, windows avoid dropping components and clipping lines. The component weight is
+         * 0.016, not round 5's 0.01: re-fitted on pdfium's renders, which are the tablet's
+         * (tools/zoom-eval/notes/pdfium-refit.md).
          */
         val DEFAULT = CropConfig(
             "tuned+text",
@@ -70,7 +72,7 @@ data class CropConfig(
                 zeta = 0.5,
                 autoMargin = 0.01,
             ),
-            TextWeights(),
+            TextWeights(elements = 0.016),
         )
 
         val ALL = listOf(DEFAULT)

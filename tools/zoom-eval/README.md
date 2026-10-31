@@ -44,7 +44,8 @@ writes, to `~/sortes-review/model/fable` by default, one readable (360 px) image
 config: the page in its frame, the window outlined, what's off screen shaded, cut ink boxed in
 red and, with `--blocks=`, the blocks outlined in blue; plus a grid per paper and an index with
 each config's zoom, windows, cut and sliced-line pages. A config is a `CropConfig` name with
-optional `weight=value` overrides separated by semicolons. `--scale=` renders every paper at one
+optional `weight=value` overrides of either model's weights (`kappa`, …, `comfortable`, `power`,
+`floor`, `elements`, `lines`) separated by semicolons. `--scale=` renders every paper at one
 fixed zoom (e.g. 0.7, to see what slices at a tight zoom), as a manual zoom in the reader.
 
 ### Diffing crops between commits
@@ -127,11 +128,21 @@ PDFs are never committed. Book excerpts are cut with `mutool merge` by `fetch-co
   (`medium/x`). A paper's set zoom can be superseded (`unset`).
 
 **Search:**
-- `--trials=` random weight sets (`sampleWeights`) around `CropConfig.DEFAULT`'s, each scored
-  through `analyzePaper`. Every render is remembered (`MemoPages`, a bit a pixel), so trials
+- `--trials=` random crop-model weight sets (`sampleWeights`) around `CropConfig.DEFAULT`'s, each
+  scored through `analyzePaper`. Every render is remembered (`MemoPages`, a bit a pixel), so trials
   don't re-render; each trial takes about a minute on the 28 labelled papers, since every paper
   gets the full zoom search.
-- `--<weight>=` fixes a weight and also scores that set as "given".
+- `--search=coordinate`: a local search around the defaults instead (`coordinateDescent`), over
+  both models' weights. In turn, each weight of `--coordinates=` (by default the crop model's
+  beta, gamma, delta, delta2, kappa, blockGap, splitInk, zeta and autoMargin and the text model's
+  comfortable, power, floor, elements and lines; `a+b` searches two jointly) tries a step or two
+  each way on a grid that suits it. The search keeps the best value if it gains more than
+  `--minGain=` (0.5) units, for up to `--sweeps=` (2) sweeps. The report lists each step and flags
+  as *fragile* the steps a single training paper decides.
+- `--holdout=id,…` scores papers the search doesn't use to choose weights (e.g. the latest
+  labelling round), and reports them apart.
+- `--<weight>=` fixes a weight of either model (`--comfortable=27` too) and also scores that set
+  as "given".
 - `--split=id,…` adds a held-out test between that group and the rest (e.g. round 1 against
   round 2).
 - `--out=` is the report folder, by default `~/sortes-review/fit`.
@@ -180,7 +191,9 @@ The pipeline, all in `app/src/main/java/dev/sortes/app/zoom/`:
 
 `text-size` measures each paper's body-text size from page images (no PDF text) against the
 PDF's fonts. `zoom-experiment` scores variations of the text model (`--T= --n= --floor=
---elements= --lines=`, each a list) on the labelled clean papers, through `analyzePaper`. See
+--elements= --lines=`, each a list, or `--configs=` as for `review`) on the labelled clean papers,
+through `analyzePaper`, with strict agreement, sliced lines and pages newly showing ignored ink.
+The weights were last re-fitted on pdfium's renders in [notes/pdfium-refit.md](notes/pdfium-refit.md). See
 [text-size notes](notes/text-size/README.md). The first component-cost experiment
 (`content-experiment`, [notes](notes/content-elements/README.md)) was retired with the old
 configs; it can be rerun at a869e26.

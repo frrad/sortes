@@ -7,7 +7,9 @@ import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.PaperAnalysis
 import dev.sortes.app.zoom.PlacedPaper
 import dev.sortes.app.zoom.analyzePaper
+import dev.sortes.app.zoom.TextWeights
 import dev.sortes.app.zoom.renderMask
+import dev.sortes.zoomeval.labeller.toMap
 
 /**
  * A paper's crops exactly as the reader makes them: [analyzePaper] on [pages] (the reader's one
@@ -76,3 +78,40 @@ val WEIGHT_NAMES = setOf(
     "alpha", "beta", "epsilon", "allowance", "gamma", "delta", "delta2", "maxWindows",
     "kappa", "blockGap", "splitInk", "zeta", "autoMargin",
 )
+
+/** The text model's tunable weights ([TextWeights]), by property name: what [CropConfig.with] understands besides [WEIGHT_NAMES]. */
+val TEXT_WEIGHT_NAMES = setOf("comfortable", "power", "floor", "elements", "lines")
+
+/** Every weight a config override may name: the crop model's and the text model's. */
+val CONFIG_WEIGHT_NAMES = WEIGHT_NAMES + TEXT_WEIGHT_NAMES
+
+/** [text] with `name=value` [overrides] applied, by [TextWeights] property name ([TEXT_WEIGHT_NAMES]). */
+fun TextWeights.with(overrides: Map<String, String>): TextWeights {
+    var t = this
+    for ((name, value) in overrides) {
+        t = when (name) {
+            "comfortable" -> t.copy(comfortable = value.toDouble())
+            "power" -> t.copy(power = value.toDouble())
+            "floor" -> t.copy(floor = value.toDouble())
+            "elements" -> t.copy(elements = value.toDouble())
+            "lines" -> t.copy(lines = value.toDouble())
+            else -> throw IllegalArgumentException("Unknown text weight $name")
+        }
+    }
+    return t
+}
+
+/** This config with `name=value` [overrides] of either model's weights ([CONFIG_WEIGHT_NAMES]); the name is kept. */
+fun CropConfig.with(overrides: Map<String, String>): CropConfig {
+    overrides.keys.firstOrNull { it !in CONFIG_WEIGHT_NAMES }?.let { throw IllegalArgumentException("Unknown weight $it") }
+    return copy(
+        weights = weights.with(overrides.filterKeys { it in WEIGHT_NAMES }),
+        text = text.with(overrides.filterKeys { it in TEXT_WEIGHT_NAMES }),
+    )
+}
+
+/** Every weight [CropConfig.with] can set, with its value: the crop model's ([toMap]) and the text model's. */
+fun CropConfig.weightValues(): Map<String, Double> = (weights.toMap() + mapOf(
+    "comfortable" to text.comfortable, "power" to text.power, "floor" to text.floor,
+    "elements" to text.elements, "lines" to text.lines,
+)).toSortedMap()

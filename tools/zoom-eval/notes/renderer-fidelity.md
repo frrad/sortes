@@ -123,8 +123,11 @@ Where agreement changes from the mutool numbers. Five pages and one zoom are los
 - **Unchanged misses:** LIGO (0.870 → 0.875, owner 0.850, still 0 of 6) and shannon (1 of 4).
 
 So the text model was tuned partly on mutool's pixels, and on the tablet it does somewhat worse
-than zoom-eval reported. Weights aren't re-fitted here. A fit on pdfium's renders is the natural
-next step, and the text-size tables are mutool-era records until then.
+than zoom-eval reported. Weights aren't re-fitted here. The re-fit
+([pdfium-refit.md](pdfium-refit.md)) raised the component weight to 0.016, which wins back the
+SuperGLUE and DDPM title pages (195 of 211, 74.22). The other three losses are zoom changes that no
+re-weighting fixed robustly. The table above and `zoom-experiment-mutool-vs-pdfium.tsv` are for
+the earlier weights.
 
 ## Options considered
 
