@@ -8,14 +8,14 @@ package dev.sortes.app.zoom
  * Projected onto the solver's existing cells so the kept cells, solving and report agree.
  * This deliberately cannot distinguish two crop edges within the same coarse cell.
  */
-class ElementLoss private constructor(
+class ElementLoss internal constructor(
     val width: Int,
     val height: Int,
     val elements: Int,
     // The cells with any mass, and their masses: about a tenth of a page's cells, against the
     // summed-area table's (width + 1) x (height + 1), which is built only while it's used.
-    private val cells: IntArray,
-    private val masses: DoubleArray,
+    internal val cells: IntArray,
+    internal val masses: DoubleArray,
 ) {
     /** The summed-area table over the cells' masses, for O(1) queries; build per use, then drop. */
     fun table(): Table {

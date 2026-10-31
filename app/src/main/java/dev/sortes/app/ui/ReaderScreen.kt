@@ -1,6 +1,7 @@
 package dev.sortes.app.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import android.util.Log
@@ -40,24 +41,29 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.pm.PackageInfoCompat
 import dev.sortes.app.data.Paper
 import dev.sortes.app.data.ZoomStore
 import dev.sortes.app.pdf.PageSource
 import dev.sortes.app.pdf.PdfPages
 import dev.sortes.app.pdf.PdfSource
+import dev.sortes.app.zoom.AnalysisCache
 import dev.sortes.app.zoom.FullPage
 import dev.sortes.app.zoom.ZoomCurve
 import dev.sortes.app.zoom.PaperAnalysis
 import dev.sortes.app.zoom.Placement
 import dev.sortes.app.zoom.analyzePaper
 import dev.sortes.app.zoom.regionOn
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 
 private sealed interface ReaderState {
     data object Loading : ReaderState
-    data class Ready(val pages: PdfPages) : ReaderState
+    data class Ready(val pages: PdfPages, val file: File) : ReaderState
     data class Failed(val message: String) : ReaderState
 }
 
@@ -71,6 +77,7 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
     HideSystemBars()
     val context = LocalContext.current
     val zoomStore = remember(context) { ZoomStore(context) }
+    val analyses = remember(context) { ReaderAnalyses.get(context) }
     var savedScale by remember(paper.id) { mutableStateOf(zoomStore.get(paper.id)) }
     val state by produceState<ReaderState>(ReaderState.Loading, paper.id) {
         // This coroutine owns the PdfPages: it lives until the screen leaves composition.
@@ -89,6 +96,11 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
                 onSaveScale = { scale ->
                     zoomStore.set(paper.id, scale)
                     savedScale = scale
+                },
+                analyze = { aspect ->
+                    // Without a hash (the file went away), analyse without the cache.
+                    val content = withContext(Dispatchers.IO) { runCatching { AnalysisCache.contentHash(s.file) }.getOrNull() }
+                    if (content == null) analyzePaper(s.pages, aspect) else analyses.analyze(s.pages, content, aspect)
                 },
             )
         }
@@ -120,6 +132,32 @@ internal fun ReaderFrame(
     }
 }
 
+/**
+ * The papers' stored zoom analyses, one cache for the process: fresh analyses are written in an
+ * application scope, so leaving the reader right after one finishes still keeps it.
+ */
+private object ReaderAnalyses {
+    @Volatile
+    private var cache: AnalysisCache? = null
+
+    fun get(context: Context): AnalysisCache = cache ?: synchronized(this) {
+        cache ?: AnalysisCache(
+            File(context.applicationContext.cacheDir, "zoom-analysis"),
+            build = appBuild(context),
+            saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        ).also { cache = it }
+    }
+}
+
+/**
+ * The installed build: its versionCode and when it was installed or last updated, which changes
+ * with every new APK even when the versionCode doesn't (debug builds).
+ */
+private fun appBuild(context: Context): String {
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    return "${PackageInfoCompat.getLongVersionCode(info)}@${info.lastUpdateTime}"
+}
+
 /** The reader's colors, whatever the app theme: black ink on white paper. */
 internal val ReaderInk = Color.Black
 internal val ReaderPaper = Color.White
@@ -136,7 +174,7 @@ private suspend fun load(source: PdfSource, paper: Paper): ReaderState {
                 throw e
             }
         }
-        ReaderState.Ready(pages!!)
+        ReaderState.Ready(pages!!, file)
     } catch (e: CancellationException) {
         pages?.close()
         throw e
@@ -156,6 +194,8 @@ internal fun PageReader(
     savedScale: Float?,
     onSaveScale: (Float?) -> Unit,
     modifier: Modifier = Modifier,
+    /** The paper's zoom analysis for a screen of the given aspect: by default computed afresh. */
+    analyze: suspend (aspect: Float) -> PaperAnalysis = { aspect -> analyzePaper(pages, aspect) },
 ) {
     var index by rememberSaveable { mutableIntStateOf(0) }
     var panelOpen by rememberSaveable { mutableStateOf(false) }
@@ -172,8 +212,8 @@ internal fun PageReader(
             value = null // Don't keep using an analysis for a different screen shape.
             value = catching {
                 val started = SystemClock.elapsedRealtime()
-                analyzePaper(pages, aspect).also {
-                    Log.i(TAG, "Zoom analysis: ${it.pagesAnalyzed} of ${it.pageCount} pages (${it.pagesMeasured} measured for text), " +
+                analyze(aspect).also {
+                    Log.i(TAG, "Zoom analysis${if (it.restored) " (cached)" else ""}: ${it.pagesAnalyzed} of ${it.pageCount} pages (${it.pagesMeasured} measured for text), " +
                         "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
                         "(${it.solveMillis} ms solving), ${it.config.name}, body text ${it.glyphPx?.let { px -> "%.1f".format(px) }} px at scale 1")
                 }

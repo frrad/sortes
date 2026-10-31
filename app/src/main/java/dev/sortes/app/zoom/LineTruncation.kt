@@ -20,14 +20,14 @@ import kotlin.math.min
  * kept cells. The edges are costed separately (a segment truncated at both ends costs twice) so
  * the cost is a sum of per-edge tables ([table]), O(1) per window.
  */
-class LineTruncation private constructor(
-    private val width: Int,
-    private val height: Int,
-    private val saturation: Double,
-    private val segments: List<IntArray>,
-    private val cl: IntArray,
-    private val cr: IntArray,
-    private val segmentRow: IntArray,
+class LineTruncation internal constructor(
+    internal val width: Int,
+    internal val height: Int,
+    internal val saturation: Double,
+    internal val segments: List<IntArray>,
+    internal val cl: IntArray,
+    internal val cr: IntArray,
+    internal val segmentRow: IntArray,
 ) {
     /**
      * The per-edge tables, for O(1) queries: left[x * (height + 1) + y] is the cost of a left edge

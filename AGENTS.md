@@ -11,6 +11,14 @@
   `Context`). Use Robolectric or instrumented tests only for what genuinely
   needs Android.
 
+## Zoom analysis cache
+
+The reader stores each paper's zoom analysis on disk (`zoom/AnalysisCache.kt`), keyed by the
+PDF's content, the screen's shape, the `CropConfig` and the installed app build (versionCode
+and install time), so every new build recomputes them. Still bump
+`AnalysisCache.PIPELINE_VERSION` when a change alters what `analyzePaper` computes (it also
+keys zoom-eval and tests), and `FORMAT_VERSION` when the file format changes.
+
 ## Design for e-ink
 
 The app is used on e-ink tablets (a Boox Note Air5 C), colour and black-and-white
