@@ -40,6 +40,15 @@ class PdfSource(private val cacheDir: File, private val libraryDir: File) {
     }
 
     /**
+     * [paper]'s PDF if it's on the device already (imported, or downloaded before), else null:
+     * [fetch] without downloading. Blocking, but only a file lookup.
+     */
+    fun cachedFile(paper: Paper): File? {
+        paper.localFile?.let { return runCatching { localFile(it) }.getOrNull() }
+        return File(cacheDir, "${paper.id}.pdf").takeIf { it.isFile }
+    }
+
+    /**
      * Drops a cached file, e.g. one that turned out not to be a readable PDF. Imported files
      * are the only copy, so they are never deleted here.
      */

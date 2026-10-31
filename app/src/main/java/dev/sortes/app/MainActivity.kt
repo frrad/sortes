@@ -21,6 +21,7 @@ import dev.sortes.app.importing.toShareRequest
 import dev.sortes.app.ui.PapersScreen
 import dev.sortes.app.ui.PapersViewModel
 import dev.sortes.app.ui.ReaderScreen
+import dev.sortes.app.ui.prefetchFirstPage
 import dev.sortes.app.ui.ShareLanding
 import dev.sortes.app.ui.SortesNavigation
 import dev.sortes.app.ui.SourcesScreen
@@ -51,7 +52,10 @@ class MainActivity : ComponentActivity() {
                         share = share,
                         paperList = { onOpenPaper, onOpenFolderSources ->
                             PapersScreen(
-                                onPaperClick = onOpenPaper,
+                                onPaperClick = { paper ->
+                                    prefetchFirstPage(this, paper)
+                                    onOpenPaper(paper)
+                                },
                                 onOpenFolderSources = onOpenFolderSources,
                                 modifier = contentModifier,
                                 viewModel = viewModel,

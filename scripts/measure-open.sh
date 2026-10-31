@@ -7,7 +7,7 @@
 #   scripts/measure-open.sh [-n RUNS] [--cold] "Paper title" ["Another title" ...]
 #
 # Each run starts from the paper list, taps the paper (found by its title with uiautomator),
-# waits for the timeline's summary line and goes back with the reader's back arrow. With --cold the app is force-stopped
+# waits for the timeline's summary line and goes back (system Back). With --cold the app is force-stopped
 # before each run, so the open includes a new process (but not the app's launch: the tap is
 # timed from the list). Run each paper once first if its analysis may not be cached yet.
 #
@@ -62,6 +62,13 @@ for title in "${TITLES[@]}"; do
       sleep 2
       pos=$(find_title "$title")
     done
+    # Or back up (the list keeps its scroll between runs).
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      [ -z "$pos" ] || break
+      "$ADB" shell input swipe 930 800 930 2000 300
+      sleep 2
+      pos=$(find_title "$title")
+    done
     [ -n "$pos" ] || { echo "Paper not on screen: $title" >&2; exit 1; }
     "$ADB" logcat -c
     # shellcheck disable=SC2086
@@ -73,8 +80,18 @@ for title in "${TITLES[@]}"; do
       sleep 0.5
     done
     echo "$title #$run: ${line#*Opened paper }"
-    # The reader's back arrow, top left.
-    "$ADB" shell input tap 45 45
+    # A stored first page shown is then rendered again to check it: report what that found.
+    if [[ "$line" == *"showing stored page"* ]]; then
+      check=""
+      for _ in $(seq 1 20); do
+        check=$("$ADB" logcat -d -s Sortes:I | grep -o "Stored page .*" | tail -1 || true)
+        [ -n "$check" ] && break
+        sleep 0.5
+      done
+      echo "  ${check:-stored page not checked within 10 s}"
+    fi
+    # Back to the list (the system Back: a tap on the reader's arrow sometimes landed on the page).
+    "$ADB" shell input keyevent KEYCODE_BACK
     sleep 2
   done
 done
