@@ -177,7 +177,7 @@ internal fun PageReader(
                         "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
                         "(${it.solveMillis} ms solving), ${it.config.name}, body text ${it.glyphPx?.let { px -> "%.1f".format(px) }} px at scale 1")
                 }
-            }
+            }.onFailure { Log.w(TAG, "Zoom analysis failed; showing whole pages", it) }
         }
         val paper = analysis?.getOrNull()?.takeIf { it.aspect == aspect }
         // The model's crops: at its automatic scale, or re-solved at the saved one. Solving can
