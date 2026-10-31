@@ -3,6 +3,9 @@ package dev.sortes.app.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getBoundsInRoot
@@ -34,6 +37,8 @@ class ReaderInsetsTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    private var barsHiding by mutableStateOf(false)
+
     // Like the Boox Note Air5 C's: a 62 px status bar and a 126 px navigation bar.
     private val statusBar = Insets.of(0, 62, 0, 0)
     private val navigationBar = Insets.of(0, 0, 0, 126)
@@ -43,7 +48,7 @@ class ReaderInsetsTest {
         // As MainActivity's enableEdgeToEdge does: the app draws under the bars and gets their insets.
         WindowCompat.setDecorFitsSystemWindows(composeRule.activity.window, false)
         composeRule.setContent {
-            ReaderFrame(onClose = {}) { Box(Modifier.fillMaxSize().testTag("content")) }
+            ReaderFrame(onClose = {}, barsHiding = barsHiding) { Box(Modifier.fillMaxSize().testTag("content")) }
         }
         composeRule.waitForIdle()
     }
@@ -99,6 +104,18 @@ class ReaderInsetsTest {
         dispatch(bars(visible = true))
         val (_, _, width, height) = windowPx()
         assertEquals(listOf(0, 62, width, height - 126), contentPx().toList())
+    }
+
+    @Test
+    fun whileTheBarsAreHidingTheContentIsLaidOutForTheWindowTheyLeave() {
+        barsHiding = true
+        dispatch(bars(visible = true))
+        assertEquals(windowPx().toList(), contentPx().toList())
+
+        // But clear of a cutout, which stays.
+        dispatch(bars(visible = true, cutout = DisplayCutoutCompat(android.graphics.Rect(0, 80, 0, 0), null)))
+        val (_, _, width, height) = windowPx()
+        assertEquals(listOf(0, 80, width, height), contentPx().toList())
     }
 
     @Test

@@ -57,6 +57,6 @@ internal fun SortesNavigation(
         BackHandler(onBack = closeFolderSources)
         folderSources(closeFolderSources)
     } else {
-        paperList({ openPaperId = it.id }, { showFolderSources = true })
+        paperList({ OpenTimeline.tapped(it.id); openPaperId = it.id }, { showFolderSources = true })
     }
 }

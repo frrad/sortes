@@ -13,7 +13,11 @@ The whole analysis (`AnalysisCodec`), not just the automatic crops:
 - each sampled page's text measures (`PageText`: glyph height, `ElementLoss` cells and masses,
   `LineTruncation` segments), written exactly, doubles included;
 - the paper rule (the furniture's recurring line heights);
-- the automatic crops (`ModelCrops`, every `PageCrop`), so opening solves nothing.
+- the automatic crops (`ModelCrops`, every `PageCrop`), so opening solves nothing;
+- since format 2, any crops solved at other scales: the reader stores the analysis again
+  (`AnalysisCache.update`) after solving a saved zoom's crops, so a paper with a saved zoom
+  opens without solving either (about 270 ms on the Boox), and the zoom curve's points solved by
+  then ride along.
 
 Storing only the crops would show sampled pages at once, but manual zooms, the zoom curve and
 every unsampled page (most of a book) would still need the sample rendered again. With the
@@ -63,3 +67,6 @@ Time from opening the reader to the crops (the reader's log), clean cache:
 | PDLT book (471 pages, 60 sampled) | 18496 ms | 310, 202 ms | 343 ms |
 
 Reinstalling the APK makes the next open a fresh analysis (5630 ms), then cached again (155 ms).
+
+How long opening takes from the tap to the zoomed page, and what else the reader draws on the
+way, is in `open-latency.md`.

@@ -6,12 +6,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
-import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -71,23 +69,26 @@ class AnalysisCache(
      * The analysis stored for [key], placing unsampled pages from [source]; null if there's none
      * or it can't be read (then it's deleted).
      */
-    suspend fun load(key: Key, source: PageRenderer): PaperAnalysis? {
+    suspend fun load(key: Key, source: PageRenderer): PaperAnalysis? = withContext(Dispatchers.IO) {
+        // One trip off the caller's thread for the lot: on an open, every hop back and forth to
+        // the busy main thread is time before the page shows.
         val file = File(dir, key.fileName)
-        val bytes = withContext(Dispatchers.IO) { if (file.isFile) runCatching { file.readBytes() }.getOrNull() else null }
-            ?: return null
-        return try {
-            DataInputStream(BufferedInputStream(GZIPInputStream(bytes.inputStream(), 1 shl 16), 1 shl 16)).use { input ->
-                if (input.readInt() != MAGIC) throw IOException("Not an analysis")
-                if (input.readUTF() != key.text) throw IOException("Stored for another key")
-                val analysis = AnalysisCodec.read(input, source, key.aspect, key.config)
-                // Reading to the end checks the gzip trailer, so a damaged file isn't trusted.
-                if (input.read() != -1) throw IOException("Trailing bytes")
-                analysis
-            }.also { withContext(Dispatchers.IO) { file.setLastModified(System.currentTimeMillis()) } }
+        val bytes = if (file.isFile) runCatching { file.readBytes() }.getOrNull() else null
+        if (bytes == null) return@withContext null
+        try {
+            // Inflated whole, checked against the gzip trailer so a damaged file isn't trusted,
+            // and decoded from the array: much faster than from a stream.
+            val input = BytesInput(inflateGzip(bytes))
+            if (input.readInt() != MAGIC) throw IOException("Not an analysis")
+            if (input.readUTF() != key.text) throw IOException("Stored for another key")
+            val analysis = AnalysisCodec.read(input, source, key.aspect, key.config)
+            if (input.remaining != 0) throw IOException("Trailing bytes")
+            file.setLastModified(System.currentTimeMillis())
+            analysis
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            withContext(Dispatchers.IO) { file.delete() }
+            file.delete()
             null
         }
     }
@@ -139,20 +140,38 @@ class AnalysisCache(
      * [contentHash]) was analysed before with [config], else a fresh one, which is stored (in
      * [saveScope], if given, after returning) if it's [PaperAnalysis.complete]. A failure to store
      * isn't the caller's problem: the paper is just analysed again next time.
+     *
+     * [onMiss] is called, on the caller's context, once it's known that there's no stored
+     * analysis to use (none, or unreadable) and a fresh one is starting: a reader can show
+     * whole pages while that runs, but should wait for a stored one, which takes moments.
      */
     suspend fun analyze(
         source: PageRenderer,
         content: String,
         aspect: Float,
         config: CropConfig = CropConfig.DEFAULT,
+        onMiss: () -> Unit = {},
     ): PaperAnalysis {
         val key = Key(build, content, aspect, config)
         load(key, source)?.let { return it }
+        onMiss()
         val analysis = analyzePaper(source, aspect, config, key.maxPages)
         // A page that failed to render may render next time: don't keep its absence for good.
         if (!analysis.complete) return analysis
         if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) } else saveQuietly(key, analysis)
         return analysis
+    }
+
+    /**
+     * Stores [analysis] of [content] again (in [saveScope], if given), when it has learnt
+     * something worth keeping since it was stored or computed: crops at another scale, such as a
+     * saved zoom's, so the next open needn't solve them. Only [PaperAnalysis.complete] analyses
+     * are stored, as in [analyze].
+     */
+    suspend fun update(content: String, analysis: PaperAnalysis) {
+        if (!analysis.complete) return
+        val key = Key(build, content, analysis.aspect, analysis.config)
+        if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) } else saveQuietly(key, analysis)
     }
 
     private suspend fun saveQuietly(key: Key, analysis: PaperAnalysis) {
@@ -175,7 +194,7 @@ class AnalysisCache(
         const val PIPELINE_VERSION = 1
 
         /** The file format's version ([AnalysisCodec]): bump it whenever the format changes. */
-        const val FORMAT_VERSION = 1
+        const val FORMAT_VERSION = 2
 
         /** Stored analyses take at most this much space in all. */
         const val DEFAULT_MAX_BYTES = 64L * 1024 * 1024
