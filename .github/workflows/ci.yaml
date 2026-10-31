@@ -33,9 +33,14 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
 
-      # The offline zoom harness compiles the app's zoom code; its tests need no mutool.
+      # The offline zoom harness renders with a pinned pdfium; install it so its renderer tests run.
+      - name: Install pdfium for zoom-eval
+        run: tools/zoom-eval/setup-pdfium.sh
+
       - name: zoom-eval tests
         run: ./gradlew :zoom-eval:test
+        env:
+          SORTES_REQUIRE_PDFIUM: "1"
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
