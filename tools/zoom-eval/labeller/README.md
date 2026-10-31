@@ -42,7 +42,7 @@ Labels are saved as you go, straight into `tools/zoom-eval/labels/`. Commit them
 
 - `labeller-export --papers=id,id [--out=] [--aspect=] [--weights=] [--<weight>=]` renders each
   page in its padded screen frame, with the crops the reader chooses today (the reader's own
-  `analyzePaper`, rendered with mutool). It writes `paper.json` and `pNNN.png`
+  `analyzePaper`, rendered with the pinned pdfium). It writes `paper.json` and `pNNN.png`
   per paper, plus `papers.json` listing them.
 - `labeller-serve --web= --labels= --data= [--host=127.0.0.1] [--port=8766]` serves:
   - the page at `/`;

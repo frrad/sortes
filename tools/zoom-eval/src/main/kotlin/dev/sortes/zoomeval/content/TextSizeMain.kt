@@ -2,7 +2,7 @@ package dev.sortes.zoomeval.content
 
 import dev.sortes.app.zoom.TextSize
 import dev.sortes.app.zoom.paperRaster
-import dev.sortes.zoomeval.MutoolPdf
+import dev.sortes.zoomeval.PdfiumPdf
 import dev.sortes.zoomeval.readCorpus
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -19,7 +19,7 @@ fun textSizeMain(args: List<String>) {
     for (paper in corpus) {
         if (only != null && paper.id !in only) continue
         if (paper.category.contains("scan", ignoreCase = true)) continue
-        val pdf = MutoolPdf(File(pdfs, paper.file))
+        val pdf = PdfiumPdf(File(pdfs, paper.file))
         // Rendered as the pipeline renders (paperRaster), at any factor; on its own page sample.
         val raster = runBlocking { paperRaster(pdf, 0.75f, Int.MAX_VALUE) }
         val n = pdf.pageCount

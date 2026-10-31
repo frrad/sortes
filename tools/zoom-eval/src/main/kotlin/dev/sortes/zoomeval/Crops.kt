@@ -25,7 +25,7 @@ fun cropsMain(args: List<String>) = runBlocking {
     out.writeText("paper\tconfig\tpage\twindow\tleft\ttop\tscale\tcells\tmillis\n")
     for (paper in corpus) {
         if (only != null && paper.id !in only) continue
-        val pdf = MutoolPdf(File(pdfs, paper.file))
+        val pdf = PdfiumPdf(File(pdfs, paper.file))
         for (spec in specs) {
             val started = System.currentTimeMillis()
             val crops = readerCrops(pdf, aspect, spec.config).crops

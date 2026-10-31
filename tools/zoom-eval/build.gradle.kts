@@ -4,8 +4,8 @@ plugins {
 }
 
 // The harness compiles the app's real zoom code rather than a copy of it: the whole crop
-// pipeline (analyzePaper) is pure Kotlin. Only the pixels differ: the harness renders with mutool
-// (MutoolPdf), the reader with Android's PdfRenderer.
+// pipeline (analyzePaper) is pure Kotlin. Only the pixels differ: the harness renders with a
+// pinned pdfium (PdfiumPdf, through JNA; setup-pdfium.sh), the reader with Android's PdfRenderer.
 sourceSets {
     main {
         kotlin.srcDir("../../app/src/main/java")
@@ -16,6 +16,7 @@ sourceSets {
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.org.json)
+    implementation(libs.jna)
     testImplementation(libs.junit)
 }
 

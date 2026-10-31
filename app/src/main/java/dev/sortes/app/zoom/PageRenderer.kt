@@ -5,7 +5,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * A document's pages as pixels: the one part of the crop pipeline that differs between the
- * reader (Android's PdfRenderer) and zoom-eval (mutool). Everything from the pixels on (mask
+ * reader (Android's PdfRenderer) and zoom-eval (pdfium pinned to the version Android ships,
+ * `PdfiumPdf`). Everything from the pixels on (mask
  * sizes, thresholds, which pages are rendered at what resolution) is shared, in [analyzePaper].
  */
 interface PageRenderer {

@@ -7,8 +7,8 @@ import dev.sortes.app.zoom.ZoomScales
 import dev.sortes.app.zoom.cutInk
 import dev.sortes.app.zoom.padded
 import dev.sortes.app.zoom.regionOn
-import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.zoomeval.Paper
+import dev.sortes.zoomeval.PdfiumPdf
 import dev.sortes.zoomeval.fit.centreOf
 import dev.sortes.zoomeval.readerCrops
 import org.json.JSONArray
@@ -28,7 +28,7 @@ const val EXPORT_FRAME_WIDTH = 900
  */
 suspend fun exportPaper(
     paper: Paper,
-    pdf: MutoolPdf,
+    pdf: PdfiumPdf,
     aspect: Float,
     commit: String,
     out: File,
@@ -98,7 +98,7 @@ private fun Region.toJson(): JSONObject = JSONObject()
     .put("width", width.toDouble()).put("height", height.toDouble())
 
 private fun writeFrameImage(
-    pdf: MutoolPdf,
+    pdf: PdfiumPdf,
     index: Int,
     pageWidth: Float,
     pageHeight: Float,

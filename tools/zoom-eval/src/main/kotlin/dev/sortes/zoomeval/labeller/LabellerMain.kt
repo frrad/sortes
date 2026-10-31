@@ -1,7 +1,7 @@
 package dev.sortes.zoomeval.labeller
 
-import dev.sortes.zoomeval.MutoolPdf
 import dev.sortes.app.zoom.CropConfig
+import dev.sortes.zoomeval.PdfiumPdf
 import dev.sortes.zoomeval.WEIGHT_NAMES
 import dev.sortes.zoomeval.readCorpus
 import dev.sortes.zoomeval.readWeights
@@ -50,7 +50,7 @@ fun labellerExport(args: List<String>) {
     for (id in ids) {
         val paper = requireNotNull(corpus[id]) { "$id isn't in the corpus" }
         val started = System.currentTimeMillis()
-        val json = runBlocking { exportPaper(paper, MutoolPdf(File(pdfs, paper.file)), aspect, commit, out, config) }
+        val json = runBlocking { exportPaper(paper, PdfiumPdf(File(pdfs, paper.file)), aspect, commit, out, config) }
         entries[id] = JSONObject()
             .put("id", id)
             .put("title", paper.title)
