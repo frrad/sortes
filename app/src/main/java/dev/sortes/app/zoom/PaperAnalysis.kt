@@ -31,6 +31,8 @@ class PaperAnalysis internal constructor(
     internal val paperRule: IgnorableInkRule,
     /** Whether this analysis was read back from an [AnalysisCache] rather than computed. */
     val restored: Boolean = false,
+    /** Crops already solved at other scales ([cropsAt]), e.g. kept with a stored analysis. */
+    solvedCrops: List<ModelCrops> = emptyList(),
 ) {
     /** A rendered page as the model sees it: without the config's ignorable ink ([CropConfig.preparer]). */
     private val prepare: (InkMask) -> InkMask = config.preparer(paperRule)
@@ -66,13 +68,25 @@ class PaperAnalysis internal constructor(
      */
     val complete: Boolean get() = pagesAnalyzed == raster.sample.size && pagesMeasured == pagesAnalyzed
 
-    private val solved = HashMap<Float, ModelCrops>().apply { put(auto.scale, auto) }
+    // Guarded by itself: read by AnalysisCodec while a solve may add to it.
+    private val solved = HashMap<Float, ModelCrops>().apply {
+        for (crops in solvedCrops) put(crops.scale, crops)
+        put(auto.scale, auto)
+    }
     private val solving = Mutex()
 
     /** The crops at [scale]: the model re-solved for it, so a manual zoom still gets the model's windows. */
     suspend fun cropsAt(scale: Float): ModelCrops = solving.withLock {
-        solved[scale] ?: withContext(Dispatchers.Default) { paper.solve(scale) }.also { solved[scale] = it }
+        synchronized(solved) { solved[scale] } ?: withContext(Dispatchers.Default) { paper.solve(scale) }
+            .also { synchronized(solved) { solved[scale] = it } }
     }
+
+    /** The crops at [scale] if they're solved already (as [cropsAt] solves them), else null. */
+    fun solvedAt(scale: Float): ModelCrops? = synchronized(solved) { solved[scale] }
+
+    /** The crops solved so far at scales other than the automatic one, loosest first. */
+    internal val otherCrops: List<ModelCrops>
+        get() = synchronized(solved) { solved.values.filter { it.scale != auto.scale }.sortedByDescending { it.scale } }
 
     private val curvePoints = HashMap<Int, ModelCrops>()
 
@@ -226,6 +240,7 @@ internal suspend fun assemble(
     glyphPx: Double?,
     paperRule: IgnorableInkRule,
     auto: ModelCrops?,
+    solved: List<ModelCrops> = emptyList(),
 ): PaperAnalysis = withContext(Dispatchers.Default) {
     val legibility = config.text.legibility(config.weights.zeta)
     val paper = SampledPaper(
@@ -238,7 +253,7 @@ internal suspend fun assemble(
     val started = System.nanoTime()
     val crops = auto ?: paper.auto()
     val solveMillis = if (auto == null) (System.nanoTime() - started) / 1_000_000 else 0
-    PaperAnalysis(paper, raster, config, pageCount, crops, glyphPx, texts, solveMillis, paperRule, restored = auto != null)
+    PaperAnalysis(paper, raster, config, pageCount, crops, glyphPx, texts, solveMillis, paperRule, restored = auto != null, solvedCrops = solved)
 }
 
 /**

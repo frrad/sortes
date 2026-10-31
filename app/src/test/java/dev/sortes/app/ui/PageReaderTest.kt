@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
@@ -590,7 +591,7 @@ class PageReaderTest {
                     // Each opening is a new reader for a new PdfPages of the same PDF, as in the app.
                     key(opening) {
                         val current = pages
-                        PageReader(current, null, onSaveScale = {}, analyze = { aspect -> cache.analyze(current, "paper", aspect) })
+                        PageReader(current, null, onSaveScale = {}, analyze = { aspect, onFresh -> cache.analyze(current, "paper", aspect, onMiss = onFresh) })
                     }
                 }
             }
@@ -606,6 +607,136 @@ class PageReaderTest {
         assertEquals(first, lastRendered().second)
         // Pages rendered only to be shown: none for analysis.
         assertEquals(emptyList<Int>(), pages.masked.toList())
+    }
+
+    /**
+     * Opens the paper [opening] times in a row, each a new reader for a new PdfPages of the same
+     * PDF as in the app, analysed through [cache]. Each opening's stored-analysis lookup waits for
+     * [lookup] (if given) to complete, as a slow load would.
+     */
+    private inner class Reopening(
+        private val cache: AnalysisCache,
+        private val savedScale: Float? = null,
+    ) {
+        var opening by mutableStateOf(0)
+        val timelines = mutableListOf<OpenTimeline>()
+        val analyses = Collections.synchronizedList(mutableListOf<dev.sortes.app.zoom.PaperAnalysis>())
+        var lookup: CompletableDeferred<Unit>? = null
+        private val masks = List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() }
+
+        fun show() {
+            composeRule.setContent {
+                SortesTheme {
+                    ReaderFrame(onClose = {}) {
+                        key(opening) {
+                            val current = pages
+                            val timeline = remember { OpenTimeline(paperId = 1, startedAt = 0, clock = { 0 }, log = {}).also { timelines += it } }
+                            PageReader(
+                                current, savedScale, onSaveScale = {},
+                                timeline = timeline,
+                                onCropsSolved = { cache.update("paper", it) },
+                                analyze = { aspect, onFresh ->
+                                    lookup?.await()
+                                    cache.analyze(current, "paper", aspect, onMiss = onFresh).also { analyses += it }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        /** Opens the paper again, after it was analysed (and the analysis stored). */
+        fun reopen() {
+            pages = FakePages(masks)
+            opening++
+        }
+    }
+
+    @Test
+    fun aPaperOpenedAgainShowsOnlyItsZoomedPage() {
+        val reader = Reopening(AnalysisCache(temporaryFolder.newFolder("analyses"), build = "test"))
+        reader.show()
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        // A fresh analysis takes seconds: the page shows whole meanwhile, then zooms.
+        assertEquals(listOf(false, true), readerRenders().map { it.second.isZoomed() })
+        val first = lastRendered().second
+
+        // Reading the stored analysis takes a moment: nothing renders meanwhile.
+        reader.lookup = CompletableDeferred()
+        reader.reopen()
+        idle()
+        Thread.sleep(100)
+        idle()
+        assertEquals(emptyList<Pair<Int, Region>>(), readerRenders())
+        // Robolectric draws only when asked to.
+        composeRule.runOnIdle { drawWindow() }
+
+        reader.lookup!!.complete(Unit)
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
+        Thread.sleep(100)
+        idle()
+
+        composeRule.runOnIdle { drawWindow() }
+
+        // The first and only page rendered is the zoomed one, as it was.
+        assertEquals(listOf(0 to first), readerRenders())
+        assertTrue(reader.analyses.last().restored)
+        assertEquals(listOf("zoomed page 1"), reader.timelines.last().frames)
+        assertTrue(reader.timelines.last().settledMillis != null)
+    }
+
+    @Test
+    fun aSavedZoomIsStoredWithTheAnalysisAndOpensWithoutSolving() {
+        val reader = Reopening(AnalysisCache(temporaryFolder.newFolder("analyses"), build = "test"), savedScale = 0.9f)
+        reader.show()
+        awaitRendered { (_, region) -> region.width in 535f..600f * 0.95f }
+        val first = lastRendered().second
+        // Solved for the saved zoom, and stored with it: the analysis was computed before.
+        assertTrue(reader.analyses.single().solvedAt(0.9f) != null)
+
+        reader.reopen()
+        awaitRendered { (_, region) -> region.width in 535f..600f * 0.95f }
+        Thread.sleep(100)
+        idle()
+
+        composeRule.runOnIdle { drawWindow() }
+
+        val restored = reader.analyses.last()
+        assertTrue(restored.restored)
+        assertEquals(reader.analyses.first().solvedAt(0.9f), restored.solvedAt(0.9f))
+        assertEquals(listOf(0 to first), readerRenders())
+        assertEquals(listOf("zoomed page 1"), reader.timelines.last().frames)
+    }
+
+    @Test
+    fun aMissShowsTheWholePageAtOnce() {
+        val gate = CompletableDeferred<Unit>()
+        pages.maskGate = gate
+        var fresh: (() -> Unit)? = null
+        val lookup = CompletableDeferred<Unit>()
+        composeRule.setContent {
+            SortesTheme {
+                PageReader(pages, null, onSaveScale = {}, analyze = { aspect, onFresh ->
+                    lookup.await()
+                    fresh = onFresh
+                    onFresh()
+                    dev.sortes.app.zoom.analyzePaper(pages, aspect)
+                })
+            }
+        }
+        idle()
+        assertEquals(emptyList<Pair<Int, Region>>(), readerRenders())
+
+        // No stored analysis: the page shows whole while it's computed...
+        lookup.complete(Unit)
+        awaitRendered { it.first == 0 }
+        assertTrue(fresh != null)
+        assertTrue("${lastRendered()}", lastRendered().second.contains(0f, 0f, 600f, 800f))
+
+        // ...and zooms once it's done.
+        gate.complete(Unit)
+        awaitRendered { (index, region) -> index == 0 && region.isZoomed() }
     }
 
     @Test

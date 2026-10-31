@@ -98,6 +98,27 @@ class AnalysisCacheTest {
     }
 
     @Test
+    fun masksRoundTripBitForBitWhateverTheirSize() {
+        val random = kotlin.random.Random(3)
+        // Whole bytes of cells and a partial last byte; blank, full and mixed.
+        for ((w, h) in listOf(8 to 4, 3 to 5, 7 to 9, 61 to 79, 1 to 1)) {
+            for (fill in listOf(0.0, 1.0, 0.3)) {
+                val mask = InkMask(w, h, BooleanArray(w * h) { random.nextDouble() < fill })
+                val bytes = java.io.ByteArrayOutputStream().also { out ->
+                    java.io.DataOutputStream(out).use { AnalysisCodec.writeMask(mask, it) }
+                }.toByteArray()
+                val input = BytesInput(bytes)
+
+                val read = AnalysisCodec.readMask(input)
+
+                assertEquals(0, input.remaining)
+                assertEquals(w to h, read.width to read.height)
+                for (y in 0 until h) for (x in 0 until w) assertEquals("${w}x$h $fill ($x, $y)", mask[x, y], read[x, y])
+            }
+        }
+    }
+
+    @Test
     fun aBlankPaperRoundTrips() {
         val pages = MaskPages(List(3) { TestPage(60, 80).mask() })
         val key = key()
@@ -369,6 +390,90 @@ class AnalysisCacheTest {
         assertNotEquals(fingerprint, config.copy(weights = config.weights.copy(autoMargin = 0.02)).fingerprint())
         assertNotEquals(fingerprint, config.copy(text = config.text.copy(comfortable = 27.0)).fingerprint())
     }
+
+    @Test
+    fun onMissIsCalledOnlyWhenTheAnalysisMustBeComputed() {
+        val cache = cache()
+        var misses = 0
+        runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }
+        assertEquals(1, misses)
+
+        assertTrue(runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }.restored)
+        assertEquals(1, misses)
+
+        // An unreadable file is a miss too.
+        files().single().writeBytes(byteArrayOf(1, 2, 3))
+        assertFalse(runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }.restored)
+        assertEquals(2, misses)
+    }
+
+    @Test
+    fun cropsSolvedAtOtherScalesAreKeptByUpdate() {
+        val cache = cache()
+        val fresh = runBlocking { cache.analyze(BookPages(14), "abc", aspect) }
+        val atSaved = runBlocking { fresh.cropsAt(0.9f) }
+        val atOther = runBlocking { fresh.cropsAt(0.7f) }
+        // Not kept until the reader asks: the file holds only the automatic crops so far.
+        assertNull(runBlocking { cache.analyze(BookPages(14), "abc", aspect) }.solvedAt(0.9f))
+
+        runBlocking { cache.update("abc", fresh) }
+        val pages = BookPages(14)
+        val restored = runBlocking { cache.analyze(pages, "abc", aspect) }
+
+        assertTrue(restored.restored)
+        // Read back bit for bit, without solving them again.
+        assertEquals(atSaved, restored.solvedAt(0.9f))
+        assertEquals(atOther, restored.solvedAt(0.7f))
+        assertEquals(fresh.auto, restored.auto)
+        assertNull(restored.solvedAt(0.8f))
+        assertEquals(runBlocking { fresh.cropsAt(0.8f) }, runBlocking { restored.cropsAt(0.8f) })
+        assertEquals(emptyList<BookPages.Render>(), pages.renders.toList())
+        assertEquals(1, files().size)
+    }
+
+    @Test
+    fun anIncompleteAnalysisIsNotKeptByUpdateEither() {
+        val pages = MaskPages(List(10) { textPage().mask() }, maxPixels = 100_000)
+        val cache = cache()
+        val analysis = runBlocking { cache.analyze(pages, "abc", aspect) }
+        runBlocking { analysis.cropsAt(0.9f) }
+
+        runBlocking { cache.update("abc", analysis) }
+
+        assertEquals(emptyList<File>(), files())
+    }
+
+    @Test
+    fun aFileWithTheSameScaleSolvedTwiceIsNotTrusted() {
+        val cache = cache()
+        val key = key()
+        val fresh = analysed(BookPages(14), key)
+        runBlocking { cache.save(key, fresh) }
+        val file = files().single()
+        val raw = java.util.zip.GZIPInputStream(file.inputStream()).use { it.readBytes() }
+        // The codec's bytes end with the automatic crops and a count of 0 other crops: claim one
+        // other, a second copy of the automatic crops.
+        val codec = java.io.ByteArrayOutputStream().also { out ->
+            java.io.DataOutputStream(out).use { AnalysisCodec.write(fresh, it) }
+        }.toByteArray()
+        val autoCrops = codec.copyOfRange(codec.size - 4 - cropsSize(fresh.auto), codec.size - 4)
+        fun store(other: ByteArray) {
+            val bytes = raw.copyOfRange(0, raw.size - 4) + byteArrayOf(0, 0, 0, 1) + other
+            File(file.path).outputStream().use { out -> java.util.zip.GZIPOutputStream(out).use { it.write(bytes) } }
+        }
+        // The same bytes at another scale read back: only the repeat is wrong.
+        store(java.nio.ByteBuffer.allocate(4).putFloat(0.9f).array() + autoCrops.copyOfRange(4, autoCrops.size))
+        assertNotNull(runBlocking { cache.load(key, BookPages(14)) }?.solvedAt(0.9f))
+
+        store(autoCrops)
+
+        assertNull(runBlocking { cache.load(key, BookPages(14)) })
+        assertEquals(emptyList<File>(), files())
+    }
+
+    /** The bytes AnalysisCodec writes for [crops]: scale, windows, page crops and total ink. */
+    private fun cropsSize(crops: ModelCrops) =
+        4 + 4 + crops.windows.size * 12 + 4 + crops.pages.size * (4 + 12 + 16 + 4 + 8 * 3 + 4 + 8 * 2) + 8
 
     private fun AnalysisCache.dirFile() = File(temp.root, "analyses")
 
