@@ -15,10 +15,10 @@ class InkMask(val width: Int, val height: Int, private val ink: BooleanArray) {
     companion object {
         /**
          * The least a pixel must be darker than the paper to count as ink. Small, so the faint
-         * anti-aliased edges of thin glyphs count: a page number whose edge cells are only a
-         * few percent covered is still there on screen, and cutting them clips it visibly. On
-         * white paper that makes light shading (a grey code listing or table row) ink too: it is
-         * content, and cutting it shows.
+         * anti-aliased edges of thin glyphs count: a page number whose edge cells are only a few
+         * percent covered is still there on screen, and cutting them clips it visibly. On white
+         * paper that makes light shading (a grey code listing or table row) ink too: it is content,
+         * and cutting it shows.
          */
         const val PAPER_MARGIN = 6
 
@@ -29,8 +29,8 @@ class InkMask(val width: Int, val height: Int, private val ink: BooleanArray) {
         const val PAPER_MIN = 192
 
         /**
-         * Builds a mask from opaque ARGB pixels in row-major order, as from `Bitmap.getPixels`.
-         * A pixel is ink if its luminance (0-255) is below [threshold], by default the page's
+         * Builds a mask from opaque ARGB pixels in row-major order, as from `Bitmap.getPixels`. A
+         * pixel is ink if its luminance (0-255) is below [threshold], by default the page's
          * [inkThreshold].
          */
         fun fromArgb(
@@ -45,9 +45,9 @@ class InkMask(val width: Int, val height: Int, private val ink: BooleanArray) {
         }
 
         /**
-         * Luminance below which a page's pixels are ink: [PAPER_MARGIN] below its paper colour,
-         * or more on a grainy scan. The paper is the bulk of the light pixels (their median), and
-         * its grain shows in how far they stray *above* it, since ink only darkens; the threshold
+         * Luminance below which a page's pixels are ink: [PAPER_MARGIN] below its paper colour, or
+         * more on a grainy scan. The paper is the bulk of the light pixels (their median), and its
+         * grain shows in how far they stray *above* it, since ink only darkens; the threshold
          * allows as much spread below the paper, plus [NOISE_GUARD]. Off-white or grainy scans so
          * stay paper, while on clean paper even faint glyph edges are ink.
          */
@@ -59,10 +59,11 @@ class InkMask(val width: Int, val height: Int, private val ink: BooleanArray) {
         }
 
         /**
-         * The page's paper colour: the median of its light pixels, or white if there are none
-         * (a page that's all dark photo).
+         * The page's paper colour: the median of its light pixels, or white if there are none (a
+         * page that's all dark photo).
          */
-        fun paperLuminance(luminance: IntArray): Int = percentile(lightCounts(luminance), 0.5) ?: 255
+        fun paperLuminance(luminance: IntArray): Int =
+            percentile(lightCounts(luminance), 0.5) ?: 255
 
         /** How many pixels have each luminance of at least [PAPER_MIN]. */
         private fun lightCounts(luminance: IntArray): IntArray {
@@ -71,7 +72,9 @@ class InkMask(val width: Int, val height: Int, private val ink: BooleanArray) {
             return counts
         }
 
-        /** The least luminance at or below which [fraction] of the counted pixels lie; null if none. */
+        /**
+         * The least luminance at or below which [fraction] of the counted pixels lie; null if none.
+         */
         private fun percentile(counts: IntArray, fraction: Double): Int? {
             val total = counts.sum()
             if (total == 0) return null

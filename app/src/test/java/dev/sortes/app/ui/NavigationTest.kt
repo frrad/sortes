@@ -25,29 +25,40 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class NavigationTest {
 
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private var papers by mutableStateOf(listOf(PAPER))
     private var share by mutableStateOf<ShareLanding?>(null)
 
     private fun show(restorationTester: StateRestorationTester? = null) {
-        val content = @Composable {
-            SortesTheme {
-                SortesNavigation(
-                    papers = papers,
-                    share = share,
-                    paperList = { onOpenPaper, onOpenFolderSources ->
-                        PapersList(papers = papers, onPaperClick = onOpenPaper, onOpenFolderSources = onOpenFolderSources)
-                    },
-                    folderSources = { onBack -> SourcesList(sources = emptyList(), syncing = emptySet(), onBack = onBack) },
-                    reader = { paper, onClose ->
-                        TextButton(onClick = onClose) { Text("Reading ${paper.title}") }
-                    },
-                )
+        val content =
+            @Composable {
+                SortesTheme {
+                    SortesNavigation(
+                        papers = papers,
+                        share = share,
+                        paperList = { onOpenPaper, onOpenFolderSources ->
+                            PapersList(
+                                papers = papers,
+                                onPaperClick = onOpenPaper,
+                                onOpenFolderSources = onOpenFolderSources,
+                            )
+                        },
+                        folderSources = { onBack ->
+                            SourcesList(
+                                sources = emptyList(),
+                                syncing = emptySet(),
+                                onBack = onBack,
+                            )
+                        },
+                        reader = { paper, onClose ->
+                            TextButton(onClick = onClose) { Text("Reading ${paper.title}") }
+                        },
+                    )
+                }
             }
-        }
-        if (restorationTester != null) restorationTester.setContent(content) else composeRule.setContent(content)
+        if (restorationTester != null) restorationTester.setContent(content)
+        else composeRule.setContent(content)
     }
 
     private fun openFolderSourcesFromMenu() {
@@ -219,13 +230,14 @@ class NavigationTest {
 
     private companion object {
         const val FOLDER_ID = "01a1838a-db89-71d0-956c-e8067fdfee2a"
-        val PAPER = Paper(
-            id = 7,
-            title = "Attention Is All You Need",
-            authors = listOf("Ashish Vaswani"),
-            abstract = "The Transformer.",
-            year = 2017,
-            venue = "NeurIPS",
-        )
+        val PAPER =
+            Paper(
+                id = 7,
+                title = "Attention Is All You Need",
+                authors = listOf("Ashish Vaswani"),
+                abstract = "The Transformer.",
+                year = 2017,
+                venue = "NeurIPS",
+            )
     }
 }

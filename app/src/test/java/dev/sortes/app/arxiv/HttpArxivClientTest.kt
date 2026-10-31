@@ -1,5 +1,6 @@
 package dev.sortes.app.arxiv
 
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -9,7 +10,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
-import java.io.IOException
 
 class HttpArxivClientTest {
 

@@ -1,6 +1,8 @@
 package dev.sortes.app.importing
 
 import dev.sortes.app.data.Paper
+import java.io.IOException
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -19,8 +21,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
-import kotlin.coroutines.CoroutineContext
 
 class ImportTrackerTest {
 
@@ -77,12 +77,13 @@ class ImportTrackerTest {
     @Test
     fun countsOverlappingImports() = runBlocking {
         val gate = CompletableDeferred<Unit>()
-        val jobs = List(3) {
-            tracker.launch {
-                gate.await()
-                paper("P$it")
+        val jobs =
+            List(3) {
+                tracker.launch {
+                    gate.await()
+                    paper("P$it")
+                }
             }
-        }
         assertEquals(ImportStatus.Running(3), tracker.status.value)
 
         gate.complete(Unit)
@@ -219,12 +220,14 @@ class ImportTrackerTest {
         val caller = CoroutineScope(SupervisorJob())
         val gate = CompletableDeferred<Unit>()
         lateinit var job: Job
-        caller.launch {
-            job = tracker.launch {
-                gate.await()
-                paper("Shared")
+        caller
+            .launch {
+                job = tracker.launch {
+                    gate.await()
+                    paper("Shared")
+                }
             }
-        }.join()
+            .join()
         caller.cancel()
 
         gate.complete(Unit)

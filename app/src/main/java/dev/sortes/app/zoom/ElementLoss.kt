@@ -1,14 +1,15 @@
 package dev.sortes.app.zoom
 
 /**
- * The text model's component cost ([PageText]): every 8-connected component at a finer resolution has
- * mass one, distributed uniformly over its ink. A rule is one element, as is a connected
- * glyph; disconnected dots/accents count separately. No OCR or semantic classification.
+ * The text model's component cost ([PageText]): every 8-connected component at a finer resolution
+ * has mass one, distributed uniformly over its ink. A rule is one element, as is a connected glyph;
+ * disconnected dots/accents count separately. No OCR or semantic classification.
  *
- * Projected onto the solver's existing cells so the kept cells, solving and report agree.
- * This deliberately cannot distinguish two crop edges within the same coarse cell.
+ * Projected onto the solver's existing cells so the kept cells, solving and report agree. This
+ * deliberately cannot distinguish two crop edges within the same coarse cell.
  */
-class ElementLoss internal constructor(
+class ElementLoss
+internal constructor(
     val width: Int,
     val height: Int,
     val elements: Int,
@@ -40,15 +41,17 @@ class ElementLoss internal constructor(
             val t = cells.top.coerceIn(0, height)
             val b = cells.bottom.coerceIn(t, height)
             val stride = width + 1
-            val kept = sums[b * stride + r] - sums[b * stride + l] - sums[t * stride + r] + sums[t * stride + l]
+            val kept =
+                sums[b * stride + r] - sums[b * stride + l] - sums[t * stride + r] +
+                    sums[t * stride + l]
             return (elements - kept).coerceIn(0.0, elements.toDouble())
         }
     }
 
     companion object {
         /**
-         * Every component of the fine render that isn't [FineComponents.ignored] has mass one.
-         * Fine ink in a coarse blank still counts: dots/thin symbols can disappear on downsampling.
+         * Every component of the fine render that isn't [FineComponents.ignored] has mass one. Fine
+         * ink in a coarse blank still counts: dots/thin symbols can disappear on downsampling.
          */
         fun of(c: FineComponents): ElementLoss {
             val fine = c.fine
@@ -61,7 +64,13 @@ class ElementLoss internal constructor(
                 masses[cell] += 1.0 / c.blocks.inks[b]
             }
             val inked = masses.indices.filter { masses[it] != 0.0 }.toIntArray()
-            return ElementLoss(raw.width, raw.height, c.ignored.count { !it }, inked, DoubleArray(inked.size) { masses[inked[it]] })
+            return ElementLoss(
+                raw.width,
+                raw.height,
+                c.ignored.count { !it },
+                inked,
+                DoubleArray(inked.size) { masses[inked[it]] },
+            )
         }
     }
 }

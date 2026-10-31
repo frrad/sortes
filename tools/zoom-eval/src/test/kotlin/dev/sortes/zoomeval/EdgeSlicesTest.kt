@@ -11,19 +11,24 @@ class EdgeSlicesTest {
     /** A mask from rows of '#' (ink) and '.' (paper). */
     private fun mask(vararg rows: String): InkMask {
         val width = rows[0].length
-        return InkMask(width, rows.size, BooleanArray(width * rows.size) { rows[it / width][it % width] == '#' })
+        return InkMask(
+            width,
+            rows.size,
+            BooleanArray(width * rows.size) { rows[it / width][it % width] == '#' },
+        )
     }
 
     // Two text lines, two rows tall each, with a blank row between them.
-    private val lines = mask(
-        "........",
-        ".######.",
-        ".######.",
-        "........",
-        ".#####..",
-        ".#####..",
-        "........",
-    )
+    private val lines =
+        mask(
+            "........",
+            ".######.",
+            ".######.",
+            "........",
+            ".#####..",
+            ".#####..",
+            "........",
+        )
 
     @Test
     fun anEdgeInTheGapBetweenLinesSlicesNothing() {

@@ -6,8 +6,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 
 /**
- * Call from inside a dialog's content to stop the dialog window greying out the screen behind
- * it. On e-ink the dim is a grey fill over everything; the dialog's outline marks it instead.
+ * Call from inside a dialog's content to stop the dialog window greying out the screen behind it.
+ * On e-ink the dim is a grey fill over everything; the dialog's outline marks it instead.
  */
 @Composable
 internal fun NoDialogDim() {

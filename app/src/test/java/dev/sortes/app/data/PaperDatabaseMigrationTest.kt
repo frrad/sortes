@@ -20,17 +20,18 @@ import org.robolectric.RobolectricTestRunner
 class PaperDatabaseMigrationTest {
 
     @get:Rule
-    val helper = MigrationTestHelper(
-        InstrumentationRegistry.getInstrumentation(),
-        PaperDatabase::class.java,
-    )
+    val helper =
+        MigrationTestHelper(
+            InstrumentationRegistry.getInstrumentation(),
+            PaperDatabase::class.java,
+        )
 
     @Test
     fun migrate3To4KeepsPapersAndAddsFolderSources() {
         helper.createDatabase(TEST_DB, 3).use { db ->
             db.execSQL(
                 "INSERT INTO papers (title, authors, abstract, year, venue, pdfUrl, localFile) " +
-                    "VALUES ('Mine', '[\"A\"]', '', 2024, 'arXiv', 'https://arxiv.org/pdf/2311.08105', NULL)",
+                    "VALUES ('Mine', '[\"A\"]', '', 2024, 'arXiv', 'https://arxiv.org/pdf/2311.08105', NULL)"
             )
         }
 
@@ -41,7 +42,8 @@ class PaperDatabaseMigrationTest {
                 assertEquals("Mine", it.getString(0))
                 assertEquals("https://arxiv.org/pdf/2311.08105", it.getString(1))
             }
-            val source = ContentValues().apply { put("folderId", "01a1838a-db89-71d0-956c-e8067fdfee2a") }
+            val source =
+                ContentValues().apply { put("folderId", "01a1838a-db89-71d0-956c-e8067fdfee2a") }
             db.insert("folder_sources", SQLiteDatabase.CONFLICT_ABORT, source)
             // The unique index is what keeps a folder from being saved twice.
             assertThrows(SQLiteConstraintException::class.java) {
@@ -57,10 +59,16 @@ class PaperDatabaseMigrationTest {
         helper.createDatabase(TEST_DB, 3).close()
         helper.runMigrationsAndValidate(TEST_DB, 4, true, *PaperDatabase.MIGRATIONS).close()
 
-        val db = PaperDatabase.configure(
-            Room.databaseBuilder(ApplicationProvider.getApplicationContext(), PaperDatabase::class.java, TEST_DB)
-                .allowMainThreadQueries(),
-        ).build()
+        val db =
+            PaperDatabase.configure(
+                    Room.databaseBuilder(
+                            ApplicationProvider.getApplicationContext(),
+                            PaperDatabase::class.java,
+                            TEST_DB,
+                        )
+                        .allowMainThreadQueries()
+                )
+                .build()
         try {
             runBlocking {
                 val dao = db.folderSourceDao()

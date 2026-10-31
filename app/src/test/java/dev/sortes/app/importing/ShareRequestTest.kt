@@ -43,12 +43,13 @@ class ShareRequestTest {
             ShareRequest.from(send, "application/pdf", null, "CONTENT://com.example/doc/1"),
         )
         listOf(
-            "file:///data/data/dev.sortes.app/databases/papers.db",
-            "file:///sdcard/Download/x.pdf",
-            "https://example.com/x.pdf",
-            "/sdcard/x.pdf",
-            "",
-        ).forEach { assertNull(it, ShareRequest.from(send, "application/pdf", null, it)) }
+                "file:///data/data/dev.sortes.app/databases/papers.db",
+                "file:///sdcard/Download/x.pdf",
+                "https://example.com/x.pdf",
+                "/sdcard/x.pdf",
+                "",
+            )
+            .forEach { assertNull(it, ShareRequest.from(send, "application/pdf", null, it)) }
     }
 
     @Test
@@ -71,13 +72,19 @@ class ShareRequestTest {
         )
     }
 
-    private val folderLink = "https://www.alphaxiv.org/shared/folder/01a1838a-db89-71d0-956c-e8067fdfee2a"
+    private val folderLink =
+        "https://www.alphaxiv.org/shared/folder/01a1838a-db89-71d0-956c-e8067fdfee2a"
 
     @Test
     fun sharedAlphaxivFolderLinkBecomesFolderRequest() {
         assertEquals(
             ShareRequest.AlphaxivFolder("01a1838a-db89-71d0-956c-e8067fdfee2a"),
-            ShareRequest.from(send, "text/plain", "Check out \"Sortes\" on alphaXiv: $folderLink", null),
+            ShareRequest.from(
+                send,
+                "text/plain",
+                "Check out \"Sortes\" on alphaXiv: $folderLink",
+                null,
+            ),
         )
     }
 

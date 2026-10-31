@@ -3,6 +3,7 @@ package dev.sortes.zoomeval.fit
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.zoomeval.weightValues
 import dev.sortes.zoomeval.with
+import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,7 +11,6 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.abs
 
 class SearchTest {
     private val base = CropConfig.DEFAULT
@@ -79,17 +79,26 @@ class SearchTest {
     @Test
     fun descentWalksDownhillOnTheTrainingPapersOnly() = runBlocking {
         // Paper a likes comfortable 25 and lines 0.1; paper b (held out) likes comfortable 31.
-        fun units(c: CropConfig) = mapOf(
-            "a" to abs(c.text.comfortable - 25) + abs(c.text.lines - 0.1) * 10,
-            "b" to abs(c.text.comfortable - 31) * 3,
-        )
+        fun units(c: CropConfig) =
+            mapOf(
+                "a" to abs(c.text.comfortable - 25) + abs(c.text.lines - 0.1) * 10,
+                "b" to abs(c.text.comfortable - 31) * 3,
+            )
         var evaluated = 0
-        val d = coordinateDescent(
-            trial(base, units(base)), listOf(Coordinate.parse("comfortable"), Coordinate.parse("lines")),
-            train = listOf("a"), sweeps = 5, minGain = 0.5,
-            evaluate = { evaluated++; trial(it, units(it)) },
-        )
-        // 28 → 26 → 25 (the second sweep), lines stays: it's already best. A third sweep finds nothing and stops.
+        val d =
+            coordinateDescent(
+                trial(base, units(base)),
+                listOf(Coordinate.parse("comfortable"), Coordinate.parse("lines")),
+                train = listOf("a"),
+                sweeps = 5,
+                minGain = 0.5,
+                evaluate = {
+                    evaluated++
+                    trial(it, units(it))
+                },
+            )
+        // 28 → 26 → 25 (the second sweep), lines stays: it's already best. A third sweep finds
+        // nothing and stops.
         assertEquals(25.0, d.best.config.text.comfortable, 0.0)
         assertEquals(0.1, d.best.config.text.lines, 0.0)
         assertEquals(listOf(1, 1, 2, 2, 3, 3), d.steps.map { it.sweep })
@@ -102,10 +111,15 @@ class SearchTest {
     @Test
     fun smallGainsDontMove() = runBlocking {
         fun units(c: CropConfig) = mapOf("a" to abs(c.text.comfortable - 27) * 0.1)
-        val d = coordinateDescent(
-            trial(base, units(base)), listOf(Coordinate.parse("comfortable")), listOf("a"), sweeps = 3, minGain = 0.5,
-            evaluate = { trial(it, units(it)) },
-        )
+        val d =
+            coordinateDescent(
+                trial(base, units(base)),
+                listOf(Coordinate.parse("comfortable")),
+                listOf("a"),
+                sweeps = 3,
+                minGain = 0.5,
+                evaluate = { trial(it, units(it)) },
+            )
         assertSame(d.start, d.best)
         assertEquals(1, d.steps.size)
     }
@@ -114,15 +128,27 @@ class SearchTest {
     fun aStepIsFragileWhenOnePaperDecidesIt() {
         val incumbent = trial(base, mapOf("a" to 5.0, "b" to 5.0, "c" to 5.0))
         // Better on the whole only because of a; c is slightly worse.
-        val candidate = trial(base.with(mapOf("gamma" to "0.2")), mapOf("a" to 1.0, "b" to 5.0, "c" to 5.2))
+        val candidate =
+            trial(base.with(mapOf("gamma" to "0.2")), mapOf("a" to 1.0, "b" to 5.0, "c" to 5.2))
         assertSame(candidate, decide(incumbent, listOf(candidate), listOf("a", "b", "c"), 0.5))
         assertSame(incumbent, decide(incumbent, listOf(candidate), listOf("b", "c"), 0.5))
         val step = Step(1, Coordinate.parse("gamma"), incumbent, listOf(candidate), candidate)
         val d = Descent(incumbent, listOf(step), listOf("a", "b", "c"), 0.5)
         assertEquals(listOf("a"), d.fragile(step))
         assertSame(candidate, d.best)
-        // A step that kept the incumbent is fragile if leaving out c would have moved it... it wouldn't here.
-        val stay = Step(1, Coordinate.parse("gamma"), incumbent, listOf(trial(base, mapOf("a" to 5.0, "b" to 4.8, "c" to 5.0))), incumbent)
-        assertEquals(emptyList<String>(), Descent(incumbent, listOf(stay), listOf("a", "b", "c"), 0.5).fragile(stay))
+        // A step that kept the incumbent is fragile if leaving out c would have moved it... it
+        // wouldn't here.
+        val stay =
+            Step(
+                1,
+                Coordinate.parse("gamma"),
+                incumbent,
+                listOf(trial(base, mapOf("a" to 5.0, "b" to 4.8, "c" to 5.0))),
+                incumbent,
+            )
+        assertEquals(
+            emptyList<String>(),
+            Descent(incumbent, listOf(stay), listOf("a", "b", "c"), 0.5).fragile(stay),
+        )
     }
 }

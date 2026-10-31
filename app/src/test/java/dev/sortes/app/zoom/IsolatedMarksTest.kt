@@ -39,7 +39,10 @@ class IsolatedMarksTest {
     @Test
     fun keepsTextLinesWhoseLettersTouchOrNearlyTouch() {
         // Words in a line are separate pieces, but each has neighbours within the gap.
-        val words = TestPage(100, 140).also { p -> for (i in 0 until 10) p.rect(10 + i * 8, 50, 16 + i * 8, 53) }.mask()
+        val words =
+            TestPage(100, 140)
+                .also { p -> for (i in 0 until 10) p.rect(10 + i * 8, 50, 16 + i * 8, 53) }
+                .mask()
         assertSame(words, IsolatedMarks.strip(words))
     }
 

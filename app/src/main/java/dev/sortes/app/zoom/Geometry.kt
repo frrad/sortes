@@ -11,7 +11,8 @@ data class Region(val left: Float, val top: Float, val width: Float, val height:
 
 /** The page padded with equal margins on two sides until its width / height is [aspect]. */
 fun PageSize.padded(aspect: Float): PageSize =
-    if (width / height < aspect) PageSize(height * aspect, height) else PageSize(width, width / aspect)
+    if (width / height < aspect) PageSize(height * aspect, height)
+    else PageSize(width, width / aspect)
 
 /** The part of [page], in page points, that this window shows. */
 fun CropWindow.regionOn(page: PageSize, aspect: Float): Region {
@@ -28,11 +29,14 @@ fun CropWindow.regionOn(page: PageSize, aspect: Float): Region {
 val FullPage = CropWindow(left = 0f, top = 0f, scale = 1f)
 
 /**
- * Pixels per point at which to render pages for analysis: one density for the whole paper, so
- * its largest padded page is [longSide] pixels on its longer side.
+ * Pixels per point at which to render pages for analysis: one density for the whole paper, so its
+ * largest padded page is [longSide] pixels on its longer side.
  */
-fun analysisDensity(pages: List<PageSize>, aspect: Float, longSide: Int = ANALYSIS_LONG_SIDE): Float =
-    longSide / pages.maxOf { p -> p.padded(aspect).let { max(it.width, it.height) } }
+fun analysisDensity(
+    pages: List<PageSize>,
+    aspect: Float,
+    longSide: Int = ANALYSIS_LONG_SIDE,
+): Float = longSide / pages.maxOf { p -> p.padded(aspect).let { max(it.width, it.height) } }
 
 /** Mask size for one page at [density] pixels per point. */
 fun maskSize(page: PageSize, density: Float): Pair<Int, Int> =
@@ -44,14 +48,14 @@ const val ANALYSIS_LONG_SIDE = 256
 
 /**
  * Where to crop one page: a window with the screen's aspect ratio, positioned within the page's
- * padded frame (the page centered in white margins until it has the screen's aspect ratio).
- * All values are fractions of the padded frame, so [scale] 1 shows the whole frame.
+ * padded frame (the page centered in white margins until it has the screen's aspect ratio). All
+ * values are fractions of the padded frame, so [scale] 1 shows the whole frame.
  */
 data class CropWindow(val left: Float, val top: Float, val scale: Float)
 
 /**
- * Mask cells from ([left], [top]) inclusive to ([right], [bottom]) exclusive. It may reach past
- * the mask into the padding around it.
+ * Mask cells from ([left], [top]) inclusive to ([right], [bottom]) exclusive. It may reach past the
+ * mask into the padding around it.
  */
 data class CellRect(val left: Int, val top: Int, val right: Int, val bottom: Int)
 

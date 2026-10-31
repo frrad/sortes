@@ -39,11 +39,13 @@ class OpenTimeline(
 
     /** Everything drawn so far, in order: messages and pages ("whole page 1", "zoomed page 1"). */
     @get:Synchronized
-    val frames: List<String> get() = shown.toList()
+    val frames: List<String>
+        get() = shown.toList()
 
     /** The steps marked so far, with their milliseconds since the tap. */
     @get:Synchronized
-    val steps: List<Pair<String, Long>> get() = marks.toList()
+    val steps: List<Pair<String, Long>>
+        get() = marks.toList()
 
     init {
         if (Build.VERSION.SDK_INT >= 29) Trace.beginAsyncSection(SECTION, cookie)
@@ -114,13 +116,14 @@ class OpenTimeline(
         private const val SECTION = "Sortes open paper"
         private const val MAX_SECTION_NAME = 127
 
-        /** A tap older than this isn't what opened the reader (e.g. restored after process death). */
+        /**
+         * A tap older than this isn't what opened the reader (e.g. restored after process death).
+         */
         private const val TAP_MAX_AGE_MS = 5_000L
 
         private val cookies = java.util.concurrent.atomic.AtomicInteger()
 
-        @Volatile
-        private var lastTap: Pair<Long, Long>? = null
+        @Volatile private var lastTap: Pair<Long, Long>? = null
 
         /** Records that paper [paperId] was tapped now, to time its opening from. */
         fun tapped(paperId: Long) {
@@ -130,7 +133,9 @@ class OpenTimeline(
         /** A timeline for opening [paperId], from its tap if it was just tapped, else from now. */
         fun begin(paperId: Long): OpenTimeline {
             val now = SystemClock.elapsedRealtime()
-            val tap = lastTap?.takeIf { it.first == paperId && now - it.second in 0..TAP_MAX_AGE_MS }
+            val tap = lastTap?.takeIf {
+                it.first == paperId && now - it.second in 0..TAP_MAX_AGE_MS
+            }
             lastTap = null
             return OpenTimeline(paperId, tap?.second ?: now)
         }

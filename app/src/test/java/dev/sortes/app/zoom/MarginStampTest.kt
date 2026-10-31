@@ -17,7 +17,8 @@ class MarginStampTest {
     private fun InkMask.stripped() = MarginStampRule.strip(this)
 
     private fun InkMask.isSameAs(other: InkMask): Boolean =
-        width == other.width && height == other.height &&
+        width == other.width &&
+            height == other.height &&
             (0 until height).all { y -> (0 until width).all { x -> this[x, y] == other[x, y] } }
 
     private fun assertKept(mask: InkMask) = assertSame(mask, mask.stripped())
@@ -115,14 +116,20 @@ class MarginStampTest {
     @Test
     fun keepsAStampLikeLineThatTouchesTheText() {
         // Two blank cells at most: it's part of the text block, e.g. a change bar or a rule.
-        assertKeptLeft(TestPage(192, 248).rect(13, 23, 158, 232).stamp(width = 5).mask(), NotAStamp.TooClose)
+        assertKeptLeft(
+            TestPage(192, 248).rect(13, 23, 158, 232).stamp(width = 5).mask(),
+            NotAStamp.TooClose,
+        )
     }
 
     @Test
     fun keepsAStampLikeLineMergedIntoTheText() {
         // A single blank column doesn't separate anything: the line and text are one run, so
         // there's no margin run apart from the text at all.
-        assertKeptLeft(TestPage(192, 248).rect(12, 23, 158, 232).stamp().mask(), NotAStamp.NothingElse)
+        assertKeptLeft(
+            TestPage(192, 248).rect(12, 23, 158, 232).stamp().mask(),
+            NotAStamp.NothingElse,
+        )
     }
 
     @Test
@@ -171,14 +178,18 @@ class MarginStampTest {
         for (name in listOf("attention-p1", "bert-p1", "resnet-p1")) {
             val mask = maskFixture("$name.txt")
             val removed = mask.inkCount - mask.stripped().inkCount
-            assertTrue("$name: removed $removed of ${mask.inkCount}", removed in 100..mask.inkCount / 20)
+            assertTrue(
+                "$name: removed $removed of ${mask.inkCount}",
+                removed in 100..mask.inkCount / 20,
+            )
         }
     }
 
     @Test
     fun keepsLargerLineNumbersInNarrowMargins() {
         // \small line numbers with 0.75in margins: right by the edge, thin, clear of the text,
-        // tall, and ink on 60-64% of their rows. Only the unbroken-run test tells them from a stamp.
+        // tall, and ink on 60-64% of their rows. Only the unbroken-run test tells them from a
+        // stamp.
         assertKeptLeft(maskFixture("line-numbers-small.txt"), NotAStamp.Broken)
         assertKeptLeft(maskFixture("line-numbers-footnotesize.txt"), NotAStamp.Broken)
         assertKeptLeft(maskFixture("line-numbers-narrow-margin.txt"), NotAStamp.Broken)

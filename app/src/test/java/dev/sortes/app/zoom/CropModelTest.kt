@@ -1,12 +1,12 @@
 package dev.sortes.app.zoom
 
+import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 class CropModelTest {
     private val aspect = 0.75f
@@ -25,8 +25,11 @@ class CropModelTest {
     private val left = page(rect(2, 10, 38, 70))
     private val right = page(rect(22, 10, 58, 70))
 
-    private fun solve(masks: List<InkMask>, scale: Float, weights: CropModelWeights = CropModelWeights()) =
-        runBlocking { CropModel(aspect, weights).solve(masks, scale) }
+    private fun solve(
+        masks: List<InkMask>,
+        scale: Float,
+        weights: CropModelWeights = CropModelWeights(),
+    ) = runBlocking { CropModel(aspect, weights).solve(masks, scale) }
 
     @Test
     fun aSingleWindowCentresTheText() {
@@ -60,7 +63,12 @@ class CropModelTest {
 
     @Test
     fun aSwitchPenaltyCanOutweighAlternatingWindows() {
-        val crops = solve(List(6) { if (it % 2 == 0) left else right }, 0.75f, CropModelWeights(delta = 10.0))
+        val crops =
+            solve(
+                List(6) { if (it % 2 == 0) left else right },
+                0.75f,
+                CropModelWeights(delta = 10.0),
+            )
         assertEquals(1, crops.k)
         assertEquals(0, crops.switches)
     }
@@ -115,7 +123,11 @@ class CropModelTest {
         val crops = solve(List(4) { if (it % 2 == 0) left else right }, 0.75f, weights)
         assertEquals(2, crops.k)
         assertEquals(3, crops.switches)
-        assertEquals(crops.cutTerm + crops.offTerm + crops.pageCutTerm + 0.05 + 0.03, crops.total, 1e-9)
+        assertEquals(
+            crops.cutTerm + crops.offTerm + crops.pageCutTerm + 0.05 + 0.03,
+            crops.total,
+            1e-9,
+        )
     }
 
     @Test
@@ -132,7 +144,8 @@ class CropModelTest {
     @Test
     fun scoringGivenWindowsCountsTheInkTheyCut() {
         val full = page(rect(0, 0, 60, 80))
-        val crops = CropModel(aspect).score(listOf(full, full), List(2) { CropWindow(0f, 0f, 0.5f) })
+        val crops =
+            CropModel(aspect).score(listOf(full, full), List(2) { CropWindow(0f, 0f, 0.5f) })
         assertEquals(1, crops.k)
         assertEquals(2L * (4800 - 30 * 40), crops.cutCells)
         assertEquals(0.75, crops.pages[0].cut, 1e-9)
@@ -168,20 +181,26 @@ class CropModelTest {
     // Property tests on random papers.
 
     /**
-     * Random pages of mixed sizes, so some are padded at the sides and some above and below, by
-     * odd and even numbers of cells, with a few random ink rectangles.
+     * Random pages of mixed sizes, so some are padded at the sides and some above and below, by odd
+     * and even numbers of cells, with a few random ink rectangles.
      */
-    private fun randomPaper(random: Random, pages: Int = random.nextInt(2, 9)): List<InkMask> = List(pages) {
-        val w = random.nextInt(50, 71)
-        val h = random.nextInt(64, 91)
-        val p = TestPage(w, h)
-        repeat(random.nextInt(0, 6)) {
-            val l = random.nextInt(0, w - 4)
-            val t = random.nextInt(0, h - 4)
-            p.rect(l, t, (l + random.nextInt(1, 30)).coerceAtMost(w), (t + random.nextInt(1, 30)).coerceAtMost(h))
+    private fun randomPaper(random: Random, pages: Int = random.nextInt(2, 9)): List<InkMask> =
+        List(pages) {
+            val w = random.nextInt(50, 71)
+            val h = random.nextInt(64, 91)
+            val p = TestPage(w, h)
+            repeat(random.nextInt(0, 6)) {
+                val l = random.nextInt(0, w - 4)
+                val t = random.nextInt(0, h - 4)
+                p.rect(
+                    l,
+                    t,
+                    (l + random.nextInt(1, 30)).coerceAtMost(w),
+                    (t + random.nextInt(1, 30)).coerceAtMost(h),
+                )
+            }
+            p.mask()
         }
-        p.mask()
-    }
 
     @Test
     fun refiningNeverRaisesTheCost() = runBlocking {
@@ -193,7 +212,10 @@ class CropModelTest {
             val start = IntArray(k) { random.nextInt(solver.positions) }
             val before = solver.total(start, solver.assign(start))
             val (windows, assignment) = solver.refine(start)
-            assertTrue("$before -> ${solver.total(windows, assignment)}", solver.total(windows, assignment) <= before + 1e-9)
+            assertTrue(
+                "$before -> ${solver.total(windows, assignment)}",
+                solver.total(windows, assignment) <= before + 1e-9,
+            )
         }
     }
 
@@ -222,7 +244,9 @@ class CropModelTest {
         for ((delta, delta2) in listOf(0.0 to 0.0, 0.03 to 0.0, 0.0 to 0.04, 0.03 to 0.04)) {
             repeat(30) {
                 val masks = randomPaper(random, pages = random.nextInt(1, 8))
-                val solver = CropModel(aspect, CropModelWeights(delta = delta, delta2 = delta2)).solver(masks, 0.7f)
+                val solver =
+                    CropModel(aspect, CropModelWeights(delta = delta, delta2 = delta2))
+                        .solver(masks, 0.7f)
                 val k = random.nextInt(1, 4)
                 val windows = IntArray(k) { random.nextInt(solver.positions) }
                 val n = masks.size
@@ -240,7 +264,12 @@ class CropModelTest {
                 }
                 search(0)
                 val chosen = solver.assign(windows)
-                assertEquals("δ=$delta δ₂=$delta2 n=$n k=$k", best, solver.pathCost(windows, chosen), 1e-9)
+                assertEquals(
+                    "δ=$delta δ₂=$delta2 n=$n k=$k",
+                    best,
+                    solver.pathCost(windows, chosen),
+                    1e-9,
+                )
             }
         }
     }
@@ -249,24 +278,45 @@ class CropModelTest {
     fun pagesOfOtherSizesRenderOnTheCellsTheModelCounted() = runBlocking {
         // 57 x 80 and 58 x 80 both pad to 60 x 80 cells at 3:4, but by 3 and 2 cells: the shared
         // window must land on each page's own cells.
-        val masks = listOf(
-            TestPage(57, 80).rect(8, 10, 49, 70).mask(),
-            TestPage(58, 80).rect(8, 10, 50, 70).mask(),
-            TestPage(57, 80).rect(8, 10, 49, 70).mask(),
-            TestPage(61, 80).rect(9, 10, 52, 70).mask(),
-        )
+        val masks =
+            listOf(
+                TestPage(57, 80).rect(8, 10, 49, 70).mask(),
+                TestPage(58, 80).rect(8, 10, 50, 70).mask(),
+                TestPage(57, 80).rect(8, 10, 49, 70).mask(),
+                TestPage(61, 80).rect(9, 10, 52, 70).mask(),
+            )
         for (scale in listOf(0.6f, 0.75f, 0.85f)) {
             val crops = CropModel(aspect).solve(masks, scale)
             crops.pages.forEachIndexed { p, crop ->
                 val mask = masks[p]
-                val r = crop.window.regionOn(PageSize(mask.width.toFloat(), mask.height.toFloat()), aspect)
+                val r =
+                    crop.window.regionOn(
+                        PageSize(mask.width.toFloat(), mask.height.toFloat()),
+                        aspect,
+                    )
                 val c = crop.cells
                 val clampedX = crop.window.left == 0f || crop.window.left == 1f - scale
                 val clampedY = crop.window.top == 0f || crop.window.top == 1f - scale
-                assertEquals("page $p x at $scale", (c.left + c.right) / 2f, r.left + r.width / 2, if (clampedX) 0.5f else 0.02f)
-                assertEquals("page $p y at $scale", (c.top + c.bottom) / 2f, r.top + r.height / 2, if (clampedY) 0.5f else 0.02f)
+                assertEquals(
+                    "page $p x at $scale",
+                    (c.left + c.right) / 2f,
+                    r.left + r.width / 2,
+                    if (clampedX) 0.5f else 0.02f,
+                )
+                assertEquals(
+                    "page $p y at $scale",
+                    (c.top + c.bottom) / 2f,
+                    r.top + r.height / 2,
+                    if (clampedY) 0.5f else 0.02f,
+                )
                 // The shared window maps back to the same cells.
-                assertEquals(crop.cells, CropModel(aspect).score(listOf(mask), listOf(crops.windows[crop.windowIndex])).pages[0].cells)
+                assertEquals(
+                    crop.cells,
+                    CropModel(aspect)
+                        .score(listOf(mask), listOf(crops.windows[crop.windowIndex]))
+                        .pages[0]
+                        .cells,
+                )
             }
         }
     }
@@ -292,7 +342,12 @@ class CropModelTest {
             val out = DoubleArray(cols * (page.height - h + 1))
             page.offCentres(w, h, out)
             for (y in 0..page.height - h) for (x in 0 until cols) {
-                assertEquals("($x, $y) at $scale", page.offCentre(x, y, w, h), out[y * cols + x], 1e-12)
+                assertEquals(
+                    "($x, $y) at $scale",
+                    page.offCentre(x, y, w, h),
+                    out[y * cols + x],
+                    1e-12,
+                )
             }
         }
     }
@@ -318,14 +373,27 @@ class CropModelBlocksTest {
 
     private fun rect(l: Int, t: Int, r: Int, b: Int) = intArrayOf(l, t, r, b)
 
-    private fun solve(masks: List<InkMask>, scale: Float, weights: CropModelWeights) =
-        runBlocking { CropModel(aspect, weights).solve(masks, scale) }
+    private fun solve(masks: List<InkMask>, scale: Float, weights: CropModelWeights) = runBlocking {
+        CropModel(aspect, weights).solve(masks, scale)
+    }
 
     // The per-page convex term is off here, so the trade-offs are cut ink against blocks alone.
-    private fun weights(kappa: Double, zeta: Double = 0.0) = CropModelWeights(epsilon = 0.0, kappa = kappa, zeta = zeta, autoMargin = 0.0)
+    private fun weights(kappa: Double, zeta: Double = 0.0) =
+        CropModelWeights(epsilon = 0.0, kappa = kappa, zeta = zeta, autoMargin = 0.0)
 
-    /** Text at rows 10-50, a sparse figure (an outline) at rows 54-66, and a dense footnote at 70-76: 66 rows in all. */
-    private val figurePage = page(rect(10, 10, 50, 50), rect(10, 54, 50, 55), rect(10, 54, 11, 66), rect(49, 54, 50, 66), rect(10, 65, 50, 66), rect(10, 70, 50, 76))
+    /**
+     * Text at rows 10-50, a sparse figure (an outline) at rows 54-66, and a dense footnote at
+     * 70-76: 66 rows in all.
+     */
+    private val figurePage =
+        page(
+            rect(10, 10, 50, 50),
+            rect(10, 54, 50, 55),
+            rect(10, 54, 11, 66),
+            rect(49, 54, 50, 66),
+            rect(10, 65, 50, 66),
+            rect(10, 70, 50, 76),
+        )
 
     @Test
     fun cuttingThroughABlockCostsMoreThanDroppingAWholeOne() {
@@ -350,7 +418,16 @@ class CropModelBlocksTest {
         assertTrue(crops.splitBlocks >= 1)
         assertEquals(0.2 * crops.pages.sumOf { it.split }, crops.splitTerm, 1e-12)
         assertTrue(crops.pages[0].split > 0.0 && crops.pages[0].split <= crops.splitBlocks)
-        assertEquals(crops.cutTerm + crops.offTerm + crops.pageCutTerm + crops.splitTerm + crops.windowTerm + crops.switchTerm, crops.total, 1e-9)
+        assertEquals(
+            crops.cutTerm +
+                crops.offTerm +
+                crops.pageCutTerm +
+                crops.splitTerm +
+                crops.windowTerm +
+                crops.switchTerm,
+            crops.total,
+            1e-9,
+        )
         assertEquals(crops.total / 1, crops.costPerPage, 1e-9)
     }
 
@@ -372,10 +449,14 @@ class CropModelBlocksTest {
         // One page's block is taller than the others' (56 rows). Keeping it whole costs every
         // page rows of zoom; splitting it costs kappa plus its cut ink, on one page.
         val usual = page(rect(10, 10, 50, 66))
-        val keep = CropModel(aspect, weights(kappa = 0.2, zeta = 1.0)).auto(List(12) { usual } + page(rect(10, 8, 50, 68)))
+        val keep =
+            CropModel(aspect, weights(kappa = 0.2, zeta = 1.0))
+                .auto(List(12) { usual } + page(rect(10, 8, 50, 68)))
         assertEquals(56, keep.pages[0].cells.bottom - keep.pages[0].cells.top)
         assertEquals(1, keep.pagesSplit)
-        val whole = CropModel(aspect, weights(kappa = 5.0, zeta = 1.0)).auto(List(12) { usual } + page(rect(10, 6, 50, 70)))
+        val whole =
+            CropModel(aspect, weights(kappa = 5.0, zeta = 1.0))
+                .auto(List(12) { usual } + page(rect(10, 6, 50, 70)))
         assertEquals(64, whole.pages[0].cells.bottom - whole.pages[0].cells.top)
         assertEquals(0, whole.pagesSplit)
     }
@@ -388,10 +469,15 @@ class CropModelBlocksTest {
         // zoom tightens past the figure; with a small one every cut is a whole split, so the zoom
         // stops where the figure fits.
         val masks = List(6) { page(rect(10, 10, 50, 35), rect(8, 40, 52, 60)) }
-        val nibble = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.5)).auto(masks)
+        val nibble =
+            CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.5)).auto(masks)
         assertTrue("${nibble.scale}", nibble.scale <= 0.7001f)
-        assertTrue("${nibble.pages[0]}", nibble.pages[0].splitBlocks >= 1 && nibble.pages[0].split < 0.3)
-        val whole = CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.005)).auto(masks)
+        assertTrue(
+            "${nibble.pages[0]}",
+            nibble.pages[0].splitBlocks >= 1 && nibble.pages[0].split < 0.3,
+        )
+        val whole =
+            CropModel(aspect, weights(kappa = 0.2, zeta = 2.0).copy(splitInk = 0.005)).auto(masks)
         assertEquals(0, whole.splitBlocks)
         // The tightest window with the figure's 44 columns (0.725 rounds to 44 too).
         assertEquals(44, whole.pages[0].cells.right - whole.pages[0].cells.left)
@@ -406,9 +492,16 @@ class CropModelBlocksTest {
         // blocks, the page gets its own window (rows 10-70) when that is cheaper by a window's
         // worth; by ink alone it keeps the shared one.
         val usual = page(rect(10, 10, 50, 66))
-        val odd = page(rect(10, 10, 50, 54), rect(10, 62, 50, 63), rect(10, 62, 11, 70), rect(49, 62, 50, 70))
+        val odd =
+            page(
+                rect(10, 10, 50, 54),
+                rect(10, 62, 50, 63),
+                rect(10, 62, 11, 70),
+                rect(49, 62, 50, 70),
+            )
         val sample = List(6) { usual }
-        fun paper(weights: CropModelWeights) = SampledPaper(CropModel(aspect, weights), sample, sample.indices.toList())
+        fun paper(weights: CropModelWeights) =
+            SampledPaper(CropModel(aspect, weights), sample, sample.indices.toList())
         val blocks = paper(weights(kappa = 0.2).copy(gamma = 0.05))
         val crops = blocks.solve(0.75f)
         val crop = blocks.cropFor(6, crops, odd)
@@ -422,14 +515,19 @@ class CropModelBlocksTest {
     fun theAutomaticZoomIsTheSameOnOneThreadAndOnFour() = runBlocking {
         val random = Random(17)
         repeat(6) {
-            val masks = List(random.nextInt(3, 9)) {
-                val top = random.nextInt(4, 14)
-                val bottom = random.nextInt(60, 76)
-                page(rect(random.nextInt(6, 12), top, random.nextInt(46, 54), bottom), rect(10, bottom + 2, 50, bottom + 4))
-            }
+            val masks =
+                List(random.nextInt(3, 9)) {
+                    val top = random.nextInt(4, 14)
+                    val bottom = random.nextInt(60, 76)
+                    page(
+                        rect(random.nextInt(6, 12), top, random.nextInt(46, 54), bottom),
+                        rect(10, bottom + 2, 50, bottom + 4),
+                    )
+                }
             val weights = weights(kappa = 0.2, zeta = 0.5).copy(autoMargin = 0.01)
             val one = CropModel(aspect, weights, parallelism = 1).prepare(masks)
-            val four = CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).prepare(masks)
+            val four =
+                CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).prepare(masks)
             val a = one.auto()
             val b = four.auto()
             assertEquals(a.scale, b.scale, 0f)
@@ -444,11 +542,20 @@ class CropModelBlocksTest {
         val masks = List(8) { page(rect(10 + it % 3, 10, 48 + it % 3, 70)) }
         val opened = java.util.concurrent.atomic.AtomicInteger()
         // Prefers windows further left on odd pages, as a text cost might.
-        val extras = masks.indices.map { p -> PageCost { opened.incrementAndGet(); CellCost { c -> if (p % 2 == 1) 0.001 * c.left.coerceAtLeast(0) else 0.0 } } }
+        val extras =
+            masks.indices.map { p ->
+                PageCost {
+                    opened.incrementAndGet()
+                    CellCost { c -> if (p % 2 == 1) 0.001 * c.left.coerceAtLeast(0) else 0.0 }
+                }
+            }
         val weights = weights(kappa = 0.2)
         val one = CropModel(aspect, weights, parallelism = 1).prepare(masks, extras).solve(0.75f)
         assertEquals(masks.size, opened.get())
-        val four = CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).prepare(masks, extras).solve(0.75f)
+        val four =
+            CropModel(aspect, weights, parallelism = 4, minParallelCells = 0)
+                .prepare(masks, extras)
+                .solve(0.75f)
         assertEquals(2 * masks.size, opened.get())
         assertEquals(one.pages, four.pages)
     }
@@ -460,7 +567,10 @@ class CropModelBlocksTest {
         assertEquals(1, model.threadsFor(15, 15 * letter))
         assertEquals(4, model.threadsFor(60, 60 * letter))
         assertEquals(3, model.threadsFor(3, 100 * letter))
-        assertEquals(1, CropModel(aspect, weights(kappa = 0.2), parallelism = 1).threadsFor(60, 60 * letter))
+        assertEquals(
+            1,
+            CropModel(aspect, weights(kappa = 0.2), parallelism = 1).threadsFor(60, 60 * letter),
+        )
         // Six 60 x 80 test pages: one thread; the frame cells are what the padded page has.
         assertEquals(60L * 80, PaddedPage.frameCells(TestPage(60, 80).mask(), aspect))
         assertEquals(60L * 80, PaddedPage.frameCells(TestPage(40, 80).mask(), aspect))
@@ -470,10 +580,22 @@ class CropModelBlocksTest {
     fun theCostTableIsTheSameOnOneThreadAndOnFour() = runBlocking {
         val random = Random(23)
         repeat(5) {
-            val masks = List(random.nextInt(2, 10)) { page(rect(random.nextInt(4, 14), random.nextInt(4, 14), random.nextInt(46, 56), random.nextInt(60, 76))) }
+            val masks =
+                List(random.nextInt(2, 10)) {
+                    page(
+                        rect(
+                            random.nextInt(4, 14),
+                            random.nextInt(4, 14),
+                            random.nextInt(46, 56),
+                            random.nextInt(60, 76),
+                        )
+                    )
+                }
             val weights = weights(kappa = 0.2)
             val one = CropModel(aspect, weights, parallelism = 1).solve(masks, 0.75f)
-            val four = CropModel(aspect, weights, parallelism = 4, minParallelCells = 0).solve(masks, 0.75f)
+            val four =
+                CropModel(aspect, weights, parallelism = 4, minParallelCells = 0)
+                    .solve(masks, 0.75f)
             assertEquals(one.pages, four.pages)
             assertEquals(one.total, four.total, 0.0)
         }

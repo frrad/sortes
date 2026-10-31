@@ -33,15 +33,18 @@ fun CropWindow.covers(
     bottom: Int,
 ): Boolean {
     val r = regionOn(PageSize(width.toFloat(), height.toFloat()), aspect)
-    val slack = 0.5f  // the analysis works in whole cells
-    return r.left <= left + slack && r.top <= top + slack &&
-        r.left + r.width >= right - slack && r.top + r.height >= bottom - slack
+    val slack = 0.5f // the analysis works in whole cells
+    return r.left <= left + slack &&
+        r.top <= top + slack &&
+        r.left + r.width >= right - slack &&
+        r.top + r.height >= bottom - slack
 }
 
 /** A mask saved as text, one row per line: `#` for ink, `.` for paper. */
 fun maskFixture(name: String): InkMask {
-    val text = requireNotNull(TestPage::class.java.getResource("/zoom/$name")) { "missing fixture $name" }
-        .readText()
+    val text =
+        requireNotNull(TestPage::class.java.getResource("/zoom/$name")) { "missing fixture $name" }
+            .readText()
     val rows = text.lines().filter { it.isNotEmpty() }
     val ink = BooleanArray(rows.size * rows[0].length)
     rows.forEachIndexed { y, row ->
@@ -52,8 +55,8 @@ fun maskFixture(name: String): InkMask {
 }
 
 /**
- * Ink on a page that a window leaves out, beyond each of its edges. Ink past a corner counts
- * toward both edges, but once in [total].
+ * Ink on a page that a window leaves out, beyond each of its edges. Ink past a corner counts toward
+ * both edges, but once in [total].
  */
 data class Clipped(val left: Int, val top: Int, val right: Int, val bottom: Int, val total: Int)
 
@@ -87,8 +90,9 @@ fun CropWindow.clipped(mask: InkMask, aspect: Float): Clipped {
  * pixel two hex digits of luminance. Returns opaque ARGB pixels, as `Bitmap.getPixels` would.
  */
 fun grayFixture(name: String): Triple<IntArray, Int, Int> {
-    val text = requireNotNull(TestPage::class.java.getResource("/zoom/$name")) { "missing fixture $name" }
-        .readText()
+    val text =
+        requireNotNull(TestPage::class.java.getResource("/zoom/$name")) { "missing fixture $name" }
+            .readText()
     val rows = text.lines().filter { it.isNotEmpty() }
     val width = rows[0].length / 2
     val pixels = IntArray(rows.size * width)
@@ -110,7 +114,9 @@ class MaskPages(
     private val masks: List<InkMask>,
     /** Pages that can't be read at all. */
     private val broken: Set<Int> = emptySet(),
-    /** Renders bigger than this many pixels fail, as a big render can on a device short of memory. */
+    /**
+     * Renders bigger than this many pixels fail, as a big render can on a device short of memory.
+     */
     private val maxPixels: Int = Int.MAX_VALUE,
 ) : PageRenderer {
     data class Render(val index: Int, val width: Int, val height: Int)
@@ -118,9 +124,11 @@ class MaskPages(
     val renders: MutableList<Render> = java.util.Collections.synchronizedList(mutableListOf())
 
     /** The pages rendered at all, in order, each once. */
-    val rendered: List<Int> get() = renders.map { it.index }.distinct()
+    val rendered: List<Int>
+        get() = renders.map { it.index }.distinct()
 
-    override val pageCount: Int get() = masks.size
+    override val pageCount: Int
+        get() = masks.size
 
     override suspend fun pageSize(index: Int): PageSize {
         if (index in broken) throw java.io.IOException("Can't read page $index")
@@ -129,11 +137,13 @@ class MaskPages(
 
     override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
         if (index in broken) throw java.io.IOException("Can't render page $index")
-        if (width.toLong() * height > maxPixels) throw IllegalStateException("Out of memory rendering page $index")
+        if (width.toLong() * height > maxPixels)
+            throw IllegalStateException("Out of memory rendering page $index")
         renders += Render(index, width, height)
         val mask = masks[index]
         return IntArray(width * height) {
-            if (mask[(it % width) * mask.width / width, (it / width) * mask.height / height]) BLACK else WHITE
+            if (mask[(it % width) * mask.width / width, (it / width) * mask.height / height]) BLACK
+            else WHITE
         }
     }
 
@@ -145,9 +155,9 @@ class MaskPages(
 }
 
 /**
- * Pages of "text" drawn at whatever resolution they're rendered: [lines] lines of glyphs
- * [glyph] points tall (each 0.6 of a glyph wide, 0.4 apart), every [pitch] points, in a column
- * from ([left], [top]) [width] points wide, on [pageWidth] x [pageHeight] point pages.
+ * Pages of "text" drawn at whatever resolution they're rendered: [lines] lines of glyphs [glyph]
+ * points tall (each 0.6 of a glyph wide, 0.4 apart), every [pitch] points, in a column from
+ * ([left], [top]) [width] points wide, on [pageWidth] x [pageHeight] point pages.
  */
 class TextPages(
     override val pageCount: Int,
@@ -173,7 +183,8 @@ class TextPages(
             while (x + glyph * 0.6f <= left + this.width) {
                 val x0 = (x * sx).toInt()
                 val x1 = ((x + glyph * 0.6f) * sx).toInt().coerceAtLeast(x0 + 1)
-                for (y in y0 until minOf(y1, height)) for (xx in x0 until minOf(x1, width)) out[y * width + xx] = MaskPages.BLACK
+                for (y in y0 until minOf(y1, height)) for (xx in x0 until minOf(x1, width)) out[
+                    y * width + xx] = MaskPages.BLACK
                 x += glyph
             }
         }

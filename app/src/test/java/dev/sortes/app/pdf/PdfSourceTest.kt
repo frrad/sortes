@@ -1,6 +1,8 @@
 package dev.sortes.app.pdf
 
 import dev.sortes.app.data.Paper
+import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -14,13 +16,10 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.io.IOException
 
 class PdfSourceTest {
 
-    @get:Rule
-    val tmp = TemporaryFolder()
+    @get:Rule val tmp = TemporaryFolder()
 
     private val server = MockWebServer()
     private lateinit var cacheDir: File
@@ -41,7 +40,15 @@ class PdfSourceTest {
     }
 
     private fun paper(id: Long, url: String? = server.url("/paper.pdf").toString()) =
-        Paper(id = id, title = "T", authors = emptyList(), abstract = "", year = null, venue = null, pdfUrl = url)
+        Paper(
+            id = id,
+            title = "T",
+            authors = emptyList(),
+            abstract = "",
+            year = null,
+            venue = null,
+            pdfUrl = url,
+        )
 
     private fun pdfResponse(bytes: ByteArray = PDF_BYTES) =
         MockResponse().setBody(Buffer().write(bytes))
@@ -97,7 +104,9 @@ class PdfSourceTest {
 
     @Test
     fun paperWithoutUrlFails() {
-        assertThrows(IOException::class.java) { runBlocking { source.fetch(paper(id = 1, url = null)) } }
+        assertThrows(IOException::class.java) {
+            runBlocking { source.fetch(paper(id = 1, url = null)) }
+        }
         assertEquals(0, server.requestCount)
     }
 
@@ -135,7 +144,9 @@ class PdfSourceTest {
         val imported = importedFile("paper-1.pdf")
 
         val file = runBlocking {
-            source.fetch(localPaper(id = 7, name = "paper-1.pdf", url = server.url("/x.pdf").toString()))
+            source.fetch(
+                localPaper(id = 7, name = "paper-1.pdf", url = server.url("/x.pdf").toString())
+            )
         }
 
         assertEquals(imported, file)
@@ -144,11 +155,14 @@ class PdfSourceTest {
 
     @Test
     fun missingLocalFileFailsWithoutFallingBackToNetwork() {
-        val e = assertThrows(IOException::class.java) {
-            runBlocking {
-                source.fetch(localPaper(id = 7, name = "gone.pdf", url = server.url("/x.pdf").toString()))
+        val e =
+            assertThrows(IOException::class.java) {
+                runBlocking {
+                    source.fetch(
+                        localPaper(id = 7, name = "gone.pdf", url = server.url("/x.pdf").toString())
+                    )
+                }
             }
-        }
         assertEquals("Imported PDF is missing", e.message)
         assertEquals(0, server.requestCount)
     }

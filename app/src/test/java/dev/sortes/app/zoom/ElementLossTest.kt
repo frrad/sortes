@@ -5,17 +5,26 @@ import org.junit.Test
 
 class ElementLossTest {
     private class Loss(val e: ElementLoss) {
-        val elements get() = e.elements
+        val elements
+            get() = e.elements
+
         private val table = e.table()
+
         fun lost(c: CellRect) = table.lost(c)
     }
 
-    private fun loss(fine: InkMask, raw: InkMask, prepared: InkMask) = Loss(ElementLoss.of(FineComponents.of(fine, raw, prepared)))
+    private fun loss(fine: InkMask, raw: InkMask, prepared: InkMask) =
+        Loss(ElementLoss.of(FineComponents.of(fine, raw, prepared)))
 
-    private fun mask(vararg rows: String) = InkMask(rows[0].length, rows.size,
-        rows.flatMap { it.map { c -> c == '#' } }.toBooleanArray())
+    private fun mask(vararg rows: String) =
+        InkMask(
+            rows[0].length,
+            rows.size,
+            rows.flatMap { it.map { c -> c == '#' } }.toBooleanArray(),
+        )
 
-    @Test fun `a long rule and each small glyph have equal total mass`() {
+    @Test
+    fun `a long rule and each small glyph have equal total mass`() {
         val m = mask("##########", "..........", "#.#.#.#.#.")
         val f = loss(m, m, m)
         assertEquals(6, f.elements)
@@ -25,14 +34,16 @@ class ElementLossTest {
         assertEquals(6.0, f.lost(CellRect(20, 20, 21, 21)), 1e-9)
     }
 
-    @Test fun `partial components cost their lost fraction and diagonal ink is connected`() {
+    @Test
+    fun `partial components cost their lost fraction and diagonal ink is connected`() {
         val m = mask("##..", "..#.", "...#")
         val f = loss(m, m, m)
         assertEquals(1, f.elements)
         assertEquals(0.5, f.lost(CellRect(0, 0, 2, 3)), 1e-9)
     }
 
-    @Test fun `projection preserves fine elements invisible at coarse resolution`() {
+    @Test
+    fun `projection preserves fine elements invisible at coarse resolution`() {
         val fine = mask("#...", "....", "...#", "....")
         val raw = mask("..", "..")
         val f = loss(fine, raw, raw)
@@ -40,7 +51,8 @@ class ElementLossTest {
         assertEquals(1.0, f.lost(CellRect(0, 0, 1, 2)), 1e-9)
     }
 
-    @Test fun `existing removed furniture remains removed`() {
+    @Test
+    fun `existing removed furniture remains removed`() {
         val fine = mask("##..", "....", "..##", "....")
         val raw = mask("#.", ".#")
         val prepared = mask("..", ".#")
@@ -49,20 +61,21 @@ class ElementLossTest {
         assertEquals(0.0, f.lost(CellRect(1, 1, 2, 2)), 1e-9)
     }
 
-    @Test fun `ignored components do not leave artificial fringe elements`() {
+    @Test
+    fun `ignored components do not leave artificial fringe elements`() {
         val fine = mask(".##...", "......")
         val raw = mask("#..")
         val prepared = mask("...")
         // One connected glyph straddles a removed coarse cell and its blank neighbour.
         // It must be excluded whole, rather than manufacture a one-pixel element.
-        assertEquals(0, loss(fine,raw,prepared).elements)
+        assertEquals(0, loss(fine, raw, prepared).elements)
     }
 
-    @Test fun `blank masks and invalid sizes`() {
+    @Test
+    fun `blank masks and invalid sizes`() {
         val m = mask("..", "..")
         assertEquals(0.0, loss(m, m, m).lost(CellRect(0, 0, 1, 1)), 0.0)
         assertThrows(IllegalArgumentException::class.java) { loss(m, m, mask("...")) }
         assertThrows(IllegalArgumentException::class.java) { loss(mask("."), m, m) }
     }
-
 }

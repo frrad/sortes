@@ -1,12 +1,12 @@
 package dev.sortes.zoomeval
 
-import kotlinx.coroutines.runBlocking
 import java.io.File
+import kotlinx.coroutines.runBlocking
 
 /**
- * `crops --out=FILE [--configs=tuned+text] [--only=id,id] [--corpus=] [--pdfs=] [--aspect=]`:
- * every page's crop as the reader makes it ([readerCrops]), one TSV row per paper, config and
- * page, for diffing the crops of two commits.
+ * `crops --out=FILE [--configs=tuned+text] [--only=id,id] [--corpus=] [--pdfs=] [--aspect=]`: every
+ * page's crop as the reader makes it ([readerCrops]), one TSV row per paper, config and page, for
+ * diffing the crops of two commits.
  */
 fun cropsMain(args: List<String>) = runBlocking {
     val opts = args.associate { arg ->
@@ -14,7 +14,9 @@ fun cropsMain(args: List<String>) = runBlocking {
         arg.removePrefix("--").substringBefore('=') to arg.substringAfter('=')
     }
     val known = setOf("out", "configs", "only", "corpus", "pdfs", "aspect")
-    opts.keys.firstOrNull { it !in known }?.let { throw IllegalArgumentException("Unknown option --$it") }
+    opts.keys
+        .firstOrNull { it !in known }
+        ?.let { throw IllegalArgumentException("Unknown option --$it") }
     val home = System.getProperty("user.home")
     val corpus = readCorpus(File(opts["corpus"] ?: "corpus.tsv"))
     val pdfs = File(opts["pdfs"] ?: "$home/.cache/sortes-zoom-eval/pdf")
@@ -30,10 +32,22 @@ fun cropsMain(args: List<String>) = runBlocking {
             val started = System.currentTimeMillis()
             val crops = readerCrops(pdf, aspect, spec.config).crops
             val ms = System.currentTimeMillis() - started
-            out.appendText(crops.pages.withIndex().joinToString("") { (i, c) ->
-                listOf(paper.id, spec.label, i + 1, c.windowIndex, c.window.left, c.window.top, c.window.scale,
-                    "${c.cells.left},${c.cells.top},${c.cells.right},${c.cells.bottom}", ms).joinToString("\t") + "\n"
-            })
+            out.appendText(
+                crops.pages.withIndex().joinToString("") { (i, c) ->
+                    listOf(
+                            paper.id,
+                            spec.label,
+                            i + 1,
+                            c.windowIndex,
+                            c.window.left,
+                            c.window.top,
+                            c.window.scale,
+                            "${c.cells.left},${c.cells.top},${c.cells.right},${c.cells.bottom}",
+                            ms,
+                        )
+                        .joinToString("\t") + "\n"
+                }
+            )
             println("${paper.id} ${spec.label} ${crops.scale} K=${crops.k} ${ms}ms")
         }
     }

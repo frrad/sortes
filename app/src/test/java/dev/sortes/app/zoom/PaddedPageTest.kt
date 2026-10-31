@@ -6,7 +6,9 @@ import org.junit.Test
 class PaddedPageTest {
     private val aspect = 0.75f
 
-    /** The centre of the region the reader renders for a window, in page cells (1 cell = 1 point). */
+    /**
+     * The centre of the region the reader renders for a window, in page cells (1 cell = 1 point).
+     */
     private fun renderedCentre(window: CropWindow, mask: InkMask): Pair<Float, Float> {
         val r = window.regionOn(PageSize(mask.width.toFloat(), mask.height.toFloat()), aspect)
         return (r.left + r.width / 2) to (r.top + r.height / 2)
@@ -24,8 +26,18 @@ class PaddedPageTest {
                 // the exact one, and the window can't follow it there.
                 val clampedX = window.left == 0f || window.left == 1f - scale
                 val clampedY = window.top == 0f || window.top == 1f - scale
-                assertEquals("x at ($x, $y)", (cells.left + cells.right) / 2f, cx, if (clampedX) 0.5f else 0.02f)
-                assertEquals("y at ($x, $y)", (cells.top + cells.bottom) / 2f, cy, if (clampedY) 0.5f else 0.02f)
+                assertEquals(
+                    "x at ($x, $y)",
+                    (cells.left + cells.right) / 2f,
+                    cx,
+                    if (clampedX) 0.5f else 0.02f,
+                )
+                assertEquals(
+                    "y at ($x, $y)",
+                    (cells.top + cells.bottom) / 2f,
+                    cy,
+                    if (clampedY) 0.5f else 0.02f,
+                )
             }
         }
     }
@@ -48,7 +60,8 @@ class PaddedPageTest {
         for (mask in listOf(TestPage(61, 80).mask(), TestPage(57, 80).mask(), textPage().mask())) {
             val page = PaddedPage(mask, aspect)
             val scale = 0.6f
-            for (y in 0..page.height - page.windowHeight(scale)) for (x in 0..page.width - page.windowWidth(scale)) {
+            for (y in 0..page.height - page.windowHeight(scale)) for (x in
+                0..page.width - page.windowWidth(scale)) {
                 assertEquals(x to y, page.positionOf(page.windowAt(x, y, scale)))
             }
         }

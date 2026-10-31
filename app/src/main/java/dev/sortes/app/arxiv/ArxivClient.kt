@@ -1,9 +1,5 @@
 package dev.sortes.app.arxiv
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -12,6 +8,10 @@ import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.w3c.dom.Element
+import org.xml.sax.InputSource
 
 /** Metadata for one arXiv paper. */
 data class ArxivEntry(
@@ -27,27 +27,27 @@ fun interface ArxivClient {
 }
 
 /** Talks to the arXiv export API (https://info.arxiv.org/help/api/). */
-class HttpArxivClient(
-    private val baseUrl: String = DEFAULT_BASE_URL,
-) : ArxivClient {
+class HttpArxivClient(private val baseUrl: String = DEFAULT_BASE_URL) : ArxivClient {
 
     companion object {
         const val DEFAULT_BASE_URL = "https://export.arxiv.org/api/query"
     }
 
-    override suspend fun fetch(id: String): ArxivEntry = withContext(Dispatchers.IO) {
-        val connection = URL("$baseUrl?id_list=$id&max_results=1").openConnection() as HttpURLConnection
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 30_000
-        try {
-            if (connection.responseCode !in 200..299) {
-                throw IOException("arXiv lookup failed: HTTP ${connection.responseCode}")
+    override suspend fun fetch(id: String): ArxivEntry =
+        withContext(Dispatchers.IO) {
+            val connection =
+                URL("$baseUrl?id_list=$id&max_results=1").openConnection() as HttpURLConnection
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            try {
+                if (connection.responseCode !in 200..299) {
+                    throw IOException("arXiv lookup failed: HTTP ${connection.responseCode}")
+                }
+                connection.inputStream.use { ArxivAtom.parse(it, id) }
+            } finally {
+                connection.disconnect()
             }
-            connection.inputStream.use { ArxivAtom.parse(it, id) }
-        } finally {
-            connection.disconnect()
         }
-    }
 }
 
 /** Parses the Atom feed returned by the arXiv API. */
@@ -66,17 +66,23 @@ object ArxivAtom {
         if (String(bytes, Charsets.UTF_8).contains("<!DOCTYPE", ignoreCase = true)) {
             throw IOException("Unexpected DOCTYPE in arXiv response")
         }
-        val document = try {
-            newDocumentBuilderFactory().newDocumentBuilder().apply {
-                // Never fetch external DTDs or entities, even where the features above are unsupported.
-                setEntityResolver { _, _ -> InputSource(StringReader("")) }
-            }.parse(ByteArrayInputStream(bytes))
-        } catch (e: Exception) {
-            throw IOException("Couldn't read arXiv response", e)
-        }
+        val document =
+            try {
+                newDocumentBuilderFactory()
+                    .newDocumentBuilder()
+                    .apply {
+                        // Never fetch external DTDs or entities, even where the features above are
+                        // unsupported.
+                        setEntityResolver { _, _ -> InputSource(StringReader("")) }
+                    }
+                    .parse(ByteArrayInputStream(bytes))
+            } catch (e: Exception) {
+                throw IOException("Couldn't read arXiv response", e)
+            }
 
-        val entry = document.getElementsByTagNameNS(ATOM, "entry").item(0) as Element?
-            ?: throw IOException("arXiv has no paper $id")
+        val entry =
+            document.getElementsByTagNameNS(ATOM, "entry").item(0) as Element?
+                ?: throw IOException("arXiv has no paper $id")
         // arXiv reports problems such as a malformed ID as a pseudo-entry.
         if (entry.text("id").contains("/api/errors")) {
             throw IOException("arXiv error: ${entry.text("summary").ifEmpty { "unknown" }}")
@@ -84,10 +90,12 @@ object ArxivAtom {
         val title = entry.text("title")
         if (title.isEmpty()) throw IOException("arXiv has no paper $id")
 
-        val authors = entry.getElementsByTagNameNS(ATOM, "author").let { nodes ->
-            (0 until nodes.length).map { (nodes.item(it) as Element).text("name") }
-                .filter { it.isNotEmpty() }
-        }
+        val authors =
+            entry.getElementsByTagNameNS(ATOM, "author").let { nodes ->
+                (0 until nodes.length)
+                    .map { (nodes.item(it) as Element).text("name") }
+                    .filter { it.isNotEmpty() }
+            }
         return ArxivEntry(
             title = title,
             authors = authors,
@@ -111,21 +119,22 @@ object ArxivAtom {
         DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
             isExpandEntityReferences = false
-            // Not every platform parser knows these (Android's rejects unknown features), so try each.
+            // Not every platform parser knows these (Android's rejects unknown features), so try
+            // each.
             for ((feature, value) in XXE_FEATURES) {
                 try {
                     setFeature(feature, value)
-                } catch (_: Exception) {
-                }
+                } catch (_: Exception) {}
             }
         }
 
-    private val XXE_FEATURES = listOf(
-        "http://apache.org/xml/features/disallow-doctype-decl" to true,
-        "http://xml.org/sax/features/external-general-entities" to false,
-        "http://xml.org/sax/features/external-parameter-entities" to false,
-        "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
-    )
+    private val XXE_FEATURES =
+        listOf(
+            "http://apache.org/xml/features/disallow-doctype-decl" to true,
+            "http://xml.org/sax/features/external-general-entities" to false,
+            "http://xml.org/sax/features/external-parameter-entities" to false,
+            "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+        )
 
     /** Whitespace-normalized text of the first direct Atom child [name], or "". */
     private fun Element.text(name: String): String {

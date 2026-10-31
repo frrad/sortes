@@ -21,18 +21,21 @@ class InkMaskTest {
     @Test
     fun shadedBoxesOnWhitePaperAreInk() {
         // A code listing on a 240-grey background: content, so kept like text.
-        val page = IntArray(100) { i -> if (i / 10 in 3..6 && i % 10 in 2..7) gray(240) else gray(255) }
+        val page =
+            IntArray(100) { i -> if (i / 10 in 3..6 && i % 10 in 2..7) gray(240) else gray(255) }
         val mask = InkMask.fromArgb(page, 10, 10)
         assertEquals(24, mask.inkCount)
         assertEquals(249, InkMask.inkThreshold(IntArray(100) { 255 }))
     }
 
     /** A grainy off-white scan: paper at 245 ± [noise], with a dark text block. */
-    private fun scan(noise: Int, random: kotlin.random.Random): IntArray = IntArray(60 * 80) { i ->
-        val x = i % 60
-        val y = i / 60
-        if (x in 10 until 50 && y in 10 until 70 && y % 3 != 0) gray(30) else gray(245 + random.nextInt(-noise, noise + 1))
-    }
+    private fun scan(noise: Int, random: kotlin.random.Random): IntArray =
+        IntArray(60 * 80) { i ->
+            val x = i % 60
+            val y = i / 60
+            if (x in 10 until 50 && y in 10 until 70 && y % 3 != 0) gray(30)
+            else gray(245 + random.nextInt(-noise, noise + 1))
+        }
 
     @Test
     fun grainOnAnOffWhiteScanIsPaper() {
@@ -44,12 +47,13 @@ class InkMaskTest {
     }
 
     @Test
-    fun aGrainyScanStillZoomsToItsText() = kotlinx.coroutines.runBlocking {
-        val random = kotlin.random.Random(5)
-        val masks = List(4) { InkMask.fromArgb(scan(8, random), 60, 80) }
-        val auto = CropModel(0.75f, CropConfig.DEFAULT.weights).auto(masks).scale
-        assertTrue("auto $auto ink ${masks.map { it.inkCount }}", auto < 0.85f)
-    }
+    fun aGrainyScanStillZoomsToItsText() =
+        kotlinx.coroutines.runBlocking {
+            val random = kotlin.random.Random(5)
+            val masks = List(4) { InkMask.fromArgb(scan(8, random), 60, 80) }
+            val auto = CropModel(0.75f, CropConfig.DEFAULT.weights).auto(masks).scale
+            assertTrue("auto $auto ink ${masks.map { it.inkCount }}", auto < 0.85f)
+        }
 
     @Test
     fun aPageWithNoLightPixelsMeasuresAgainstWhite() {
@@ -59,7 +63,13 @@ class InkMaskTest {
 
     @Test
     fun anExplicitThresholdStillWorks() {
-        val mask = InkMask.fromArgb(intArrayOf(gray(230), gray(220), gray(255), gray(255)), 2, 2, threshold = 224)
+        val mask =
+            InkMask.fromArgb(
+                intArrayOf(gray(230), gray(220), gray(255), gray(255)),
+                2,
+                2,
+                threshold = 224,
+            )
         assertFalse(mask[0, 0])
         assertTrue(mask[1, 0])
     }
@@ -80,6 +90,9 @@ class InkMaskTest {
 
         // With the old threshold, the window seemed to keep the whole number.
         val old = InkMask.fromArgb(pixels, width, height, threshold = 224)
-        assertEquals(emptyList<CutInk>(), cutInk(old, PageSize(width.toFloat(), height.toFloat()), window))
+        assertEquals(
+            emptyList<CutInk>(),
+            cutInk(old, PageSize(width.toFloat(), height.toFloat()), window),
+        )
     }
 }

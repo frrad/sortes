@@ -75,12 +75,19 @@ class ArxivIdTest {
         assertParses("https://www.alphaxiv.org/zh-CN/overview/2311.08105", "2311.08105")
         assertParses("https://www.alphaxiv.org/abs/2311.08105?tab=comments#c1", "2311.08105")
         assertParses("https://www.alphaxiv.org/abs/hep-th/9901001", "hep-th/9901001")
-        assertParses("Check this out on alphaXiv: https://www.alphaxiv.org/abs/2311.08105", "2311.08105")
+        assertParses(
+            "Check this out on alphaXiv: https://www.alphaxiv.org/abs/2311.08105",
+            "2311.08105",
+        )
     }
 
     @Test
     fun otherAlphaxivPagesAreNotPapers() {
-        assertNull(ArxivId.parse("https://www.alphaxiv.org/shared/folder/01a1838a-db89-71d0-956c-e8067fdfee2a"))
+        assertNull(
+            ArxivId.parse(
+                "https://www.alphaxiv.org/shared/folder/01a1838a-db89-71d0-956c-e8067fdfee2a"
+            )
+        )
         assertNull(ArxivId.parse("https://www.alphaxiv.org/audio/2311.08105"))
         assertNull(ArxivId.parse("https://www.alphaxiv.org/html/2311.08105"))
         assertNull(ArxivId.parse("https://notalphaxiv.org/abs/2311.08105"))
@@ -122,31 +129,32 @@ class ArxivIdTest {
     @Test
     fun rejectsBadInput() {
         listOf(
-            "",
-            "   ",
-            "hello",
-            "1706",
-            "1706.037",
-            "1706.037621",
-            "17060.3762",
-            "1713.03762", // month 13
-            "1700.03762", // month 00
-            "1706.03762v",
-            "1706.03762vx",
-            "1706.03762abc",
-            "abs/1706.03762",
-            "hep-th/990100",
-            "hep-th/99010012",
-            "/9901001",
-            "https://example.com/abs/1706.03762",
-            "https://notarxiv.org/abs/1706.03762",
-            "https://evil-arxiv.org/abs/1706.03762",
-            "https://arxiv.org.evil.com/abs/1706.03762",
-            "https://arxiv.org/list/cs.LG/recent",
-            "https://arxiv.org/abs/",
-            "https://arxiv.org/abs/1706.03762abc",
-            "https://arxiv.org/abs/1706.037621",
-            "The answer is 1706.03762", // bare IDs only count on their own or after arXiv:
-        ).forEach { assertNull(it, ArxivId.parse(it)) }
+                "",
+                "   ",
+                "hello",
+                "1706",
+                "1706.037",
+                "1706.037621",
+                "17060.3762",
+                "1713.03762", // month 13
+                "1700.03762", // month 00
+                "1706.03762v",
+                "1706.03762vx",
+                "1706.03762abc",
+                "abs/1706.03762",
+                "hep-th/990100",
+                "hep-th/99010012",
+                "/9901001",
+                "https://example.com/abs/1706.03762",
+                "https://notarxiv.org/abs/1706.03762",
+                "https://evil-arxiv.org/abs/1706.03762",
+                "https://arxiv.org.evil.com/abs/1706.03762",
+                "https://arxiv.org/list/cs.LG/recent",
+                "https://arxiv.org/abs/",
+                "https://arxiv.org/abs/1706.03762abc",
+                "https://arxiv.org/abs/1706.037621",
+                "The answer is 1706.03762", // bare IDs only count on their own or after arXiv:
+            )
+            .forEach { assertNull(it, ArxivId.parse(it)) }
     }
 }

@@ -28,8 +28,10 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Sortes"
+
 include(":app")
 
 // Offline evaluation of the zoom analysis; not part of the app. See tools/zoom-eval/README.md.
 include(":zoom-eval")
+
 project(":zoom-eval").projectDir = file("tools/zoom-eval")

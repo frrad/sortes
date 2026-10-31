@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -22,8 +22,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
@@ -52,7 +52,8 @@ internal fun CropPreview(
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val margin = with(LocalDensity.current) { PREVIEW_MARGIN.roundToPx() }
-        val (width, height) = fitAspect(constraints.maxWidth - 2 * margin, constraints.maxHeight - 2 * margin, aspect)
+        val (width, height) =
+            fitAspect(constraints.maxWidth - 2 * margin, constraints.maxHeight - 2 * margin, aspect)
         if (width <= 0 || height <= 0) return@BoxWithConstraints
         // Kept while a new size renders, so a panel that changes height doesn't blank the page.
         var preview by remember(pages, index, aspect) { mutableStateOf<Result<Rendered>?>(null) }
@@ -63,55 +64,86 @@ internal fun CropPreview(
                 Rendered(pages.renderRegion(index, shown, width, height), page, shown)
             }
         }
-        preview?.onSuccess { (bitmap, page, shown) ->
-            val ink = LocalContentColor.current
-            val density = LocalDensity.current
-            val crop = placement.window.regionOn(page, aspect).toPixels(shown, width, height)
-            val cuts = placement.cut.map { it.region.toPixels(shown, width, height) }
-            // Covers whatever was shown here before.
-            Box(Modifier.fillMaxSize().background(ReaderPaper), contentAlignment = Alignment.Center) {
+        preview
+            ?.onSuccess { (bitmap, page, shown) ->
+                val ink = LocalContentColor.current
+                val density = LocalDensity.current
+                val crop = placement.window.regionOn(page, aspect).toPixels(shown, width, height)
+                val cuts = placement.cut.map { it.region.toPixels(shown, width, height) }
+                // Covers whatever was shown here before.
                 Box(
-                    Modifier
-                        .size(with(density) { width.toDp() }, with(density) { height.toDp() })
-                        .testTag("cropPreview"),
+                    Modifier.fillMaxSize().background(ReaderPaper),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Page ${index + 1}, whole",
-                        // Scaled until a render at a new size replaces it.
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    Canvas(Modifier.fillMaxSize()) {
-                        val frameStroke = FRAME_STROKE.toPx()
-                        // The frame is drawn just outside the crop, so it never covers kept ink.
-                        val frame = crop.inflate(frameStroke)
-                        val line = crop.inflate(frameStroke / 2)
-                        drawRect(ink, line.topLeft, line.size, style = Stroke(frameStroke))
-                        val cutStroke = CUT_STROKE.toPx()
-                        val dash = CUT_DASH.toPx()
-                        // Boxes are cut away where the frame is, so they never cover kept ink either.
-                        clipRect(frame.left, frame.top, frame.right, frame.bottom, ClipOp.Difference) {
-                            for (cut in cuts) {
-                                val box = cutBox(cut, crop, frame, CUT_PADDING.toPx(), CUT_REACH.toPx())
-                                    .deflate(cutStroke / 2)
-                                drawRect(
-                                    ink, box.topLeft, box.size,
-                                    style = Stroke(cutStroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash))),
-                                )
+                    Box(
+                        Modifier.size(
+                                with(density) { width.toDp() },
+                                with(density) { height.toDp() },
+                            )
+                            .testTag("cropPreview")
+                    ) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Page ${index + 1}, whole",
+                            // Scaled until a render at a new size replaces it.
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Canvas(Modifier.fillMaxSize()) {
+                            val frameStroke = FRAME_STROKE.toPx()
+                            // The frame is drawn just outside the crop, so it never covers kept
+                            // ink.
+                            val frame = crop.inflate(frameStroke)
+                            val line = crop.inflate(frameStroke / 2)
+                            drawRect(ink, line.topLeft, line.size, style = Stroke(frameStroke))
+                            val cutStroke = CUT_STROKE.toPx()
+                            val dash = CUT_DASH.toPx()
+                            // Boxes are cut away where the frame is, so they never cover kept ink
+                            // either.
+                            clipRect(
+                                frame.left,
+                                frame.top,
+                                frame.right,
+                                frame.bottom,
+                                ClipOp.Difference,
+                            ) {
+                                for (cut in cuts) {
+                                    val box =
+                                        cutBox(
+                                                cut,
+                                                crop,
+                                                frame,
+                                                CUT_PADDING.toPx(),
+                                                CUT_REACH.toPx(),
+                                            )
+                                            .deflate(cutStroke / 2)
+                                    drawRect(
+                                        ink,
+                                        box.topLeft,
+                                        box.size,
+                                        style =
+                                            Stroke(
+                                                cutStroke,
+                                                pathEffect =
+                                                    PathEffect.dashPathEffect(
+                                                        floatArrayOf(dash, dash)
+                                                    ),
+                                            ),
+                                    )
+                                }
                             }
                         }
+                        // Where the frame and boxes mark, for tests and accessibility tools.
+                        Marker(crop, "cropFrame")
+                        for (cut in cuts) Marker(cut, "cutInk")
                     }
-                    // Where the frame and boxes mark, for tests and accessibility tools.
-                    Marker(crop, "cropFrame")
-                    for (cut in cuts) Marker(cut, "cutInk")
                 }
             }
-        }?.onFailure {
-            Message(
-                "Couldn't render page ${index + 1}: ${it.message ?: it}",
-                Modifier.background(ReaderPaper),
-            )
-        }
+            ?.onFailure {
+                Message(
+                    "Couldn't render page ${index + 1}: ${it.message ?: it}",
+                    Modifier.background(ReaderPaper),
+                )
+            }
     }
 }
 
@@ -122,18 +154,17 @@ private data class Rendered(val bitmap: Bitmap, val page: PageSize, val shown: R
 private fun Marker(rect: Rect, tag: String) {
     val density = LocalDensity.current
     Box(
-        Modifier
-            .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
+        Modifier.offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
             .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
-            .testTag(tag),
+            .testTag(tag)
     )
 }
 
 /**
  * The outline for cut-off ink at [cut], beside a [crop] whose frame reaches out to [frame]: [cut]
  * with [padding] around it, and on each side where the ink is past the crop, reaching at least
- * [reach] past the frame. Ink cut off by a sliver hides under the frame, so its box must stick
- * out from the frame to be seen.
+ * [reach] past the frame. Ink cut off by a sliver hides under the frame, so its box must stick out
+ * from the frame to be seen.
  */
 internal fun cutBox(cut: Rect, crop: Rect, frame: Rect, padding: Float, reach: Float): Rect {
     val box = cut.inflate(padding)
@@ -141,11 +172,15 @@ internal fun cutBox(cut: Rect, crop: Rect, frame: Rect, padding: Float, reach: F
         left = if (cut.left < crop.left) minOf(box.left, frame.left - reach) else box.left,
         top = if (cut.top < crop.top) minOf(box.top, frame.top - reach) else box.top,
         right = if (cut.right > crop.right) maxOf(box.right, frame.right + reach) else box.right,
-        bottom = if (cut.bottom > crop.bottom) maxOf(box.bottom, frame.bottom + reach) else box.bottom,
+        bottom =
+            if (cut.bottom > crop.bottom) maxOf(box.bottom, frame.bottom + reach) else box.bottom,
     )
 }
 
-/** The largest [width] / [height] = [aspect] size, in whole pixels, that fits [maxWidth] x [maxHeight]. */
+/**
+ * The largest [width] / [height] = [aspect] size, in whole pixels, that fits [maxWidth] x
+ * [maxHeight].
+ */
 internal fun fitAspect(maxWidth: Int, maxHeight: Int, aspect: Float): Pair<Int, Int> =
     if (maxWidth.toFloat() / maxHeight > aspect) {
         (maxHeight * aspect).roundToInt().coerceAtMost(maxWidth) to maxHeight

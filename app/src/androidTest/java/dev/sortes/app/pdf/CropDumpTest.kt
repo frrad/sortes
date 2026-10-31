@@ -5,11 +5,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.sortes.app.zoom.PageRenderer
 import dev.sortes.app.zoom.PageSize
 import dev.sortes.app.zoom.analyzePaper
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * Not a test of the app but a probe of the tablet's renderer, for `zoom-eval device-check`
@@ -33,11 +33,13 @@ class CropDumpTest {
         val out = File(root, "out").apply { mkdirs() }
         val aspect = args.getString("aspect")?.toFloat() ?: 0.75f
         val dump = args.getString("dump")?.split(',')?.toSet() ?: emptySet()
-        val names = args.getString("papers")?.split(',')
-            ?: pdfDir.list().orEmpty().filter { it.endsWith(".pdf") }.sorted()
+        val names =
+            args.getString("papers")?.split(',')
+                ?: pdfDir.list().orEmpty().filter { it.endsWith(".pdf") }.sorted()
         assumeTrue("No PDFs pushed to $pdfDir", names.isNotEmpty())
         val summary = File(out, "summary.tsv")
-        if (!summary.exists()) summary.writeText("paper\tpages\tanalysed\tscale\tk\tglyphPx\tmillis\tsolveMillis\n")
+        if (!summary.exists())
+            summary.writeText("paper\tpages\tanalysed\tscale\tk\tglyphPx\tmillis\tsolveMillis\n")
         for (name in names) {
             val id = name.removeSuffix(".pdf")
             val pages = PdfPages.open(File(pdfDir, name))
@@ -48,12 +50,36 @@ class CropDumpTest {
                 val analysis = analyzePaper(source, aspect)
                 val ms = System.currentTimeMillis() - started
                 val crops = analysis.placeAll(analysis.auto).crops
-                File(out, "$id.tsv").writeText(crops.pages.withIndex().joinToString("") { (i, c) ->
-                    listOf(id, "device", i + 1, c.windowIndex, c.window.left, c.window.top, c.window.scale,
-                        "${c.cells.left},${c.cells.top},${c.cells.right},${c.cells.bottom}", ms).joinToString("\t") + "\n"
-                })
-                summary.appendText(listOf(id, analysis.pageCount, analysis.pagesAnalyzed, analysis.auto.scale,
-                    analysis.auto.k, analysis.glyphPx, ms, analysis.solveMillis).joinToString("\t") + "\n")
+                File(out, "$id.tsv")
+                    .writeText(
+                        crops.pages.withIndex().joinToString("") { (i, c) ->
+                            listOf(
+                                    id,
+                                    "device",
+                                    i + 1,
+                                    c.windowIndex,
+                                    c.window.left,
+                                    c.window.top,
+                                    c.window.scale,
+                                    "${c.cells.left},${c.cells.top},${c.cells.right},${c.cells.bottom}",
+                                    ms,
+                                )
+                                .joinToString("\t") + "\n"
+                        }
+                    )
+                summary.appendText(
+                    listOf(
+                            id,
+                            analysis.pageCount,
+                            analysis.pagesAnalyzed,
+                            analysis.auto.scale,
+                            analysis.auto.k,
+                            analysis.glyphPx,
+                            ms,
+                            analysis.solveMillis,
+                        )
+                        .joinToString("\t") + "\n"
+                )
                 source.stats?.let { File(renders, "colour.tsv").writeText(it.toString()) }
             } finally {
                 pages.close()
@@ -62,10 +88,14 @@ class CropDumpTest {
     }
 
     /** Passes renders through, saving each as an 8-bit PGM of the pipeline's luminance. */
-    private class RecordingRenderer(private val pages: PdfPages, private val dir: File?) : PageRenderer {
+    private class RecordingRenderer(private val pages: PdfPages, private val dir: File?) :
+        PageRenderer {
         val stats = dir?.let { StringBuilder("page\twidth\theight\tcolouredPixels\tmaxSpread\n") }
-        override val pageCount get() = pages.pageCount
+        override val pageCount
+            get() = pages.pageCount
+
         override suspend fun pageSize(index: Int): PageSize = pages.pageSize(index)
+
         override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
             val pixels = pages.renderPixels(index, width, height)
             if (dir != null) {

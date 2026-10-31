@@ -4,11 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LegibilityTest {
-    @Test fun `with no comfortable size it is zeta times scale`() {
-        assertEquals(0.4, Legibility(0.5, Double.POSITIVE_INFINITY, 1.0, 1.0).cost(0.8, 20.0), 1e-12)
+    @Test
+    fun `with no comfortable size it is zeta times scale`() {
+        assertEquals(
+            0.4,
+            Legibility(0.5, Double.POSITIVE_INFINITY, 1.0, 1.0).cost(0.8, 20.0),
+            1e-12,
+        )
     }
 
-    @Test fun `slope is zeta while text is small and diminishing but positive once big`() {
+    @Test
+    fun `slope is zeta while text is small and diminishing but positive once big`() {
         val l = Legibility(zeta = 0.5, comfortable = 25.0, power = 4.0, floor = 0.1)
         val k = 20.0 // sT = 0.8
         fun slope(s: Double) = (l.cost(s + 1e-6, k) - l.cost(s - 1e-6, k)) / 2e-6
@@ -19,7 +25,8 @@ class LegibilityTest {
         assertTrue(slope(0.3) > 0)
     }
 
-    @Test fun `cost is continuous and increasing`() {
+    @Test
+    fun `cost is continuous and increasing`() {
         val l = Legibility(0.5, 25.0, 8.0, 0.05)
         var prev = -1.0
         var s = 0.3

@@ -1,20 +1,21 @@
 package dev.sortes.app.zoom
 
 /**
- * A page's ink grouped into blocks: the things on the page a crop should keep or drop whole
- * rather than cut through. Runs of ink along a row with at most [gap] blank cells between them
- * are one piece, and pieces in rows at most [gap] + 1 apart that come within [gap] + 1 columns
- * of each other are one block (which is the same as joining any two inked cells at most
- * [gap] + 1 apart in both directions). At the analysis resolution (about 3 pt per cell) a gap
- * of 2 joins the lines of a paragraph and the paragraphs of a section, but leaves a heading, a
- * figure and its caption, or two columns apart.
+ * A page's ink grouped into blocks: the things on the page a crop should keep or drop whole rather
+ * than cut through. Runs of ink along a row with at most [gap] blank cells between them are one
+ * piece, and pieces in rows at most [gap] + 1 apart that come within [gap] + 1 columns of each
+ * other are one block (which is the same as joining any two inked cells at most [gap] + 1 apart in
+ * both directions). At the analysis resolution (about 3 pt per cell) a gap of 2 joins the lines of
+ * a paragraph and the paragraphs of a section, but leaves a heading, a figure and its caption, or
+ * two columns apart.
  *
- * Each block has its bounding box in mask cells, its ink, and its runs. Boxes can overlap or
- * nest (an L-shaped paragraph beside a figure, a frame around its contents), so what a window
- * cuts off a block is counted from its own cells, never from its box. The runs are the compact
- * record of those cells: a few kilobytes a page, against a label map's hundreds.
+ * Each block has its bounding box in mask cells, its ink, and its runs. Boxes can overlap or nest
+ * (an L-shaped paragraph beside a figure, a frame around its contents), so what a window cuts off a
+ * block is counted from its own cells, never from its box. The runs are the compact record of those
+ * cells: a few kilobytes a page, against a label map's hundreds.
  */
-class PageBlocks private constructor(
+class PageBlocks
+private constructor(
     private val mask: InkMask,
     val boxes: List<CellRect>,
     /** Each block's ink, in cells. */
@@ -26,7 +27,8 @@ class PageBlocks private constructor(
     private val runEnd: IntArray,
     private val runRow: IntArray,
 ) {
-    val maskWidth: Int get() = mask.width
+    val maskWidth: Int
+        get() = mask.width
 
     /** Block [b]'s ink inside mask cells [l, r) x [t, b): from its runs, so linear in them. */
     fun inkIn(b: Int, l: Int, t: Int, r: Int, bt: Int): Int {
@@ -39,7 +41,10 @@ class PageBlocks private constructor(
         return n
     }
 
-    /** Fills [sums], a summed-area table over block [b]'s box ((bw + 1) x (bh + 1), from [offset]), with its cells. */
+    /**
+     * Fills [sums], a summed-area table over block [b]'s box ((bw + 1) x (bh + 1), from [offset]),
+     * with its cells.
+     */
     fun table(b: Int, sums: IntArray, offset: Int) {
         val box = boxes[b]
         val bw = box.right - box.left
@@ -48,7 +53,8 @@ class PageBlocks private constructor(
         sums.fill(0, offset, offset + stride * (bh + 1))
         for (i in blockRuns[b] until blockRuns[b + 1]) {
             val y = runRow[i] - box.top
-            for (x in runStart[i] until runEnd[i]) if (mask[x, runRow[i]]) sums[offset + (y + 1) * stride + x - box.left + 1] = 1
+            for (x in runStart[i] until runEnd[i]) if (mask[x, runRow[i]])
+                sums[offset + (y + 1) * stride + x - box.left + 1] = 1
         }
         for (y in 1..bh) {
             var row = 0
@@ -63,26 +69,29 @@ class PageBlocks private constructor(
     fun labels(): IntArray {
         val labels = IntArray(mask.width * mask.height) { -1 }
         for (b in boxes.indices) for (i in blockRuns[b] until blockRuns[b + 1]) {
-            for (x in runStart[i] until runEnd[i]) if (mask[x, runRow[i]]) labels[runRow[i] * mask.width + x] = b
+            for (x in runStart[i] until runEnd[i]) if (mask[x, runRow[i]])
+                labels[runRow[i] * mask.width + x] = b
         }
         return labels
     }
 
     /** Each block's ink inside [cells], by block. */
-    fun kept(cells: CellRect): IntArray = IntArray(boxes.size) { inkIn(it, cells.left, cells.top, cells.right, cells.bottom) }
+    fun kept(cells: CellRect): IntArray =
+        IntArray(boxes.size) { inkIn(it, cells.left, cells.top, cells.right, cells.bottom) }
 
     /**
-     * How many blocks of at least [MIN_BLOCK_INK] cells a window covering [cells] cuts into:
-     * some of their ink in, some out.
+     * How many blocks of at least [MIN_BLOCK_INK] cells a window covering [cells] cuts into: some
+     * of their ink in, some out.
      */
-    fun split(cells: CellRect): Int = kept(cells).withIndex().count { (b, k) -> inks[b] >= MIN_BLOCK_INK && k > 0 && k < inks[b] }
+    fun split(cells: CellRect): Int =
+        kept(cells).withIndex().count { (b, k) -> inks[b] >= MIN_BLOCK_INK && k > 0 && k < inks[b] }
 
     companion object {
         /**
-         * Fewest cells of ink a block needs to count as a thing to keep whole: fewer is a speck
-         * of scan dirt or a stray dot (about half a glyph at the analysis resolution), which
-         * still counts as ink but not as something a window edge can cut through. Equation
-         * numbers and short headings are 8 cells and more.
+         * Fewest cells of ink a block needs to count as a thing to keep whole: fewer is a speck of
+         * scan dirt or a stray dot (about half a glyph at the analysis resolution), which still
+         * counts as ink but not as something a window edge can cut through. Equation numbers and
+         * short headings are 8 cells and more.
          */
         const val MIN_BLOCK_INK = 8
 
@@ -91,7 +100,8 @@ class PageBlocks private constructor(
             val w = mask.width
             val h = mask.height
             val reach = gap + 1
-            // Runs of ink per row, bridging up to gap blanks; rowStart[y] indexes row y's first run.
+            // Runs of ink per row, bridging up to gap blanks; rowStart[y] indexes row y's first
+            // run.
             val starts = ArrayList<Int>()
             val ends = ArrayList<Int>()
             val inks = ArrayList<Int>()
@@ -101,17 +111,27 @@ class PageBlocks private constructor(
                 rowStart[y] = starts.size
                 var x = 0
                 while (x < w) {
-                    if (!mask[x, y]) { x++; continue }
+                    if (!mask[x, y]) {
+                        x++
+                        continue
+                    }
                     val start = x
                     var end = x + 1
                     var ink = 1
                     var last = x
                     x++
                     while (x < w && x - last - 1 <= gap) {
-                        if (mask[x, y]) { ink++; last = x; end = x + 1 }
+                        if (mask[x, y]) {
+                            ink++
+                            last = x
+                            end = x + 1
+                        }
                         x++
                     }
-                    starts += start; ends += end; inks += ink; rows += y
+                    starts += start
+                    ends += end
+                    inks += ink
+                    rows += y
                 }
             }
             rowStart[h] = starts.size
@@ -123,7 +143,11 @@ class PageBlocks private constructor(
                 var r = a
                 while (parent[r] != r) r = parent[r]
                 var c = a
-                while (parent[c] != r) { val next = parent[c]; parent[c] = r; c = next }
+                while (parent[c] != r) {
+                    val next = parent[c]
+                    parent[c] = r
+                    c = next
+                }
                 return r
             }
             for (r in 0 until n) {
@@ -156,7 +180,13 @@ class PageBlocks private constructor(
                 }
                 blockOf[r] = b
                 val box = boxes[b]
-                boxes[b] = CellRect(minOf(box.left, starts[r]), minOf(box.top, rows[r]), maxOf(box.right, ends[r]), maxOf(box.bottom, rows[r] + 1))
+                boxes[b] =
+                    CellRect(
+                        minOf(box.left, starts[r]),
+                        minOf(box.top, rows[r]),
+                        maxOf(box.right, ends[r]),
+                        maxOf(box.bottom, rows[r] + 1),
+                    )
                 blockInks[b] = blockInks[b] + inks[r]
                 counts[b] = counts[b] + 1
             }
@@ -172,7 +202,15 @@ class PageBlocks private constructor(
                 runEnd[i] = ends[r]
                 runRow[i] = rows[r]
             }
-            return PageBlocks(mask, boxes, blockInks.toIntArray(), blockRuns, runStart, runEnd, runRow)
+            return PageBlocks(
+                mask,
+                boxes,
+                blockInks.toIntArray(),
+                blockRuns,
+                runStart,
+                runEnd,
+                runRow,
+            )
         }
     }
 }

@@ -10,14 +10,19 @@ import kotlin.math.max
  */
 object LinePitch {
     /**
-     * The page's line pitch (baseline to baseline) in pixels of [mask], or null without
-     * enough regularly spaced lines. The page is cut into vertical strips (so two columns with
-     * offset baselines don't blur each other), and the autocorrelations of the strips' row
-     * profiles are summed: autocorrelation ignores phase, so the strips add up coherently.
-     * The pitch is the period p maximising the comb Σ_k ac(k·p) − ac((k − ½)·p), which, unlike
-     * the bare autocorrelation peak, doesn't also fire at 2p and p/2.
+     * The page's line pitch (baseline to baseline) in pixels of [mask], or null without enough
+     * regularly spaced lines. The page is cut into vertical strips (so two columns with offset
+     * baselines don't blur each other), and the autocorrelations of the strips' row profiles are
+     * summed: autocorrelation ignores phase, so the strips add up coherently. The pitch is the
+     * period p maximising the comb Σ_k ac(k·p) − ac((k − ½)·p), which, unlike the bare
+     * autocorrelation peak, doesn't also fire at 2p and p/2.
      */
-    fun of(mask: InkMask, strips: Int = 6, minPitch: Double = 2.5, maxPitchFraction: Double = 0.06): Double? {
+    fun of(
+        mask: InkMask,
+        strips: Int = 6,
+        minPitch: Double = 2.5,
+        maxPitchFraction: Double = 0.06,
+    ): Double? {
         val w = mask.width
         val h = mask.height
         val maxPitch = max(minPitch + 1, h * maxPitchFraction)

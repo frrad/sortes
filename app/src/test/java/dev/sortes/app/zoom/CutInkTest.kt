@@ -1,10 +1,9 @@
 package dev.sortes.app.zoom
 
-import kotlinx.coroutines.runBlocking
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
-import kotlin.random.Random
 
 class CutInkTest {
 
@@ -34,11 +33,12 @@ class CutInkTest {
 
     @Test
     fun runningHeadAndPageNumberGetABoxEach() {
-        val mask = TestPage(60, 80)
-            .rect(10, 3, 30, 5) // running head
-            .rect(10, 12, 45, 66) // body
-            .rect(29, 75, 31, 77) // page number
-            .mask()
+        val mask =
+            TestPage(60, 80)
+                .rect(10, 3, 30, 5) // running head
+                .rect(10, 12, 45, 66) // body
+                .rect(29, 75, 31, 77) // page number
+                .mask()
 
         val cut = cutInk(mask, page, window)
 
@@ -117,40 +117,51 @@ class CutInkTest {
     @Test
     fun cutCellsAddUpToTheInkTheModelSaysIsCut() {
         val random = Random(11)
-        val masks = List(4) {
-            val p = TestPage(60, 80)
-            repeat(8) {
-                val x = random.nextInt(0, 55)
-                val y = random.nextInt(0, 75)
-                p.rect(x, y, x + random.nextInt(1, 6), y + random.nextInt(1, 6))
-            }
-            p.mask()
-        } + oddlyPaddedPages(random) + maskFixture("attention-page2.txt")
+        val masks =
+            List(4) {
+                val p = TestPage(60, 80)
+                repeat(8) {
+                    val x = random.nextInt(0, 55)
+                    val y = random.nextInt(0, 75)
+                    p.rect(x, y, x + random.nextInt(1, 6), y + random.nextInt(1, 6))
+                }
+                p.mask()
+            } + oddlyPaddedPages(random) + maskFixture("attention-page2.txt")
         val model = CropModel(aspect)
         for (mask in masks) {
             val scales = ZoomScales.defaultScales()
             for (i in scales.indices step 5) {
                 val crop = model.ownCrop(mask, scales[i], CropModel.referenceInk(listOf(mask)))
                 val size = PageSize(mask.width.toFloat(), mask.height.toFloat())
-                assertEquals("scale ${scales[i]}", crop.cutCells, cutInk(mask, size, crop.cells).sumOf { it.cells })
+                assertEquals(
+                    "scale ${scales[i]}",
+                    crop.cutCells,
+                    cutInk(mask, size, crop.cells).sumOf { it.cells },
+                )
             }
         }
     }
 
     /**
-     * Pages whose padding to 3:4 is an odd number of cells, so it can't be split evenly: 36x52
-     * pads to 39 wide, and 181x256 (A4 at the reader's analysis resolution) to 192.
+     * Pages whose padding to 3:4 is an odd number of cells, so it can't be split evenly: 36x52 pads
+     * to 39 wide, and 181x256 (A4 at the reader's analysis resolution) to 192.
      */
-    private fun oddlyPaddedPages(random: Random) = listOf(36 to 52, 181 to 256).map { (w, h) ->
-        val p = TestPage(w, h)
-        repeat(10) {
-            val x = random.nextInt(0, w - 3)
-            val y = random.nextInt(0, h - 3)
-            p.rect(x, y, x + random.nextInt(1, minOf(w - x, 20)), y + random.nextInt(1, minOf(h - y, 20)))
+    private fun oddlyPaddedPages(random: Random) =
+        listOf(36 to 52, 181 to 256).map { (w, h) ->
+            val p = TestPage(w, h)
+            repeat(10) {
+                val x = random.nextInt(0, w - 3)
+                val y = random.nextInt(0, h - 3)
+                p.rect(
+                    x,
+                    y,
+                    x + random.nextInt(1, minOf(w - x, 20)),
+                    y + random.nextInt(1, minOf(h - y, 20)),
+                )
+            }
+            // Ink right at the left and right edges, where the half-cell of padding falls.
+            p.rect(0, h / 2, 2, h / 2 + 5).rect(w - 2, h / 3, w, h / 3 + 5).mask()
         }
-        // Ink right at the left and right edges, where the half-cell of padding falls.
-        p.rect(0, h / 2, 2, h / 2 + 5).rect(w - 2, h / 3, w, h / 3 + 5).mask()
-    }
 
     @Test
     fun negativeGapsAreRejected() {

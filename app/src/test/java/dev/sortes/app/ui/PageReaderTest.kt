@@ -45,6 +45,9 @@ import dev.sortes.app.zoom.AnalysisCache
 import dev.sortes.app.zoom.Region
 import dev.sortes.app.zoom.TestPage
 import dev.sortes.app.zoom.maskFixture
+import java.util.Collections
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.After
@@ -58,9 +61,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.util.Collections
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -73,8 +73,7 @@ class PageReaderTest {
     // [idle] runs the queue.
     private val effects = StandardTestDispatcher()
 
-    @get:Rule
-    val temporaryFolder = TemporaryFolder()
+    @get:Rule val temporaryFolder = TemporaryFolder()
 
     @OptIn(ExperimentalTestApi::class)
     @get:Rule
@@ -86,7 +85,8 @@ class PageReaderTest {
     @Before
     fun watchForOffMainWrites() {
         writeObserver = Snapshot.registerGlobalWriteObserver {
-            if (Looper.myLooper() != Looper.getMainLooper()) offMainWrites += Thread.currentThread().name
+            if (Looper.myLooper() != Looper.getMainLooper())
+                offMainWrites += Thread.currentThread().name
         }
     }
 
@@ -96,11 +96,16 @@ class PageReaderTest {
     @After
     fun noOffMainWrites() {
         writeObserver.dispose()
-        assertEquals("Compose state written off the main thread", emptyList<String>(), offMainWrites.toList())
+        assertEquals(
+            "Compose state written off the main thread",
+            emptyList<String>(),
+            offMainWrites.toList(),
+        )
     }
 
     // Text block at (100, 100)-(500, 700) points on a 600x800 page, page number below it.
-    private var pages = FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
+    private var pages =
+        FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
     private val saves = mutableListOf<Float?>()
     private var saved by mutableStateOf<Float?>(null)
     private var closes = 0
@@ -114,7 +119,14 @@ class PageReaderTest {
                 ReaderFrame(onClose = { closes++ }) {
                     val size = readerSize
                     Box(if (size == null) Modifier else Modifier.size(size.first, size.second)) {
-                        PageReader(pages, saved, onSaveScale = { saves += it; saved = it })
+                        PageReader(
+                            pages,
+                            saved,
+                            onSaveScale = {
+                                saves += it
+                                saved = it
+                            },
+                        )
                     }
                 }
             }
@@ -140,8 +152,9 @@ class PageReaderTest {
      * zoom panel renders smaller.
      */
     private fun readerRenders(): List<Pair<Int, Region>> {
-        val height = readerSize?.let { with(composeRule.density) { it.second.roundToPx() } }
-            ?: composeRule.onRoot().fetchSemanticsNode().size.height
+        val height =
+            readerSize?.let { with(composeRule.density) { it.second.roundToPx() } }
+                ?: composeRule.onRoot().fetchSemanticsNode().size.height
         return pages.renders.toList().filter { it.height == height }.map { it.index to it.region }
     }
 
@@ -164,8 +177,10 @@ class PageReaderTest {
     private fun Region.isZoomed() = width < 590f
 
     private fun Region.contains(left: Float, top: Float, right: Float, bottom: Float) =
-        this.left <= left && this.top <= top &&
-            this.left + width >= right && this.top + height >= bottom
+        this.left <= left &&
+            this.top <= top &&
+            this.left + width >= right &&
+            this.top + height >= bottom
 
     private fun tapZoomZone() {
         composeRule.onRoot().performTouchInput { click(bottomCenter - Offset(0f, 5f)) }
@@ -326,7 +341,16 @@ class PageReaderTest {
         // A footnote rule under page 0's text only: real content, so cut and boxed (the page
         // numbers, repeated on every page, are furniture the reader ignores, so not boxed).
         val plain = TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78)
-        pages = FakePages(listOf(TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).rect(12, 73, 48, 75).mask()) + List(2) { plain.mask() })
+        pages =
+            FakePages(
+                listOf(
+                    TestPage(60, 80)
+                        .rect(10, 10, 50, 70)
+                        .rect(29, 76, 31, 78)
+                        .rect(12, 73, 48, 75)
+                        .mask()
+                ) + List(2) { plain.mask() }
+            )
         showZoomed()
         val before = pages.renders.toList()
         val crop = before.last().region
@@ -343,11 +367,15 @@ class PageReaderTest {
         val whole = pages.renders.toList().drop(before.size).single()
         assertEquals(0, whole.index)
         assertTrue("${whole.region}", whole.region.contains(0f, 0f, 600f, 800f))
-        assertEquals(preview.width.roundToInt() to preview.height.roundToInt(), whole.width to whole.height)
+        assertEquals(
+            preview.width.roundToInt() to preview.height.roundToInt(),
+            whole.width to whole.height,
+        )
         // ...and the frame is that crop, mapped onto the whole page.
         assertRect(crop.within(whole.region, preview), "cropFrame")
         // The footnote rule below the text is cut off, and boxed (to the analysis' resolution).
-        val cut = composeRule.onAllNodesWithTag("cutInk").fetchSemanticsNodes().map { it.boundsInWindow }
+        val cut =
+            composeRule.onAllNodesWithTag("cutInk").fetchSemanticsNodes().map { it.boundsInWindow }
         val number = Region(120f, 730f, 360f, 20f).within(whole.region, preview)
         assertEquals("$cut", 1, cut.size)
         assertTrue("${cut.single()} vs $number", cut.single().overlaps(number))
@@ -387,7 +415,10 @@ class PageReaderTest {
 
         // ...and is then replaced by one at that size.
         val last = pages.renders.last()
-        assertEquals(scaled.width.roundToInt() to scaled.height.roundToInt(), last.width to last.height)
+        assertEquals(
+            scaled.width.roundToInt() to scaled.height.roundToInt(),
+            last.width to last.height,
+        )
     }
 
     @Test
@@ -404,7 +435,9 @@ class PageReaderTest {
         composeRule.onNodeWithTag("cropPreview").assertDoesNotExist()
 
         gate.complete(Unit)
-        awaitRendered { (_, region) -> abs(region.width / region.height - 0.9f) < 0.01f && region.isZoomed() }
+        awaitRendered { (_, region) ->
+            abs(region.width / region.height - 0.9f) < 0.01f && region.isZoomed()
+        }
         awaitPreview()
         val preview = composeRule.onNodeWithTag("cropPreview").fetchSemanticsNode().boundsInWindow
         val whole = pages.renders.last()
@@ -418,7 +451,11 @@ class PageReaderTest {
         openPanel()
         awaitPreview()
 
-        composeRule.onNodeWithTag("zoomSlider").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        composeRule.onNodeWithTag("zoomSlider").performSemanticsAction(
+            SemanticsActions.SetProgress
+        ) {
+            it(0f)
+        }
         awaitRendered { (_, region) -> !region.isZoomed() }
 
         val preview = composeRule.onNodeWithTag("cropPreview").fetchSemanticsNode().boundsInWindow
@@ -433,7 +470,9 @@ class PageReaderTest {
         awaitPreview()
 
         // On the page, above the panel.
-        composeRule.onNodeWithTag("cropPreview").performTouchInput { click(topRight + Offset(-10f, 10f)) }
+        composeRule.onNodeWithTag("cropPreview").performTouchInput {
+            click(topRight + Offset(-10f, 10f))
+        }
         awaitRendered { it.first == 1 }
         awaitPreview()
 
@@ -449,7 +488,10 @@ class PageReaderTest {
             ViewCompat.dispatchApplyWindowInsets(
                 view,
                 WindowInsetsCompat.Builder()
-                    .setInsets(WindowInsetsCompat.Type.mandatorySystemGestures(), Insets.of(0, 0, 0, height))
+                    .setInsets(
+                        WindowInsetsCompat.Type.mandatorySystemGestures(),
+                        Insets.of(0, 0, 0, height),
+                    )
                     .build(),
             )
         }
@@ -461,8 +503,11 @@ class PageReaderTest {
         while (true) {
             idle()
             val index = readerRenders().last().first
-            val shown = composeRule.onAllNodesWithContentDescription("Page ${index + 1}, whole")
-                .fetchSemanticsNodes().isNotEmpty()
+            val shown =
+                composeRule
+                    .onAllNodesWithContentDescription("Page ${index + 1}, whole")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
             if (shown) break
             check(System.currentTimeMillis() < deadline) { "No preview: ${pages.renders}" }
             Thread.sleep(10)
@@ -470,17 +515,24 @@ class PageReaderTest {
     }
 
     /** This region of a page, where [preview] shows [shown] of it. */
-    private fun Region.within(shown: Region, preview: Rect) = Rect(
-        left = preview.left + (left - shown.left) / shown.width * preview.width,
-        top = preview.top + (top - shown.top) / shown.height * preview.height,
-        right = preview.left + (left + width - shown.left) / shown.width * preview.width,
-        bottom = preview.top + (top + height - shown.top) / shown.height * preview.height,
-    )
+    private fun Region.within(shown: Region, preview: Rect) =
+        Rect(
+            left = preview.left + (left - shown.left) / shown.width * preview.width,
+            top = preview.top + (top - shown.top) / shown.height * preview.height,
+            right = preview.left + (left + width - shown.left) / shown.width * preview.width,
+            bottom = preview.top + (top + height - shown.top) / shown.height * preview.height,
+        )
 
     /** The node tagged [tag] is laid out over [expected], to the pixel. */
     private fun assertRect(expected: Rect, tag: String) {
         val actual = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInWindow
-        for ((a, e) in listOf(actual.left to expected.left, actual.top to expected.top, actual.right to expected.right, actual.bottom to expected.bottom)) {
+        for ((a, e) in
+            listOf(
+                actual.left to expected.left,
+                actual.top to expected.top,
+                actual.right to expected.right,
+                actual.bottom to expected.bottom,
+            )) {
             assertTrue("$tag: $actual, expected $expected", abs(a - e) <= 1f)
         }
     }
@@ -506,7 +558,11 @@ class PageReaderTest {
         openPanel()
 
         // Slide all the way left: the whole page.
-        composeRule.onNodeWithTag("zoomSlider").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        composeRule.onNodeWithTag("zoomSlider").performSemanticsAction(
+            SemanticsActions.SetProgress
+        ) {
+            it(0f)
+        }
         awaitRendered { (_, region) -> !region.isZoomed() }
 
         assertEquals(listOf<Float?>(1f), saves)
@@ -588,10 +644,18 @@ class PageReaderTest {
         composeRule.setContent {
             SortesTheme {
                 ReaderFrame(onClose = {}) {
-                    // Each opening is a new reader for a new PdfPages of the same PDF, as in the app.
+                    // Each opening is a new reader for a new PdfPages of the same PDF, as in the
+                    // app.
                     key(opening) {
                         val current = pages
-                        PageReader(current, null, onSaveScale = {}, analyze = { aspect, onFresh -> cache.analyze(current, "paper", aspect, onMiss = onFresh) })
+                        PageReader(
+                            current,
+                            null,
+                            onSaveScale = {},
+                            analyze = { aspect, onFresh ->
+                                cache.analyze(current, "paper", aspect, onMiss = onFresh)
+                            },
+                        )
                     }
                 }
             }
@@ -620,9 +684,11 @@ class PageReaderTest {
     ) {
         var opening by mutableStateOf(0)
         val timelines = mutableListOf<OpenTimeline>()
-        val analyses = Collections.synchronizedList(mutableListOf<dev.sortes.app.zoom.PaperAnalysis>())
+        val analyses =
+            Collections.synchronizedList(mutableListOf<dev.sortes.app.zoom.PaperAnalysis>())
         var lookup: CompletableDeferred<Unit>? = null
-        private val masks = List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() }
+        private val masks =
+            List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() }
 
         fun show() {
             composeRule.setContent {
@@ -630,14 +696,21 @@ class PageReaderTest {
                     ReaderFrame(onClose = {}) {
                         key(opening) {
                             val current = pages
-                            val timeline = remember { OpenTimeline(paperId = 1, startedAt = 0, clock = { 0 }, log = {}).also { timelines += it } }
+                            val timeline = remember {
+                                OpenTimeline(paperId = 1, startedAt = 0, clock = { 0 }, log = {})
+                                    .also { timelines += it }
+                            }
                             PageReader(
-                                current, savedScale, onSaveScale = {},
+                                current,
+                                savedScale,
+                                onSaveScale = {},
                                 timeline = timeline,
                                 onCropsSolved = { cache.update("paper", it) },
                                 analyze = { aspect, onFresh ->
                                     lookup?.await()
-                                    cache.analyze(current, "paper", aspect, onMiss = onFresh).also { analyses += it }
+                                    cache.analyze(current, "paper", aspect, onMiss = onFresh).also {
+                                        analyses += it
+                                    }
                                 },
                             )
                         }
@@ -688,7 +761,11 @@ class PageReaderTest {
 
     @Test
     fun aSavedZoomIsStoredWithTheAnalysisAndOpensWithoutSolving() {
-        val reader = Reopening(AnalysisCache(temporaryFolder.newFolder("analyses"), build = "test"), savedScale = 0.9f)
+        val reader =
+            Reopening(
+                AnalysisCache(temporaryFolder.newFolder("analyses"), build = "test"),
+                savedScale = 0.9f,
+            )
         reader.show()
         awaitRendered { (_, region) -> region.width in 535f..600f * 0.95f }
         val first = lastRendered().second
@@ -717,12 +794,17 @@ class PageReaderTest {
         val lookup = CompletableDeferred<Unit>()
         composeRule.setContent {
             SortesTheme {
-                PageReader(pages, null, onSaveScale = {}, analyze = { aspect, onFresh ->
-                    lookup.await()
-                    fresh = onFresh
-                    onFresh()
-                    dev.sortes.app.zoom.analyzePaper(pages, aspect)
-                })
+                PageReader(
+                    pages,
+                    null,
+                    onSaveScale = {},
+                    analyze = { aspect, onFresh ->
+                        lookup.await()
+                        fresh = onFresh
+                        onFresh()
+                        dev.sortes.app.zoom.analyzePaper(pages, aspect)
+                    },
+                )
             }
         }
         idle()
@@ -741,11 +823,13 @@ class PageReaderTest {
 
     /**
      * A reader whose [pages] and stored [firstPage] are set by the test, as [ReaderScreen] passes
-     * them: the pages are null until the PDF is open. Records the first pages it reports shown
-     * and the bitmaps it draws.
+     * them: the pages are null until the PDF is open. Records the first pages it reports shown and
+     * the bitmaps it draws.
      */
     private inner class StoredFirstPage(
-        private val analyze: (suspend (FakePages, Float, () -> Unit) -> dev.sortes.app.zoom.PaperAnalysis)? = null,
+        private val analyze:
+            (suspend (FakePages, Float, () -> Unit) -> dev.sortes.app.zoom.PaperAnalysis)? =
+            null
     ) {
         var current by mutableStateOf<FakePages?>(null)
         var firstPage by mutableStateOf<FirstPage?>(null)
@@ -760,16 +844,22 @@ class PageReaderTest {
                     ReaderFrame(onClose = {}) {
                         key(opening) {
                             val pages = current
-                            val timeline = remember { OpenTimeline(paperId = 1, startedAt = 0, clock = { 0 }, log = {}).also { timelines += it } }
+                            val timeline = remember {
+                                OpenTimeline(paperId = 1, startedAt = 0, clock = { 0 }, log = {})
+                                    .also { timelines += it }
+                            }
                             PageReader(
-                                pages, saved, onSaveScale = {},
+                                pages,
+                                saved,
+                                onSaveScale = {},
                                 timeline = timeline,
                                 analyze = { aspect, onFresh ->
                                     val p = checkNotNull(pages)
-                                    analyze?.invoke(p, aspect, onFresh) ?: run {
-                                        onFresh()
-                                        dev.sortes.app.zoom.analyzePaper(p, aspect)
-                                    }
+                                    analyze?.invoke(p, aspect, onFresh)
+                                        ?: run {
+                                            onFresh()
+                                            dev.sortes.app.zoom.analyzePaper(p, aspect)
+                                        }
                                 },
                                 firstPage = firstPage,
                                 onFirstPageShown = { page, stored -> shown += page to stored },
@@ -781,7 +871,9 @@ class PageReaderTest {
             }
         }
 
-        /** Draws the window (Robolectric draws only when asked) and returns the page bitmap drawn. */
+        /**
+         * Draws the window (Robolectric draws only when asked) and returns the page bitmap drawn.
+         */
         fun draw(): Bitmap? {
             drawn.clear()
             composeRule.runOnIdle { drawWindow() }
@@ -790,8 +882,8 @@ class PageReaderTest {
     }
 
     /**
-     * The zoomed first page as a reader shows it, from a first opening of [pages]; [pages] is
-     * then a new copy of them, as if the PDF were opened again.
+     * The zoomed first page as a reader shows it, from a first opening of [pages]; [pages] is then
+     * a new copy of them, as if the PDF were opened again.
      */
     private fun firstPageShown(reader: StoredFirstPage): FirstPage {
         reader.current = pages
@@ -801,7 +893,8 @@ class PageReaderTest {
         val (page, stored) = reader.shown.single()
         assertEquals(false, stored)
         reader.shown.clear()
-        pages = FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
+        pages =
+            FakePages(List(3) { TestPage(60, 80).rect(10, 10, 50, 70).rect(29, 76, 31, 78).mask() })
         return page
     }
 
@@ -842,8 +935,9 @@ class PageReaderTest {
     fun aStoredFirstPageThatDiffersFromTheRenderIsReplaced() {
         val reader = StoredFirstPage()
         val first = firstPageShown(reader)
-        val blank = Bitmap.createBitmap(first.bitmap.width, first.bitmap.height, Bitmap.Config.ARGB_8888)
-            .apply { eraseColor(android.graphics.Color.WHITE) }
+        val blank =
+            Bitmap.createBitmap(first.bitmap.width, first.bitmap.height, Bitmap.Config.ARGB_8888)
+                .apply { eraseColor(android.graphics.Color.WHITE) }
 
         reader.current = null
         reader.firstPage = FirstPage(first.key, blank)
@@ -865,12 +959,13 @@ class PageReaderTest {
     fun aStoredFirstPageForAnotherSizeOrZoomIsNotShown() {
         val reader = StoredFirstPage()
         val first = firstPageShown(reader)
-        val others = listOf(
-            first.key.copy(width = first.key.width + 1),
-            first.key.copy(height = first.key.height - 1),
-            first.key.copy(scale = 0.9f),
-            first.key.copy(index = 1),
-        )
+        val others =
+            listOf(
+                first.key.copy(width = first.key.width + 1),
+                first.key.copy(height = first.key.height - 1),
+                first.key.copy(scale = 0.9f),
+                first.key.copy(index = 1),
+            )
         for (key in others) {
             reader.current = null
             reader.firstPage = FirstPage(key, first.bitmap)
@@ -910,11 +1005,14 @@ class PageReaderTest {
     @Test
     fun aStoredFirstPageGivesWayToTheWholePageIfTheAnalysisFails() {
         var fail = false
-        val reader = StoredFirstPage(analyze = { p, aspect, onFresh ->
-            if (fail) throw java.io.IOException("No analysis")
-            onFresh()
-            dev.sortes.app.zoom.analyzePaper(p, aspect)
-        })
+        val reader =
+            StoredFirstPage(
+                analyze = { p, aspect, onFresh ->
+                    if (fail) throw java.io.IOException("No analysis")
+                    onFresh()
+                    dev.sortes.app.zoom.analyzePaper(p, aspect)
+                }
+            )
         val first = firstPageShown(reader)
         fail = true
 
@@ -972,11 +1070,12 @@ class PageReaderTest {
         val window = drawWindow()
         for (label in listOf("Close", "Auto ✓", "1 / 3")) {
             val bounds = composeRule.onNodeWithText(label).fetchSemanticsNode().boundsInWindow
-            val luminances = (bounds.left.toInt() until bounds.right.toInt()).flatMap { x ->
-                (bounds.top.toInt() until bounds.bottom.toInt()).map { y ->
-                    Color(window.getPixel(x, y)).luminance()
+            val luminances =
+                (bounds.left.toInt() until bounds.right.toInt()).flatMap { x ->
+                    (bounds.top.toInt() until bounds.bottom.toInt()).map { y ->
+                        Color(window.getPixel(x, y)).luminance()
+                    }
                 }
-            }
             assertTrue("$label: no dark text", luminances.min() < 0.3f)
             assertTrue("$label: no light background", luminances.max() > 0.9f)
         }
@@ -990,8 +1089,9 @@ class PageReaderTest {
     // captureToImage() times out under Robolectric, so draw the window ourselves.
     private fun drawWindow(): Bitmap {
         val view = composeRule.activity.window.decorView
-        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-            .also { view.draw(Canvas(it)) }
+        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888).also {
+            view.draw(Canvas(it))
+        }
     }
 
     @Test

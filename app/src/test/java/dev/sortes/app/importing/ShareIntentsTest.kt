@@ -17,17 +17,22 @@ class ShareIntentsTest {
 
     @Test
     fun readsStringText() {
-        val intent = send("text/plain").putExtra(Intent.EXTRA_TEXT, "https://arxiv.org/abs/1706.03762")
+        val intent =
+            send("text/plain").putExtra(Intent.EXTRA_TEXT, "https://arxiv.org/abs/1706.03762")
 
-        assertEquals(ShareRequest.Arxiv("https://arxiv.org/abs/1706.03762"), intent.toShareRequest(false))
+        assertEquals(
+            ShareRequest.Arxiv("https://arxiv.org/abs/1706.03762"),
+            intent.toShareRequest(false),
+        )
     }
 
     @Test
     fun readsSpannedText() {
         val url = "https://arxiv.org/abs/1706.03762"
-        val spanned = SpannableString("See $url").apply {
-            setSpan(URLSpan(url), 4, length, 0)
-        }
+        val spanned =
+            SpannableString("See $url").apply {
+                setSpan(URLSpan(url), 4, length, 0)
+            }
         val intent = send("text/plain").putExtra(Intent.EXTRA_TEXT, spanned)
 
         assertEquals(ShareRequest.Arxiv("See $url"), intent.toShareRequest(false))
@@ -43,8 +48,12 @@ class ShareIntentsTest {
 
     @Test
     fun rejectsFileStream() {
-        val intent = send("application/pdf")
-            .putExtra(Intent.EXTRA_STREAM, Uri.parse("file:///data/data/dev.sortes.app/databases/papers.db"))
+        val intent =
+            send("application/pdf")
+                .putExtra(
+                    Intent.EXTRA_STREAM,
+                    Uri.parse("file:///data/data/dev.sortes.app/databases/papers.db"),
+                )
 
         assertNull(intent.toShareRequest(false))
     }
@@ -60,6 +69,9 @@ class ShareIntentsTest {
 
     @Test
     fun inlinedRecentsFlagMatchesFramework() {
-        assertEquals(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY, ShareRequest.FLAG_LAUNCHED_FROM_HISTORY)
+        assertEquals(
+            Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY,
+            ShareRequest.FLAG_LAUNCHED_FROM_HISTORY,
+        )
     }
 }

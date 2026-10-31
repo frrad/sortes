@@ -11,9 +11,13 @@ class IgnorableInkTest {
     private class ClearColumn(val x: Int, val log: MutableList<Int>) : IgnorableInkRule {
         override fun strip(mask: InkMask): InkMask {
             log += x
-            return InkMask(mask.width, mask.height, BooleanArray(mask.width * mask.height) {
-                it % mask.width != x && mask[it % mask.width, it / mask.width]
-            })
+            return InkMask(
+                mask.width,
+                mask.height,
+                BooleanArray(mask.width * mask.height) {
+                    it % mask.width != x && mask[it % mask.width, it / mask.width]
+                },
+            )
         }
     }
 

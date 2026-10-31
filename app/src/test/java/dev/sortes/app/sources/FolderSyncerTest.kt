@@ -6,10 +6,12 @@ import dev.sortes.app.alphaxiv.AlphaxivFolderNotFoundException
 import dev.sortes.app.arxiv.ArxivClient
 import dev.sortes.app.arxiv.ArxivEntry
 import dev.sortes.app.arxiv.ArxivId
-import dev.sortes.app.importing.ArxivImport
 import dev.sortes.app.data.Paper
+import dev.sortes.app.importing.ArxivImport
 import dev.sortes.app.importing.FakePaperDao
 import dev.sortes.app.importing.PaperImporter
+import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,19 +20,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.io.IOException
 
 class FolderSyncerTest {
 
-    @get:Rule
-    val tmp = TemporaryFolder()
+    @get:Rule val tmp = TemporaryFolder()
 
     private val folderId = "01a1838a-db89-71d0-956c-e8067fdfee2a"
     private val dao = FakePaperDao()
 
     /** IDs from the saved fixture of the real folder. */
-    private var folder = AlphaxivFolder("Sortes", listOf("2311.08105", "2609.20807", "2602.03839", "2512.03442"))
+    private var folder =
+        AlphaxivFolder("Sortes", listOf("2311.08105", "2609.20807", "2602.03839", "2512.03442"))
     private var folderError: IOException? = null
     private val client = AlphaxivClient { id ->
         assertEquals(folderId, id)
@@ -56,8 +56,16 @@ class FolderSyncerTest {
     private fun pdfUrls() = dao.papers.value.map { it.pdfUrl }
 
     private fun existing(id: String) = runBlocking {
-        dao.insert(Paper(title = "Mine", authors = emptyList(), abstract = "", year = null, venue = null,
-            pdfUrl = "https://arxiv.org/pdf/$id"))
+        dao.insert(
+            Paper(
+                title = "Mine",
+                authors = emptyList(),
+                abstract = "",
+                year = null,
+                venue = null,
+                pdfUrl = "https://arxiv.org/pdf/$id",
+            )
+        )
     }
 
     @Test
@@ -79,7 +87,10 @@ class FolderSyncerTest {
         assertEquals(SyncResult("Sortes", added = 3, alreadyPresent = 1), result)
         assertEquals(listOf("2311.08105", "2602.03839", "2512.03442"), fetched)
         assertEquals(4, dao.papers.value.size)
-        assertEquals("Mine", dao.papers.value.single { it.pdfUrl == "https://arxiv.org/pdf/2609.20807" }.title)
+        assertEquals(
+            "Mine",
+            dao.papers.value.single { it.pdfUrl == "https://arxiv.org/pdf/2609.20807" }.title,
+        )
     }
 
     @Test
@@ -113,7 +124,11 @@ class FolderSyncerTest {
 
     @Test
     fun nonArxivPapersAreSkipped() {
-        folder = AlphaxivFolder("F", listOf("019a0000-0000-7000-8000-000000000000", "2311.08105", "not an id"))
+        folder =
+            AlphaxivFolder(
+                "F",
+                listOf("019a0000-0000-7000-8000-000000000000", "2311.08105", "not an id"),
+            )
 
         assertEquals(SyncResult("F", added = 1, skipped = 2), sync())
         assertEquals(listOf("2311.08105"), fetched)
@@ -125,7 +140,10 @@ class FolderSyncerTest {
 
         val result = sync()
 
-        assertEquals(SyncResult("Sortes", added = 3, failures = listOf("arXiv lookup failed: HTTP 503")), result)
+        assertEquals(
+            SyncResult("Sortes", added = 3, failures = listOf("arXiv lookup failed: HTTP 503")),
+            result,
+        )
         assertEquals(folder.paperIds, fetched)
         assertEquals(3, dao.papers.value.size)
     }
@@ -207,7 +225,14 @@ class FolderSyncerTest {
         assertEquals("4 added", SyncResult("F", added = 4).summary())
         assertEquals(
             "2 added, 1 already in library, 1 not on arXiv, 2 failed (HTTP 503)",
-            SyncResult("F", added = 2, alreadyPresent = 1, skipped = 1, failures = listOf("HTTP 503", "other")).summary(),
+            SyncResult(
+                    "F",
+                    added = 2,
+                    alreadyPresent = 1,
+                    skipped = 1,
+                    failures = listOf("HTTP 503", "other"),
+                )
+                .summary(),
         )
         assertEquals("3 already in library", SyncResult("F", alreadyPresent = 3).summary())
     }

@@ -13,14 +13,18 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         private const val SAT_AREAS = 1
 
         /** How many cells [mask]'s frame has when padded to [aspect], without building it. */
-        fun frameCells(mask: InkMask, aspect: Float): Long = frameWidth(mask, aspect).toLong() * frameHeight(mask, aspect)
+        fun frameCells(mask: InkMask, aspect: Float): Long =
+            frameWidth(mask, aspect).toLong() * frameHeight(mask, aspect)
 
         /** The width in cells of [mask]'s frame when padded to [aspect], without building it. */
         fun frameWidth(mask: InkMask, aspect: Float): Int =
-            if (mask.width.toFloat() / mask.height < aspect) (mask.height * aspect).roundToInt().coerceAtLeast(mask.width) else mask.width
+            if (mask.width.toFloat() / mask.height < aspect)
+                (mask.height * aspect).roundToInt().coerceAtLeast(mask.width)
+            else mask.width
 
         private fun frameHeight(mask: InkMask, aspect: Float): Int =
-            if (mask.width.toFloat() / mask.height < aspect) mask.height else (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
+            if (mask.width.toFloat() / mask.height < aspect) mask.height
+            else (mask.width / aspect).roundToInt().coerceAtLeast(mask.height)
     }
 
     val width: Int
@@ -80,7 +84,10 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
             if (my !in 0 until mask.height) continue
             var x = 0
             while (x < mask.width) {
-                if (!mask[x, my]) { x++; continue }
+                if (!mask[x, my]) {
+                    x++
+                    continue
+                }
                 val start = x
                 while (x < mask.width && mask[x, my]) x++
                 ra += start + offX
@@ -98,7 +105,10 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
             if (mx !in 0 until mask.width) continue
             var y = 0
             while (y < mask.height) {
-                if (!mask[mx, y]) { y++; continue }
+                if (!mask[mx, y]) {
+                    y++
+                    continue
+                }
                 val start = y
                 while (y < mask.height && mask[mx, y]) y++
                 ca += start + offY
@@ -124,24 +134,27 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     private var tableSums = IntArray(0)
 
     /**
-     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept with their
-     * tables for the last gap asked for.
+     * The page's blocks ([PageBlocks] with [gap]) as rects in frame cells, kept with their tables
+     * for the last gap asked for.
      */
     fun blocks(gap: Int): List<CellRect> {
         if (gap != blocksGap) {
             val f = if (inkCount == 0) null else PageBlocks.of(mask, gap)
             found = f
-            blocksFor = f?.boxes?.map { CellRect(it.left + offX, it.top + offY, it.right + offX, it.bottom + offY) } ?: emptyList()
-            blockSparse = BooleanArray(blocksFor.size) { b ->
-                val box = blocksFor[b]
-                f!!.inks[b] * 2 < (box.right - box.left) * (box.bottom - box.top)
-            }
+            blocksFor =
+                f?.boxes?.map {
+                    CellRect(it.left + offX, it.top + offY, it.right + offX, it.bottom + offY)
+                } ?: emptyList()
+            blockSparse =
+                BooleanArray(blocksFor.size) { b ->
+                    val box = blocksFor[b]
+                    f!!.inks[b] * 2 < (box.right - box.left) * (box.bottom - box.top)
+                }
             tables(f)
             blocksGap = gap
         }
         return blocksFor
     }
-
 
     private fun tables(f: PageBlocks?) {
         tableOffsets = IntArray(blocksFor.size) { -1 }
@@ -149,8 +162,13 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
             tableSums = IntArray(0)
             return
         }
-        val order = blocksFor.indices.filter { f.inks[it] >= PageBlocks.MIN_BLOCK_INK }
-            .sortedByDescending { (blocksFor[it].right - blocksFor[it].left) * (blocksFor[it].bottom - blocksFor[it].top) }
+        val order =
+            blocksFor.indices
+                .filter { f.inks[it] >= PageBlocks.MIN_BLOCK_INK }
+                .sortedByDescending {
+                    (blocksFor[it].right - blocksFor[it].left) *
+                        (blocksFor[it].bottom - blocksFor[it].top)
+                }
         var total = 0
         val cap = SAT_AREAS * width * height
         for (b in order) {
@@ -173,15 +191,24 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         val y1 = minOf(bt, box.bottom) - box.top
         if (x1 <= x0 || y1 <= y0) return 0
         val offset = tableOffsets[b]
-        if (offset < 0) return found!!.inkIn(b, x0 + box.left - offX, y0 + box.top - offY, x1 + box.left - offX, y1 + box.top - offY)
+        if (offset < 0)
+            return found!!.inkIn(
+                b,
+                x0 + box.left - offX,
+                y0 + box.top - offY,
+                x1 + box.left - offX,
+                y1 + box.top - offY,
+            )
         val stride = box.right - box.left + 1
         val sums = tableSums
-        return sums[offset + y1 * stride + x1] - sums[offset + y0 * stride + x1] - sums[offset + y1 * stride + x0] + sums[offset + y0 * stride + x0]
+        return sums[offset + y1 * stride + x1] -
+            sums[offset + y0 * stride + x1] -
+            sums[offset + y1 * stride + x0] + sums[offset + y0 * stride + x0]
     }
 
     /**
-     * How many blocks (with [gap]) of at least [PageBlocks.MIN_BLOCK_INK] cells a [w] x [h]
-     * window at ([x], [y]) cuts into: some ink in, some out.
+     * How many blocks (with [gap]) of at least [PageBlocks.MIN_BLOCK_INK] cells a [w] x [h] window
+     * at ([x], [y]) cuts into: some ink in, some out.
      */
     fun split(x: Int, y: Int, w: Int, h: Int, gap: Int): Int {
         val boxes = blocks(gap)
@@ -193,12 +220,12 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     }
 
     /**
-     * Block [b]'s share of a split for a window keeping [kept] of its ink: 0 if all of it or if
-     * the block is too small to count; else the cut as a share of [unit] cells, capped at 1. A
-     * window keeping none of a block's cells still counts here; [exactShare] makes the one
-     * exception (inside a sparse block's box), and a window sticking out of the box yet keeping
-     * nothing (an L-shaped block's empty corner) is charged, which is what lets [splitCosts]
-     * fill most positions without looking at them.
+     * Block [b]'s share of a split for a window keeping [kept] of its ink: 0 if all of it or if the
+     * block is too small to count; else the cut as a share of [unit] cells, capped at 1. A window
+     * keeping none of a block's cells still counts here; [exactShare] makes the one exception
+     * (inside a sparse block's box), and a window sticking out of the box yet keeping nothing (an
+     * L-shaped block's empty corner) is charged, which is what lets [splitCosts] fill most
+     * positions without looking at them.
      */
     private fun share(b: Int, kept: Int, unit: Int): Double {
         val ink = found!!.inks[b]
@@ -208,13 +235,13 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     }
 
     /**
-     * How badly a [w] x [h] window at ([x], [y]) cuts into the page's blocks (with [gap]): for
-     * each block whose box it overlaps without containing, the ink cut off that block as a
-     * share of [unit] cells, capped at 1, summed. A nibble off a block's edge counts little; a
-     * sliced title, line or table row counts a whole block. A window inside a sparse block's
-     * box keeping none of its cells (inside a frame) counts nothing for it; one sticking out of
-     * a block's box yet keeping none of its cells (an L-shaped block's empty corner) counts as
-     * if it cut the block, so this can exceed [split]'s count of blocks with ink on both sides.
+     * How badly a [w] x [h] window at ([x], [y]) cuts into the page's blocks (with [gap]): for each
+     * block whose box it overlaps without containing, the ink cut off that block as a share of
+     * [unit] cells, capped at 1, summed. A nibble off a block's edge counts little; a sliced title,
+     * line or table row counts a whole block. A window inside a sparse block's box keeping none of
+     * its cells (inside a frame) counts nothing for it; one sticking out of a block's box yet
+     * keeping none of its cells (an L-shaped block's empty corner) counts as if it cut the block,
+     * so this can exceed [split]'s count of blocks with ink on both sides.
      */
     fun splitCost(x: Int, y: Int, w: Int, h: Int, gap: Int, unit: Int): Double {
         val boxes = blocks(gap)
@@ -227,26 +254,29 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         return cost
     }
 
-    /** [splitCost]'s share of block [b] for one window: a clean drop when inside a sparse box with none of its cells. */
+    /**
+     * [splitCost]'s share of block [b] for one window: a clean drop when inside a sparse box with
+     * none of its cells.
+     */
     private fun exactShare(b: Int, x: Int, y: Int, w: Int, h: Int, unit: Int): Double {
         val kept = blockInside(b, x, y, x + w, y + h)
-        if (kept == 0 && blockSparse[b] && blocksFor[b].contains(CellRect(x, y, x + w, y + h))) return 0.0
+        if (kept == 0 && blockSparse[b] && blocksFor[b].contains(CellRect(x, y, x + w, y + h)))
+            return 0.0
         return share(b, kept, unit)
     }
 
     /**
-     * [splitCost] for every position of a [w] x [h] window at once, into [out] at
-     * `y * (width - w + 1) + x`, using [s] for scratch. Each block costs a whole split at every
-     * position whose window overlaps its box without containing it, filled through a 2-D
-     * difference array, except in a ring of positions around those containing it, where the
-     * window cuts fewer than [unit] cells off one side. Along the ring's four strips the window
-     * still spans the block in the other direction, so the cut depends on one coordinate only
-     * and each strip is a few more lines in the difference array; only the ring's corners are
-     * looked up one by one. A block the window can't contain in either direction is looked up
-     * at every overlapping position (there are at most a few such blocks: the body at a tight
-     * zoom, a big figure), which is also where a window inside a sparse block's box can keep
-     * none of its cells and counts nothing. So the work is about linear in the positions plus
-     * the blocks' ring strips.
+     * [splitCost] for every position of a [w] x [h] window at once, into [out] at `y * (width -
+     * w + 1) + x`, using [s] for scratch. Each block costs a whole split at every position whose
+     * window overlaps its box without containing it, filled through a 2-D difference array, except
+     * in a ring of positions around those containing it, where the window cuts fewer than [unit]
+     * cells off one side. Along the ring's four strips the window still spans the block in the
+     * other direction, so the cut depends on one coordinate only and each strip is a few more lines
+     * in the difference array; only the ring's corners are looked up one by one. A block the window
+     * can't contain in either direction is looked up at every overlapping position (there are at
+     * most a few such blocks: the body at a tight zoom, a big figure), which is also where a window
+     * inside a sparse block's box can keep none of its cells and counts nothing. So the work is
+     * about linear in the positions plus the blocks' ring strips.
      */
     fun splitCosts(w: Int, h: Int, gap: Int, unit: Int, out: DoubleArray, s: BlockScratch) {
         val cols = width - w + 1
@@ -270,7 +300,10 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         fun lookup(b: Int, x0: Int, y0: Int, x1: Int, y1: Int) {
             if (x0 > x1 || y0 > y1) return
             val o = b * 20 + counts[b] * 4
-            exact[o] = x0; exact[o + 1] = y0; exact[o + 2] = x1; exact[o + 3] = y1
+            exact[o] = x0
+            exact[o + 1] = y0
+            exact[o + 2] = x1
+            exact[o + 3] = y1
             counts[b]++
         }
         for (b in boxes.indices) {
@@ -308,11 +341,35 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
                 val ry1 = minOf(oy1, cy1 + edgeRun(b, unit, side = 2))
                 add(rx0, ry0, rx1, ry1, -1.0)
                 // Side strips: the window spans the block vertically, the cut depends on x.
-                for (x in rx0 until cx0) add(x, cy0, x, cy1, share(b, blockInside(b, x, box.top, x + w, box.bottom), unit))
-                for (x in cx1 + 1..rx1) add(x, cy0, x, cy1, share(b, blockInside(b, x, box.top, x + w, box.bottom), unit))
+                for (x in rx0 until cx0) add(
+                    x,
+                    cy0,
+                    x,
+                    cy1,
+                    share(b, blockInside(b, x, box.top, x + w, box.bottom), unit),
+                )
+                for (x in cx1 + 1..rx1) add(
+                    x,
+                    cy0,
+                    x,
+                    cy1,
+                    share(b, blockInside(b, x, box.top, x + w, box.bottom), unit),
+                )
                 // Top and bottom strips: the cut depends on y.
-                for (y in ry0 until cy0) add(cx0, y, cx1, y, share(b, blockInside(b, box.left, y, box.right, y + h), unit))
-                for (y in cy1 + 1..ry1) add(cx0, y, cx1, y, share(b, blockInside(b, box.left, y, box.right, y + h), unit))
+                for (y in ry0 until cy0) add(
+                    cx0,
+                    y,
+                    cx1,
+                    y,
+                    share(b, blockInside(b, box.left, y, box.right, y + h), unit),
+                )
+                for (y in cy1 + 1..ry1) add(
+                    cx0,
+                    y,
+                    cx1,
+                    y,
+                    share(b, blockInside(b, box.left, y, box.right, y + h), unit),
+                )
                 // Corners, one by one.
                 lookup(b, rx0, ry0, cx0 - 1, cy0 - 1)
                 lookup(b, cx1 + 1, ry0, rx1, cy0 - 1)
@@ -324,7 +381,13 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
                 val ry0 = maxOf(oy0, cy0 - edgeRun(b, unit, side = 3))
                 val ry1 = minOf(oy1, cy1 + edgeRun(b, unit, side = 2))
                 add(ox0, ry0, ox1, ry1, -1.0)
-                for (x in ox0..ox1) add(x, cy0, x, cy1, share(b, blockInside(b, x, box.top, x + w, box.bottom), unit))
+                for (x in ox0..ox1) add(
+                    x,
+                    cy0,
+                    x,
+                    cy1,
+                    share(b, blockInside(b, x, box.top, x + w, box.bottom), unit),
+                )
                 lookup(b, ox0, ry0, ox1, cy0 - 1)
                 lookup(b, ox0, cy1 + 1, ox1, ry1)
             } else {
@@ -332,7 +395,13 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
                 val rx0 = maxOf(ox0, cx0 - edgeRun(b, unit, side = 1))
                 val rx1 = minOf(ox1, cx1 + edgeRun(b, unit, side = 0))
                 add(rx0, oy0, rx1, oy1, -1.0)
-                for (y in oy0..oy1) add(cx0, y, cx1, y, share(b, blockInside(b, box.left, y, box.right, y + h), unit))
+                for (y in oy0..oy1) add(
+                    cx0,
+                    y,
+                    cx1,
+                    y,
+                    share(b, blockInside(b, box.left, y, box.right, y + h), unit),
+                )
                 lookup(b, rx0, oy0, cx0 - 1, oy1)
                 lookup(b, cx1 + 1, oy0, rx1, oy1)
             }
@@ -355,18 +424,20 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     /**
      * The least ink a [w] x [h] window can cut off block [b] when the block is wider and taller
      * than the window: the sum of its emptiest bw - w columns, or of its emptiest bh - h rows,
-     * whichever is more. A lower bound, since a window leaves out at least that many whole
-     * columns and rows.
+     * whichever is more. A lower bound, since a window leaves out at least that many whole columns
+     * and rows.
      */
     private fun leastCut(b: Int, w: Int, h: Int): Int {
         val box = blocksFor[b]
         val bw = box.right - box.left
         val bh = box.bottom - box.top
-        val columns = IntArray(bw) { blockInside(b, box.left + it, box.top, box.left + it + 1, box.bottom) }
+        val columns =
+            IntArray(bw) { blockInside(b, box.left + it, box.top, box.left + it + 1, box.bottom) }
         columns.sort()
         var byColumns = 0
         for (i in 0 until bw - w) byColumns += columns[i]
-        val rowInks = IntArray(bh) { blockInside(b, box.left, box.top + it, box.right, box.top + it + 1) }
+        val rowInks =
+            IntArray(bh) { blockInside(b, box.left, box.top + it, box.right, box.top + it + 1) }
         rowInks.sort()
         var byRows = 0
         for (i in 0 until bh - h) byRows += rowInks[i]
@@ -374,9 +445,9 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     }
 
     /**
-     * How many columns (sides 0 left, 1 right) or rows (2 top, 3 bottom) of block [b], taken
-     * from that edge inwards, hold fewer than [u] of its cells: how far a window edge may move
-     * into the block from that side before the cut is a whole split.
+     * How many columns (sides 0 left, 1 right) or rows (2 top, 3 bottom) of block [b], taken from
+     * that edge inwards, hold fewer than [u] of its cells: how far a window edge may move into the
+     * block from that side before the cut is a whole split.
      */
     private fun edgeRun(b: Int, u: Int, side: Int): Int {
         val box = blocksFor[b]
@@ -385,24 +456,35 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
         var n = 0
         while (true) {
             val next = n + 1
-            val ink = when (side) {
-                0 -> if (next > bw) Int.MAX_VALUE else blockInside(b, box.left, box.top, box.left + next, box.bottom)
-                1 -> if (next > bw) Int.MAX_VALUE else blockInside(b, box.right - next, box.top, box.right, box.bottom)
-                2 -> if (next > bh) Int.MAX_VALUE else blockInside(b, box.left, box.top, box.right, box.top + next)
-                else -> if (next > bh) Int.MAX_VALUE else blockInside(b, box.left, box.bottom - next, box.right, box.bottom)
-            }
+            val ink =
+                when (side) {
+                    0 ->
+                        if (next > bw) Int.MAX_VALUE
+                        else blockInside(b, box.left, box.top, box.left + next, box.bottom)
+                    1 ->
+                        if (next > bw) Int.MAX_VALUE
+                        else blockInside(b, box.right - next, box.top, box.right, box.bottom)
+                    2 ->
+                        if (next > bh) Int.MAX_VALUE
+                        else blockInside(b, box.left, box.top, box.right, box.top + next)
+                    else ->
+                        if (next > bh) Int.MAX_VALUE
+                        else blockInside(b, box.left, box.bottom - next, box.right, box.bottom)
+                }
             if (ink >= u) return n
             n = next
         }
     }
 
     fun windowWidth(scale: Float) = (scale * width).roundToInt().coerceIn(1, width)
+
     fun windowHeight(scale: Float) = (scale * height).roundToInt().coerceIn(1, height)
 
     /** Ink in the [w] x [h] cells at ([x], [y]). */
     fun inside(x: Int, y: Int, w: Int, h: Int): Int {
         val stride = width + 1
-        return sums[(y + h) * stride + x + w] - sums[y * stride + x + w] -
+        return sums[(y + h) * stride + x + w] -
+            sums[y * stride + x + w] -
             sums[(y + h) * stride + x] + sums[y * stride + x]
     }
 
@@ -431,12 +513,12 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
     }
 
     /**
-     * [offCentre] for every position of a [w] x [h] window at once, into [out] at
-     * `y * (width - w + 1) + x`. Linear in the frame's size rather than a search per position:
-     * from the ink runs along each row, which window columns x see ink in row r (a row's run
-     * [a, b) is seen by x in [a - w + 1, b - 1], marked through a difference array), then for
-     * each window column the next and previous inked row; and the same the other way round for
-     * the window rows. No table lookups.
+     * [offCentre] for every position of a [w] x [h] window at once, into [out] at `y * (width -
+     * w + 1) + x`. Linear in the frame's size rather than a search per position: from the ink runs
+     * along each row, which window columns x see ink in row r (a row's run
+     * [a, b) is seen by x in [a - w + 1, b - 1], marked through a difference array), then for each
+     * window column the next and previous inked row; and the same the other way round for the
+     * window rows. No table lookups.
      */
     fun offCentres(w: Int, h: Int, out: DoubleArray) {
         val cols = width - w + 1
@@ -470,10 +552,12 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
             }
             for (y in 0 until rows) {
                 val top = next[y]
-                out[y * cols + x] = if (top >= y + h) Double.NaN else {
-                    val bottom = prev[y + h - 1]
-                    abs((top - y) - (y + h - 1 - bottom)) / (2.0 * h)
-                }
+                out[y * cols + x] =
+                    if (top >= y + h) Double.NaN
+                    else {
+                        val bottom = prev[y + h - 1]
+                        abs((top - y) - (y + h - 1 - bottom)) / (2.0 * h)
+                    }
             }
         }
         // Horizontal: seenY[y * width + c] is whether column c has ink across [y, y + h).
@@ -516,14 +600,16 @@ internal class PaddedPage(mask: InkMask, private val aspect: Float) {
 
     // The frame as a multiple of the page: what regionOn pads to, measured in page widths and
     // heights rather than in whole cells, so it doesn't inherit the cells' rounding.
-    private val frameWidth = if (maskWidth.toFloat() / maskHeight < aspect) aspect * maskHeight / maskWidth else 1f
-    private val frameHeight = if (maskWidth.toFloat() / maskHeight < aspect) 1f else maskWidth / (aspect * maskHeight)
+    private val frameWidth =
+        if (maskWidth.toFloat() / maskHeight < aspect) aspect * maskHeight / maskWidth else 1f
+    private val frameHeight =
+        if (maskWidth.toFloat() / maskHeight < aspect) 1f else maskWidth / (aspect * maskHeight)
 
     /**
      * The window of [scale] whose cells start at ([x], [y]), as the reader's [CropWindow]. It is
      * centred on those cells as they lie on the page: the cell frame centres the page in whole
-     * cells, but the reader centres it exactly, so with an odd number of cells of padding the
-     * two differ by half a cell, and converting via the cell frame would shift the crop by that.
+     * cells, but the reader centres it exactly, so with an odd number of cells of padding the two
+     * differ by half a cell, and converting via the cell frame would shift the crop by that.
      */
     fun windowAt(x: Int, y: Int, scale: Float): CropWindow {
         val centreX = (x - offX + windowWidth(scale) / 2f) / maskWidth

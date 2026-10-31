@@ -8,22 +8,24 @@ import java.nio.ByteBuffer
 
 /**
  * A [DataInput] over a byte array, reading what a [java.io.DataOutputStream] wrote. Unlike a
- * [DataInputStream] over a buffered stream, which makes a synchronized call for every byte of
- * every int, it reads straight from the array, and reads arrays of values in one call
- * ([readInts], [readDoubles]): [AnalysisCache] reads millions of values on each open, and in a
- * process just started, the app's own code runs interpreted, so a call per value is slow.
+ * [DataInputStream] over a buffered stream, which makes a synchronized call for every byte of every
+ * int, it reads straight from the array, and reads arrays of values in one call ([readInts],
+ * [readDoubles]): [AnalysisCache] reads millions of values on each open, and in a process just
+ * started, the app's own code runs interpreted, so a call per value is slow.
  */
 internal class BytesInput(bytes: ByteArray) : DataInput {
     private val buffer = ByteBuffer.wrap(bytes) // Big-endian, as DataOutput writes.
 
     /** Bytes not read yet. */
-    val remaining: Int get() = buffer.remaining()
+    val remaining: Int
+        get() = buffer.remaining()
 
-    private inline fun <T> read(block: ByteBuffer.() -> T): T = try {
-        buffer.block()
-    } catch (e: BufferUnderflowException) {
-        throw EOFException()
-    }
+    private inline fun <T> read(block: ByteBuffer.() -> T): T =
+        try {
+            buffer.block()
+        } catch (e: BufferUnderflowException) {
+            throw EOFException()
+        }
 
     override fun readFully(b: ByteArray) = readFully(b, 0, b.size)
 
@@ -38,14 +40,23 @@ internal class BytesInput(bytes: ByteArray) : DataInput {
     }
 
     override fun readBoolean(): Boolean = readByte().toInt() != 0
+
     override fun readByte(): Byte = read { get() }
+
     override fun readUnsignedByte(): Int = readByte().toInt() and 0xff
+
     override fun readShort(): Short = read { short }
+
     override fun readUnsignedShort(): Int = readShort().toInt() and 0xffff
+
     override fun readChar(): Char = read { char }
+
     override fun readInt(): Int = read { int }
+
     override fun readLong(): Long = read { long }
+
     override fun readFloat(): Float = read { float }
+
     override fun readDouble(): Double = read { double }
 
     /** [n] ints, as [readInt] would read them one by one, in one call. */
@@ -71,11 +82,16 @@ internal class BytesInput(bytes: ByteArray) : DataInput {
 
 /**
  * The bytes gzip'd in [gzip], one member as [java.util.zip.GZIPOutputStream] writes it, inflated
- * straight into an array of the size its trailer gives, and checked against the trailer's CRC
- * and size. Throws [java.io.IOException] for anything else.
+ * straight into an array of the size its trailer gives, and checked against the trailer's CRC and
+ * size. Throws [java.io.IOException] for anything else.
  */
 internal fun inflateGzip(gzip: ByteArray): ByteArray {
-    if (gzip.size < 18 || gzip[0] != 0x1f.toByte() || gzip[1] != 0x8b.toByte() || gzip[2] != 8.toByte()) {
+    if (
+        gzip.size < 18 ||
+            gzip[0] != 0x1f.toByte() ||
+            gzip[1] != 0x8b.toByte() ||
+            gzip[2] != 8.toByte()
+    ) {
         throw java.io.IOException("Not gzip")
     }
     // GZIPOutputStream writes a bare 10-byte header: no name, comment or extra field.
@@ -91,7 +107,11 @@ internal fun inflateGzip(gzip: ByteArray): ByteArray {
         var n = 0
         while (n < out.size) {
             val got = inflater.inflate(out, n, out.size - n)
-            if (got == 0 && (inflater.finished() || inflater.needsInput() || inflater.needsDictionary())) break
+            if (
+                got == 0 &&
+                    (inflater.finished() || inflater.needsInput() || inflater.needsDictionary())
+            )
+                break
             n += got
         }
         // The data must end exactly where the trailer says, with nothing after it.

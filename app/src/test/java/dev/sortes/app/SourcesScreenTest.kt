@@ -27,8 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SourcesScreenTest {
 
-    @get:Rule
-    val composeRule = createComposeRule()
+    @get:Rule val composeRule = createComposeRule()
 
     private val folderId = "01a1838a-db89-71d0-956c-e8067fdfee2a"
     private val link = "https://www.alphaxiv.org/shared/folder/$folderId"
@@ -58,7 +57,9 @@ class SourcesScreenTest {
     fun addingValidLinkPassesFolderIdAndClearsField() {
         val added = mutableListOf<String>()
         composeRule.setContent {
-            SortesTheme { SourcesList(sources = emptyList(), syncing = emptySet(), onAdd = { added += it }) }
+            SortesTheme {
+                SourcesList(sources = emptyList(), syncing = emptySet(), onAdd = { added += it })
+            }
         }
 
         composeRule.onNodeWithText("alphaXiv folder link").performTextInput("Look: $link")
@@ -72,10 +73,14 @@ class SourcesScreenTest {
     fun invalidLinkShowsErrorAndIsNotAdded() {
         val added = mutableListOf<String>()
         composeRule.setContent {
-            SortesTheme { SourcesList(sources = emptyList(), syncing = emptySet(), onAdd = { added += it }) }
+            SortesTheme {
+                SourcesList(sources = emptyList(), syncing = emptySet(), onAdd = { added += it })
+            }
         }
 
-        composeRule.onNodeWithText("alphaXiv folder link").performTextInput("https://arxiv.org/abs/1706.03762")
+        composeRule
+            .onNodeWithText("alphaXiv folder link")
+            .performTextInput("https://arxiv.org/abs/1706.03762")
         composeRule.onNodeWithText("Add").performClick()
 
         assertTrue(added.isEmpty())
@@ -120,7 +125,12 @@ class SourcesScreenTest {
     @Test
     fun neverSyncedSourceShowsPlaceholderName() {
         composeRule.setContent {
-            SortesTheme { SourcesList(sources = listOf(FolderSource(id = 3, folderId = folderId)), syncing = emptySet()) }
+            SortesTheme {
+                SourcesList(
+                    sources = listOf(FolderSource(id = 3, folderId = folderId)),
+                    syncing = emptySet(),
+                )
+            }
         }
         composeRule.onNodeWithText("alphaXiv folder").assertExists()
         composeRule.onNodeWithText("Never synced").assertExists()
@@ -150,7 +160,9 @@ class SourcesScreenTest {
     fun backArrow() {
         var back = false
         composeRule.setContent {
-            SortesTheme { SourcesList(sources = emptyList(), syncing = emptySet(), onBack = { back = true }) }
+            SortesTheme {
+                SourcesList(sources = emptyList(), syncing = emptySet(), onBack = { back = true })
+            }
         }
         composeRule.onNodeWithText("Folder sources").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
@@ -163,7 +175,8 @@ class SourcesScreenTest {
         var shown by mutableStateOf(true)
         composeRule.setContent {
             SortesTheme {
-                if (shown) SourcesList(sources = SAMPLE, syncing = emptySet(), onFailuresSeen = { seen++ })
+                if (shown)
+                    SourcesList(sources = SAMPLE, syncing = emptySet(), onFailuresSeen = { seen++ })
             }
         }
         composeRule.waitForIdle()
@@ -177,15 +190,20 @@ class SourcesScreenTest {
     }
 
     private companion object {
-        val SAMPLE = listOf(
-            FolderSource(
-                id = 1,
-                folderId = "01a1838a-db89-71d0-956c-e8067fdfee2a",
-                name = "Sortes",
-                lastSyncedAt = 1_798_000_000_000,
-                lastResult = "3 added, 1 already in library",
-            ),
-            FolderSource(id = 2, folderId = "01a1838a-db89-71d0-956c-e8067fdfee2b", name = "Reading group"),
-        )
+        val SAMPLE =
+            listOf(
+                FolderSource(
+                    id = 1,
+                    folderId = "01a1838a-db89-71d0-956c-e8067fdfee2a",
+                    name = "Sortes",
+                    lastSyncedAt = 1_798_000_000_000,
+                    lastResult = "3 added, 1 already in library",
+                ),
+                FolderSource(
+                    id = 2,
+                    folderId = "01a1838a-db89-71d0-956c-e8067fdfee2b",
+                    name = "Reading group",
+                ),
+            )
     }
 }

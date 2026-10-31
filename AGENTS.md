@@ -1,5 +1,11 @@
 # Agent notes
 
+## Formatting
+
+Kotlin (including `*.gradle.kts`) is formatted by ktfmt's kotlinlang style via Spotless. Run
+`./gradlew spotlessApply` before committing; CI runs `./gradlew spotlessCheck` and fails on
+unformatted code. Don't hand-tune formatting the formatter would undo.
+
 ## Testing
 
 - Be thorough with tests. New code, especially anything with I/O, error

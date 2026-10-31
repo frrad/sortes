@@ -13,15 +13,14 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * [HideSystemBars] says the bars are on their way out ([barsHiding]) from when it asks them to
- * hide until the window's insets first report them gone, so the reader isn't laid out (and its
- * page rendered) around bars that are about to go, or until it's clear they're staying.
+ * [HideSystemBars] says the bars are on their way out ([barsHiding]) from when it asks them to hide
+ * until the window's insets first report them gone, so the reader isn't laid out (and its page
+ * rendered) around bars that are about to go, or until it's clear they're staying.
  */
 @RunWith(RobolectricTestRunner::class)
 class BarsHidingTest {
 
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private var showing by mutableStateOf(true)
     private var hiding: Boolean? = null
@@ -34,10 +33,11 @@ class BarsHidingTest {
     }
 
     /** Runs a few frames: the effect, then the recomposition it causes. */
-    private fun frames() = repeat(3) {
-        composeRule.mainClock.advanceTimeByFrame()
-        composeRule.waitForIdle()
-    }
+    private fun frames() =
+        repeat(3) {
+            composeRule.mainClock.advanceTimeByFrame()
+            composeRule.waitForIdle()
+        }
 
     @Test
     fun hidingUntilTheBarsAreFirstGone() {

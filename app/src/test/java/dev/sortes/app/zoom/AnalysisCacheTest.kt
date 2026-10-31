@@ -1,5 +1,7 @@
 package dev.sortes.app.zoom
 
+import java.io.File
+import java.util.Collections
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.toList
@@ -14,13 +16,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.File
-import java.util.Collections
 
 class AnalysisCacheTest {
 
-    @get:Rule
-    val temp = TemporaryFolder()
+    @get:Rule val temp = TemporaryFolder()
 
     private val aspect = 0.75f
     private val config = CropConfig.DEFAULT
@@ -28,14 +27,21 @@ class AnalysisCacheTest {
     private fun cache(maxBytes: Long = AnalysisCache.DEFAULT_MAX_BYTES) =
         AnalysisCache(File(temp.root, "analyses"), BUILD, maxBytes)
 
-    private fun key(content: String = "abc", aspect: Float = this.aspect, config: CropConfig = this.config, maxPages: Int = 6, build: String = BUILD) =
-        AnalysisCache.Key(build, content, aspect, config, maxPages)
+    private fun key(
+        content: String = "abc",
+        aspect: Float = this.aspect,
+        config: CropConfig = this.config,
+        maxPages: Int = 6,
+        build: String = BUILD,
+    ) = AnalysisCache.Key(build, content, aspect, config, maxPages)
 
     /** [pages] analysed as the cache would, sampling at most [Key.maxPages] pages. */
-    private fun analysed(pages: PageRenderer, key: AnalysisCache.Key) =
-        runBlocking { analyzePaper(pages, key.aspect, key.config, key.maxPages) }
+    private fun analysed(pages: PageRenderer, key: AnalysisCache.Key) = runBlocking {
+        analyzePaper(pages, key.aspect, key.config, key.maxPages)
+    }
 
-    private fun files() = File(temp.root, "analyses").listFiles()?.filter { it.name.endsWith(".zoom") }.orEmpty()
+    private fun files() =
+        File(temp.root, "analyses").listFiles()?.filter { it.name.endsWith(".zoom") }.orEmpty()
 
     @Test
     fun aRestoredAnalysisIsTheAnalysisItWas() {
@@ -46,7 +52,9 @@ class AnalysisCacheTest {
         assertNotNull(fresh.glyphPx)
         assertEquals("${fresh.auto.scale} ${fresh.glyphPx}", 2, fresh.auto.k)
         assertTrue(fresh.sampleText.all { it != null })
-        assertTrue(fresh.paperRule is PageFurniture && (fresh.paperRule as PageFurniture).top.isNotEmpty())
+        assertTrue(
+            fresh.paperRule is PageFurniture && (fresh.paperRule as PageFurniture).top.isNotEmpty()
+        )
         val cache = cache()
         runBlocking { cache.save(key, fresh) }
         val copy = BookPages(14)
@@ -67,16 +75,30 @@ class AnalysisCacheTest {
         assertEquals(emptyList<Int>(), copy.renders.toList())
         // Other scales, the curve and every page's placement as from the fresh analysis.
         for (scale in listOf(1f, 0.9f, 0.8f, 0.7f)) {
-            assertEquals("scale $scale", runBlocking { fresh.cropsAt(scale) }, runBlocking { restored.cropsAt(scale) })
+            assertEquals(
+                "scale $scale",
+                runBlocking { fresh.cropsAt(scale) },
+                runBlocking { restored.cropsAt(scale) },
+            )
         }
-        assertEquals(runBlocking { fresh.curve().toList().last().points }, runBlocking { restored.curve().toList().last().points })
+        assertEquals(
+            runBlocking { fresh.curve().toList().last().points },
+            runBlocking { restored.curve().toList().last().points },
+        )
         for (index in 0 until pages.pageCount) {
             for (crops in listOf(fresh.auto, runBlocking { fresh.cropsAt(0.7f) })) {
-                assertEquals("page $index", runBlocking { fresh.place(index, crops) }, runBlocking { restored.place(index, crops) })
+                assertEquals(
+                    "page $index",
+                    runBlocking { fresh.place(index, crops) },
+                    runBlocking { restored.place(index, crops) },
+                )
             }
         }
         // Unsampled pages are rendered when placed, as after a fresh analysis.
-        assertEquals(pages.pageCount - fresh.sample.size, copy.renders.filter { it.fine }.map { it.index }.distinct().size)
+        assertEquals(
+            pages.pageCount - fresh.sample.size,
+            copy.renders.filter { it.fine }.map { it.index }.distinct().size,
+        )
     }
 
     @Test
@@ -104,16 +126,24 @@ class AnalysisCacheTest {
         for ((w, h) in listOf(8 to 4, 3 to 5, 7 to 9, 61 to 79, 1 to 1)) {
             for (fill in listOf(0.0, 1.0, 0.3)) {
                 val mask = InkMask(w, h, BooleanArray(w * h) { random.nextDouble() < fill })
-                val bytes = java.io.ByteArrayOutputStream().also { out ->
-                    java.io.DataOutputStream(out).use { AnalysisCodec.writeMask(mask, it) }
-                }.toByteArray()
+                val bytes =
+                    java.io
+                        .ByteArrayOutputStream()
+                        .also { out ->
+                            java.io.DataOutputStream(out).use { AnalysisCodec.writeMask(mask, it) }
+                        }
+                        .toByteArray()
                 val input = BytesInput(bytes)
 
                 val read = AnalysisCodec.readMask(input)
 
                 assertEquals(0, input.remaining)
                 assertEquals(w to h, read.width to read.height)
-                for (y in 0 until h) for (x in 0 until w) assertEquals("${w}x$h $fill ($x, $y)", mask[x, y], read[x, y])
+                for (y in 0 until h) for (x in 0 until w) assertEquals(
+                    "${w}x$h $fill ($x, $y)",
+                    mask[x, y],
+                    read[x, y],
+                )
             }
         }
     }
@@ -127,7 +157,8 @@ class AnalysisCacheTest {
         val cache = cache()
         runBlocking { cache.save(key, fresh) }
 
-        val restored = runBlocking { cache.load(key, MaskPages(List(3) { TestPage(60, 80).mask() })) }!!
+        val restored =
+            runBlocking { cache.load(key, MaskPages(List(3) { TestPage(60, 80).mask() })) }!!
 
         assertEquals(fresh.auto, restored.auto)
         assertNull(restored.glyphPx)
@@ -139,16 +170,17 @@ class AnalysisCacheTest {
         val key = key()
         val cache = cache()
         runBlocking { cache.save(key, analysed(pages, key)) }
-        val others = listOf(
-            key(content = "abd"),
-            key(aspect = 0.7501f),
-            key(config = config.copy(weights = config.weights.copy(beta = 0.51))),
-            key(config = config.copy(text = config.text.copy(lines = 0.11))),
-            key(config = config.copy(pageRules = IGNORABLE_INK_RULES)),
-            key(config = config.copy(furniture = false)),
-            key(maxPages = 8),
-            key(build = "2@2000"),
-        )
+        val others =
+            listOf(
+                key(content = "abd"),
+                key(aspect = 0.7501f),
+                key(config = config.copy(weights = config.weights.copy(beta = 0.51))),
+                key(config = config.copy(text = config.text.copy(lines = 0.11))),
+                key(config = config.copy(pageRules = IGNORABLE_INK_RULES)),
+                key(config = config.copy(furniture = false)),
+                key(maxPages = 8),
+                key(build = "2@2000"),
+            )
 
         assertNotNull(runBlocking { cache.load(key, pages) })
         for (other in others) {
@@ -205,14 +237,17 @@ class AnalysisCacheTest {
         runBlocking { cache.save(key, analysed(pages, key)) }
         val file = File(cache.dirFile(), key.fileName)
         val good = file.readBytes()
-        val damaged = listOf(
-            good.copyOf(good.size / 2),
-            good.copyOf(good.size - 1),
-            good.copyOf().also { it[it.size / 2] = (it[it.size / 2] + 1).toByte() },
-            good.copyOf().also { it[it.size - 6] = (it[it.size - 6] + 1).toByte() }, // the gzip CRC
-            ByteArray(0),
-            "not an analysis".toByteArray(),
-        )
+        val damaged =
+            listOf(
+                good.copyOf(good.size / 2),
+                good.copyOf(good.size - 1),
+                good.copyOf().also { it[it.size / 2] = (it[it.size / 2] + 1).toByte() },
+                good.copyOf().also {
+                    it[it.size - 6] = (it[it.size - 6] + 1).toByte()
+                }, // the gzip CRC
+                ByteArray(0),
+                "not an analysis".toByteArray(),
+            )
 
         for ((i, bytes) in damaged.withIndex()) {
             file.writeBytes(bytes)
@@ -278,7 +313,12 @@ class AnalysisCacheTest {
         // Saves launched in the scope run only when its dispatcher is advanced.
         val dispatcher = StandardTestDispatcher()
         val job = SupervisorJob()
-        val cache = AnalysisCache(File(temp.root, "analyses"), BUILD, saveScope = CoroutineScope(dispatcher + job))
+        val cache =
+            AnalysisCache(
+                File(temp.root, "analyses"),
+                BUILD,
+                saveScope = CoroutineScope(dispatcher + job),
+            )
 
         val analysis = runBlocking { cache.analyze(BookPages(14), "abc", aspect) }
 
@@ -368,7 +408,8 @@ class AnalysisCacheTest {
         val a = temp.newFile("a.pdf").apply { writeText("%PDF-1.4 one") }
         val b = temp.newFile("b.pdf").apply { writeText("%PDF-1.4 one") }
         val c = temp.newFile("c.pdf").apply { writeText("%PDF-1.4 two") }
-        val big = temp.newFile("big.pdf").apply { writeBytes(ByteArray(300_000) { (it % 251).toByte() }) }
+        val big =
+            temp.newFile("big.pdf").apply { writeBytes(ByteArray(300_000) { (it % 251).toByte() }) }
 
         assertEquals(AnalysisCache.contentHash(a), AnalysisCache.contentHash(b))
         assertNotEquals(AnalysisCache.contentHash(a), AnalysisCache.contentHash(c))
@@ -387,8 +428,14 @@ class AnalysisCacheTest {
         // No identity hashes: stable from one run of the app to the next.
         assertFalse(fingerprint, '@' in fingerprint)
         assertTrue(fingerprint, "MarginStampRule" in fingerprint && "IsolatedMarks" in fingerprint)
-        assertNotEquals(fingerprint, config.copy(weights = config.weights.copy(autoMargin = 0.02)).fingerprint())
-        assertNotEquals(fingerprint, config.copy(text = config.text.copy(comfortable = 27.0)).fingerprint())
+        assertNotEquals(
+            fingerprint,
+            config.copy(weights = config.weights.copy(autoMargin = 0.02)).fingerprint(),
+        )
+        assertNotEquals(
+            fingerprint,
+            config.copy(text = config.text.copy(comfortable = 27.0)).fingerprint(),
+        )
     }
 
     @Test
@@ -398,12 +445,18 @@ class AnalysisCacheTest {
         runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }
         assertEquals(1, misses)
 
-        assertTrue(runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }.restored)
+        assertTrue(
+            runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }
+                .restored
+        )
         assertEquals(1, misses)
 
         // An unreadable file is a miss too.
         files().single().writeBytes(byteArrayOf(1, 2, 3))
-        assertFalse(runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }.restored)
+        assertFalse(
+            runBlocking { cache.analyze(BookPages(14), "abc", aspect, onMiss = { misses++ }) }
+                .restored
+        )
         assertEquals(2, misses)
     }
 
@@ -453,16 +506,25 @@ class AnalysisCacheTest {
         val raw = java.util.zip.GZIPInputStream(file.inputStream()).use { it.readBytes() }
         // The codec's bytes end with the automatic crops and a count of 0 other crops: claim one
         // other, a second copy of the automatic crops.
-        val codec = java.io.ByteArrayOutputStream().also { out ->
-            java.io.DataOutputStream(out).use { AnalysisCodec.write(fresh, it) }
-        }.toByteArray()
+        val codec =
+            java.io
+                .ByteArrayOutputStream()
+                .also { out ->
+                    java.io.DataOutputStream(out).use { AnalysisCodec.write(fresh, it) }
+                }
+                .toByteArray()
         val autoCrops = codec.copyOfRange(codec.size - 4 - cropsSize(fresh.auto), codec.size - 4)
         fun store(other: ByteArray) {
             val bytes = raw.copyOfRange(0, raw.size - 4) + byteArrayOf(0, 0, 0, 1) + other
-            File(file.path).outputStream().use { out -> java.util.zip.GZIPOutputStream(out).use { it.write(bytes) } }
+            File(file.path).outputStream().use { out ->
+                java.util.zip.GZIPOutputStream(out).use { it.write(bytes) }
+            }
         }
         // The same bytes at another scale read back: only the repeat is wrong.
-        store(java.nio.ByteBuffer.allocate(4).putFloat(0.9f).array() + autoCrops.copyOfRange(4, autoCrops.size))
+        store(
+            java.nio.ByteBuffer.allocate(4).putFloat(0.9f).array() +
+                autoCrops.copyOfRange(4, autoCrops.size)
+        )
         assertNotNull(runBlocking { cache.load(key, BookPages(14)) }?.solvedAt(0.9f))
 
         store(autoCrops)
@@ -473,7 +535,12 @@ class AnalysisCacheTest {
 
     /** The bytes AnalysisCodec writes for [crops]: scale, windows, page crops and total ink. */
     private fun cropsSize(crops: ModelCrops) =
-        4 + 4 + crops.windows.size * 12 + 4 + crops.pages.size * (4 + 12 + 16 + 4 + 8 * 3 + 4 + 8 * 2) + 8
+        4 +
+            4 +
+            crops.windows.size * 12 +
+            4 +
+            crops.pages.size * (4 + 12 + 16 + 4 + 8 * 3 + 4 + 8 * 2) +
+            8
 
     private fun AnalysisCache.dirFile() = File(temp.root, "analyses")
 
@@ -483,11 +550,12 @@ class AnalysisCacheTest {
 }
 
 /**
- * A two-sided book drawn at any resolution: lines of glyphs in a column on the left of even
- * pages and the right of odd ones, a running head and a page number on every page, and a wide
- * figure on every fifth. Pages in [fineFails] fail to render finer than the analysis masks.
+ * A two-sided book drawn at any resolution: lines of glyphs in a column on the left of even pages
+ * and the right of odd ones, a running head and a page number on every page, and a wide figure on
+ * every fifth. Pages in [fineFails] fail to render finer than the analysis masks.
  */
-private class BookPages(override val pageCount: Int, private val fineFails: Set<Int> = emptySet()) : PageRenderer {
+private class BookPages(override val pageCount: Int, private val fineFails: Set<Int> = emptySet()) :
+    PageRenderer {
     data class Render(val index: Int, val width: Int, val height: Int, val fine: Boolean)
 
     val renders: MutableList<Render> = Collections.synchronizedList(mutableListOf())

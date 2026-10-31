@@ -13,23 +13,27 @@ class MemoPagesTest {
     private class Grey : PageRenderer {
         var renders = 0
         override val pageCount = 3
+
         override suspend fun pageSize(index: Int) = PageSize(600f, 800f)
+
         override suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray {
             renders++
             return IntArray(width * height) { i ->
                 val x = i % width
                 val y = i / width
-                val g = when {
-                    x in width / 6 until width * 5 / 6 && y % 7 < 3 -> 40
-                    x == width / 6 - 1 -> 200 + index // a faint edge, just ink
-                    else -> 255
-                }
+                val g =
+                    when {
+                        x in width / 6 until width * 5 / 6 && y % 7 < 3 -> 40
+                        x == width / 6 - 1 -> 200 + index // a faint edge, just ink
+                        else -> 255
+                    }
                 (0xFF shl 24) or (g shl 16) or (g shl 8) or g
             }
         }
     }
 
-    private fun InkMask.cells() = (0 until height).flatMap { y -> (0 until width).map { x -> this[x, y] } }
+    private fun InkMask.cells() =
+        (0 until height).flatMap { y -> (0 until width).map { x -> this[x, y] } }
 
     @Test
     fun rememberedPagesThresholdBackToTheSameMasks() = runBlocking {

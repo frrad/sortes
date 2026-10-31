@@ -1,9 +1,5 @@
 package dev.sortes.app.zoom
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
@@ -12,20 +8,25 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Papers' zoom analyses kept on disk, so a paper opened again shows its crops at once instead of
  * rendering and measuring its sample again ([analyzePaper] takes seconds on the tablet).
  *
- * Each analysis is kept whole ([AnalysisCodec]): the sampled pages' masks and text measures as
- * well as the automatic crops, so manual zooms, the zoom curve and pages outside the sample work
- * as after a fresh analysis, rendering only the pages they always render (an unsampled page when
- * it's shown). That's a few hundred kilobytes to a few megabytes a paper, compressed; the
- * directory is kept under [maxBytes] by dropping the analyses least recently used.
+ * Each analysis is kept whole ([AnalysisCodec]): the sampled pages' masks and text measures as well
+ * as the automatic crops, so manual zooms, the zoom curve and pages outside the sample work as
+ * after a fresh analysis, rendering only the pages they always render (an unsampled page when it's
+ * shown). That's a few hundred kilobytes to a few megabytes a paper, compressed; the directory is
+ * kept under [maxBytes] by dropping the analyses least recently used.
  *
  * An analysis is keyed ([Key]) by the PDF's content, the screen's shape, the config, the app's
- * build and [PIPELINE_VERSION], so a changed paper, screen, model or app is analysed afresh. Anything unreadable
- * (a truncated or corrupt file, an old format) is a miss: it's deleted and the paper analysed again.
+ * build and [PIPELINE_VERSION], so a changed paper, screen, model or app is analysed afresh.
+ * Anything unreadable (a truncated or corrupt file, an old format) is a miss: it's deleted and the
+ * paper analysed again.
  */
 class AnalysisCache(
     private val dir: File,
@@ -37,8 +38,8 @@ class AnalysisCache(
     private val build: String,
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
     /**
-     * Where [analyze] stores fresh analyses, so they're shown without waiting for the write (a
-     * few hundred milliseconds on the tablet); null to store them before returning.
+     * Where [analyze] stores fresh analyses, so they're shown without waiting for the write (a few
+     * hundred milliseconds on the tablet); null to store them before returning.
      */
     private val saveScope: CoroutineScope? = null,
 ) {
@@ -55,43 +56,52 @@ class AnalysisCache(
         val maxPages: Int = MAX_ANALYZED_PAGES,
     ) {
         /** The key as text: written into the file and checked when it's read. */
-        val text: String = listOf(
-            "format=$FORMAT_VERSION", "pipeline=$PIPELINE_VERSION", "build=$build", "content=$content",
-            // Exactly, by its bits: a different screen shape is a different analysis.
-            "aspect=${aspect.toRawBits()}", "maxPages=$maxPages", "config=${config.fingerprint()}",
-        ).joinToString("\n")
+        val text: String =
+            listOf(
+                    "format=$FORMAT_VERSION",
+                    "pipeline=$PIPELINE_VERSION",
+                    "build=$build",
+                    "content=$content",
+                    // Exactly, by its bits: a different screen shape is a different analysis.
+                    "aspect=${aspect.toRawBits()}",
+                    "maxPages=$maxPages",
+                    "config=${config.fingerprint()}",
+                )
+                .joinToString("\n")
 
         /** The file name: a hash of [text], so any change to it is a different file. */
-        val fileName: String get() = sha256(text.toByteArray()) + SUFFIX
+        val fileName: String
+            get() = sha256(text.toByteArray()) + SUFFIX
     }
 
     /**
-     * The analysis stored for [key], placing unsampled pages from [source]; null if there's none
-     * or it can't be read (then it's deleted).
+     * The analysis stored for [key], placing unsampled pages from [source]; null if there's none or
+     * it can't be read (then it's deleted).
      */
-    suspend fun load(key: Key, source: PageRenderer): PaperAnalysis? = withContext(Dispatchers.IO) {
-        // One trip off the caller's thread for the lot: on an open, every hop back and forth to
-        // the busy main thread is time before the page shows.
-        val file = File(dir, key.fileName)
-        val bytes = if (file.isFile) runCatching { file.readBytes() }.getOrNull() else null
-        if (bytes == null) return@withContext null
-        try {
-            // Inflated whole, checked against the gzip trailer so a damaged file isn't trusted,
-            // and decoded from the array: much faster than from a stream.
-            val input = BytesInput(inflateGzip(bytes))
-            if (input.readInt() != MAGIC) throw IOException("Not an analysis")
-            if (input.readUTF() != key.text) throw IOException("Stored for another key")
-            val analysis = AnalysisCodec.read(input, source, key.aspect, key.config)
-            if (input.remaining != 0) throw IOException("Trailing bytes")
-            file.setLastModified(System.currentTimeMillis())
-            analysis
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            file.delete()
-            null
+    suspend fun load(key: Key, source: PageRenderer): PaperAnalysis? =
+        withContext(Dispatchers.IO) {
+            // One trip off the caller's thread for the lot: on an open, every hop back and forth to
+            // the busy main thread is time before the page shows.
+            val file = File(dir, key.fileName)
+            val bytes = if (file.isFile) runCatching { file.readBytes() }.getOrNull() else null
+            if (bytes == null) return@withContext null
+            try {
+                // Inflated whole, checked against the gzip trailer so a damaged file isn't trusted,
+                // and decoded from the array: much faster than from a stream.
+                val input = BytesInput(inflateGzip(bytes))
+                if (input.readInt() != MAGIC) throw IOException("Not an analysis")
+                if (input.readUTF() != key.text) throw IOException("Stored for another key")
+                val analysis = AnalysisCodec.read(input, source, key.aspect, key.config)
+                if (input.remaining != 0) throw IOException("Trailing bytes")
+                file.setLastModified(System.currentTimeMillis())
+                analysis
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                file.delete()
+                null
+            }
         }
-    }
 
     /**
      * Stores [analysis] under [key], replacing any analysis there, then trims the directory to
@@ -115,7 +125,8 @@ class AnalysisCache(
 
     private fun encode(key: Key, analysis: PaperAnalysis): ByteArray {
         val buffer = java.io.ByteArrayOutputStream()
-        DataOutputStream(BufferedOutputStream(GZIPOutputStream(buffer, 1 shl 16), 1 shl 16)).use { out ->
+        DataOutputStream(BufferedOutputStream(GZIPOutputStream(buffer, 1 shl 16), 1 shl 16)).use {
+            out ->
             out.writeInt(MAGIC)
             out.writeUTF(key.text)
             AnalysisCodec.write(analysis, out)
@@ -123,7 +134,9 @@ class AnalysisCache(
         return buffer.toByteArray()
     }
 
-    /** Drops the least recently used analyses until the directory fits in [maxBytes], never [keep]. */
+    /**
+     * Drops the least recently used analyses until the directory fits in [maxBytes], never [keep].
+     */
     private fun trim(keep: String) {
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(SUFFIX) }?.toList() ?: return
         var total = files.sumOf { it.length() }
@@ -141,9 +154,9 @@ class AnalysisCache(
      * [saveScope], if given, after returning) if it's [PaperAnalysis.complete]. A failure to store
      * isn't the caller's problem: the paper is just analysed again next time.
      *
-     * [onMiss] is called, on the caller's context, once it's known that there's no stored
-     * analysis to use (none, or unreadable) and a fresh one is starting: a reader can show
-     * whole pages while that runs, but should wait for a stored one, which takes moments.
+     * [onMiss] is called, on the caller's context, once it's known that there's no stored analysis
+     * to use (none, or unreadable) and a fresh one is starting: a reader can show whole pages while
+     * that runs, but should wait for a stored one, which takes moments.
      */
     suspend fun analyze(
         source: PageRenderer,
@@ -153,25 +166,29 @@ class AnalysisCache(
         onMiss: () -> Unit = {},
     ): PaperAnalysis {
         val key = Key(build, content, aspect, config)
-        load(key, source)?.let { return it }
+        load(key, source)?.let {
+            return it
+        }
         onMiss()
         val analysis = analyzePaper(source, aspect, config, key.maxPages)
         // A page that failed to render may render next time: don't keep its absence for good.
         if (!analysis.complete) return analysis
-        if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) } else saveQuietly(key, analysis)
+        if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) }
+        else saveQuietly(key, analysis)
         return analysis
     }
 
     /**
-     * Stores [analysis] of [content] again (in [saveScope], if given), when it has learnt
-     * something worth keeping since it was stored or computed: crops at another scale, such as a
-     * saved zoom's, so the next open needn't solve them. Only [PaperAnalysis.complete] analyses
-     * are stored, as in [analyze].
+     * Stores [analysis] of [content] again (in [saveScope], if given), when it has learnt something
+     * worth keeping since it was stored or computed: crops at another scale, such as a saved
+     * zoom's, so the next open needn't solve them. Only [PaperAnalysis.complete] analyses are
+     * stored, as in [analyze].
      */
     suspend fun update(content: String, analysis: PaperAnalysis) {
         if (!analysis.complete) return
         val key = Key(build, content, analysis.aspect, analysis.config)
-        if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) } else saveQuietly(key, analysis)
+        if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) }
+        else saveQuietly(key, analysis)
     }
 
     private suspend fun saveQuietly(key: Key, analysis: PaperAnalysis) {
@@ -187,9 +204,9 @@ class AnalysisCache(
     companion object {
         /**
          * The crop pipeline's version. Every new build of the app invalidates stored analyses
-         * anyway (the key has the [build]); bump this too when a change alters what
-         * [analyzePaper] computes, for builds that don't (zoom-eval, tests), and as a record.
-         * Config changes need no bump: the config is part of the key ([CropConfig.fingerprint]).
+         * anyway (the key has the [build]); bump this too when a change alters what [analyzePaper]
+         * computes, for builds that don't (zoom-eval, tests), and as a record. Config changes need
+         * no bump: the config is part of the key ([CropConfig.fingerprint]).
          */
         const val PIPELINE_VERSION = 1
 
@@ -202,7 +219,9 @@ class AnalysisCache(
         private const val MAGIC = 0x534f5a41 // "SOZA"
         private const val SUFFIX = ".zoom"
 
-        /** A hash of [file]'s content, to key its analysis by. Blocking; call off the main thread. */
+        /**
+         * A hash of [file]'s content, to key its analysis by. Blocking; call off the main thread.
+         */
         fun contentHash(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")
             BufferedInputStream(file.inputStream()).use { input ->
@@ -216,7 +235,8 @@ class AnalysisCache(
             return digest.digest().toHex()
         }
 
-        private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
+        private fun sha256(bytes: ByteArray): String =
+            MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
 
         private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
     }

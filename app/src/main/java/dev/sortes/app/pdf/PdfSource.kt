@@ -3,54 +3,62 @@ package dev.sortes.app.pdf
 import android.content.Context
 import dev.sortes.app.data.Paper
 import dev.sortes.app.importing.PaperImporter
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
- * Resolves a [Paper] to a local PDF file: an imported file from [libraryDir], or a download
- * from its URL that is cached in [cacheDir] on first use.
+ * Resolves a [Paper] to a local PDF file: an imported file from [libraryDir], or a download from
+ * its URL that is cached in [cacheDir] on first use.
  */
 class PdfSource(private val cacheDir: File, private val libraryDir: File) {
 
-    constructor(context: Context) :
-        this(File(context.cacheDir, "pdfs"), PaperImporter.libraryDir(context))
+    constructor(
+        context: Context
+    ) : this(File(context.cacheDir, "pdfs"), PaperImporter.libraryDir(context))
 
-    suspend fun fetch(paper: Paper): File = withContext(Dispatchers.IO) {
-        paper.localFile?.let { return@withContext localFile(it) }
-        val url = paper.pdfUrl ?: throw IOException("No PDF for this paper")
-        val file = File(cacheDir, "${paper.id}.pdf")
-        if (!file.exists()) {
-            cacheDir.mkdirs()
-            // Unique temp file so overlapping downloads of the same paper can't clobber each other.
-            val tmp = File.createTempFile("pdf-${paper.id}-", ".part", cacheDir)
-            try {
-                download(url, tmp)
-                if (!tmp.renameTo(file) && !file.exists()) throw IOException("Could not save PDF")
-            } finally {
-                tmp.delete()
+    suspend fun fetch(paper: Paper): File =
+        withContext(Dispatchers.IO) {
+            paper.localFile?.let {
+                return@withContext localFile(it)
             }
+            val url = paper.pdfUrl ?: throw IOException("No PDF for this paper")
+            val file = File(cacheDir, "${paper.id}.pdf")
+            if (!file.exists()) {
+                cacheDir.mkdirs()
+                // Unique temp file so overlapping downloads of the same paper can't clobber each
+                // other.
+                val tmp = File.createTempFile("pdf-${paper.id}-", ".part", cacheDir)
+                try {
+                    download(url, tmp)
+                    if (!tmp.renameTo(file) && !file.exists())
+                        throw IOException("Could not save PDF")
+                } finally {
+                    tmp.delete()
+                }
+            }
+            file
         }
-        file
-    }
 
     /**
      * [paper]'s PDF if it's on the device already (imported, or downloaded before), else null:
      * [fetch] without downloading. Blocking, but only a file lookup.
      */
     fun cachedFile(paper: Paper): File? {
-        paper.localFile?.let { return runCatching { localFile(it) }.getOrNull() }
+        paper.localFile?.let {
+            return runCatching { localFile(it) }.getOrNull()
+        }
         return File(cacheDir, "${paper.id}.pdf").takeIf { it.isFile }
     }
 
     /**
-     * Drops a cached file, e.g. one that turned out not to be a readable PDF. Imported files
-     * are the only copy, so they are never deleted here.
+     * Drops a cached file, e.g. one that turned out not to be a readable PDF. Imported files are
+     * the only copy, so they are never deleted here.
      */
     fun evict(paper: Paper) {
         if (paper.localFile != null) return

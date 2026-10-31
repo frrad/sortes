@@ -58,11 +58,14 @@ import dev.sortes.app.zoom.AnalysisCache
 import dev.sortes.app.zoom.CropConfig
 import dev.sortes.app.zoom.FullPage
 import dev.sortes.app.zoom.ModelCrops
-import dev.sortes.app.zoom.ZoomCurve
 import dev.sortes.app.zoom.PaperAnalysis
 import dev.sortes.app.zoom.Placement
+import dev.sortes.app.zoom.ZoomCurve
 import dev.sortes.app.zoom.analyzePaper
 import dev.sortes.app.zoom.regionOn
+import java.io.File
+import java.nio.ByteBuffer
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -72,17 +75,16 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.nio.ByteBuffer
-import kotlin.coroutines.cancellation.CancellationException
 
 private sealed interface ReaderState {
     data object Loading : ReaderState
+
     /**
-     * [file]'s pages are open; [content] is its [AnalysisCache.contentHash], or null if it
-     * couldn't be read.
+     * [file]'s pages are open; [content] is its [AnalysisCache.contentHash], or null if it couldn't
+     * be read.
      */
     data class Ready(val pages: PdfPages, val content: String?, val file: File) : ReaderState
+
     data class Failed(val message: String) : ReaderState
 }
 
@@ -103,17 +105,20 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
         timeline.mark("reader shown")
         onDispose { timeline.abandon() }
     }
-    val state by produceState<ReaderState>(ReaderState.Loading, paper.id) {
-        // This coroutine owns the PdfPages: it lives until the screen leaves composition.
-        val loaded = load(PdfSource(context), paper, timeline)
-        value = loaded
-        awaitDispose { (loaded as? ReaderState.Ready)?.pages?.close() }
-    }
+    val state by
+        produceState<ReaderState>(ReaderState.Loading, paper.id) {
+            // This coroutine owns the PdfPages: it lives until the screen leaves composition.
+            val loaded = load(PdfSource(context), paper, timeline)
+            value = loaded
+            awaitDispose { (loaded as? ReaderState.Ready)?.pages?.close() }
+        }
     // The first page as it was last shown, read while the PDF opens: shown before it's open.
-    val firstPage by produceState<FirstPage?>(null, paper.id) {
-        value = ReaderFirstPages.take(context, paper, savedScale, timeline)
-    }
-    // First pages stored (or found stored) this time, not to store them again on every return to page 1.
+    val firstPage by
+        produceState<FirstPage?>(null, paper.id) {
+            value = ReaderFirstPages.take(context, paper, savedScale, timeline)
+        }
+    // First pages stored (or found stored) this time, not to store them again on every return to
+    // page 1.
     val firstPagesStored = remember(paper.id) { mutableSetOf<FirstPage.Key>() }
 
     ReaderFrame(onClose, modifier, barsHiding = barsHiding) {
@@ -125,7 +130,8 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
         val ready = s as? ReaderState.Ready
         // A PDF on disk opens in tens of milliseconds: only say so if it takes longer
         // (downloading), rather than flash the message, a refresh on e-ink.
-        if (ready == null && firstPage == null) DelayedMessage("Loading…", LOADING_MESSAGE_DELAY_MS, timeline = timeline)
+        if (ready == null && firstPage == null)
+            DelayedMessage("Loading…", LOADING_MESSAGE_DELAY_MS, timeline = timeline)
         // Composed before the PDF is open, to show the stored first page; the same reader then
         // confirms it, so it's never drawn twice.
         PageReader(
@@ -160,13 +166,12 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
 }
 
 /**
- * Draws [content] full size with a back button over its top-left corner. The reader
- * is black on white whatever the app theme, so the button and messages are visible
- * in every state.
+ * Draws [content] full size with a back button over its top-left corner. The reader is black on
+ * white whatever the app theme, so the button and messages are visible in every state.
  *
- * Takes the whole window and keeps [content] out of whatever the system draws over: system
- * bars that are showing, and a display cutout. With the bars hidden that is the whole window,
- * so the page's crop is analysed and drawn for exactly the area you see.
+ * Takes the whole window and keeps [content] out of whatever the system draws over: system bars
+ * that are showing, and a display cutout. With the bars hidden that is the whole window, so the
+ * page's crop is analysed and drawn for exactly the area you see.
  *
  * While [barsHiding] (the bars were asked to hide but may still show, see [HideSystemBars]),
  * [content] is laid out for the window they'll leave, keeping clear only of a cutout: laid out
@@ -195,48 +200,57 @@ internal fun ReaderFrame(
  * application scope, so leaving the reader right after one finishes still keeps it.
  */
 private object ReaderAnalyses {
-    @Volatile
-    private var cache: AnalysisCache? = null
+    @Volatile private var cache: AnalysisCache? = null
 
-    fun get(context: Context): AnalysisCache = cache ?: synchronized(this) {
-        cache ?: AnalysisCache(
-            File(context.applicationContext.cacheDir, "zoom-analysis"),
-            build = appBuild(context),
-            saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-        ).also { cache = it }
-    }
+    fun get(context: Context): AnalysisCache =
+        cache
+            ?: synchronized(this) {
+                cache
+                    ?: AnalysisCache(
+                            File(context.applicationContext.cacheDir, "zoom-analysis"),
+                            build = appBuild(context),
+                            saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+                        )
+                        .also { cache = it }
+            }
 }
 
 /**
- * Starts reading [paper]'s stored first page, for its reader to show: call it on the tap that
- * opens the paper, to read it while the reader is composed.
+ * Starts reading [paper]'s stored first page, for its reader to show: call it on the tap that opens
+ * the paper, to read it while the reader is composed.
  */
 fun prefetchFirstPage(context: Context, paper: Paper) = ReaderFirstPages.prefetch(context, paper)
 
 /**
- * A paper's first page as the reader showed it at [key]'s size and zoom ([PageSnapshots]): shown
- * at once when the paper is opened again, if the reader's size and zoom are the same.
+ * A paper's first page as the reader showed it at [key]'s size and zoom ([PageSnapshots]): shown at
+ * once when the paper is opened again, if the reader's size and zoom are the same.
  */
 internal class FirstPage(val key: Key, val bitmap: Bitmap) {
-    /** The page [index], rendered [width] x [height] at the paper's chosen zoom [scale] (null: automatic). */
+    /**
+     * The page [index], rendered [width] x [height] at the paper's chosen zoom [scale] (null:
+     * automatic).
+     */
     data class Key(val index: Int, val width: Int, val height: Int, val scale: Float?)
 }
 
 /** The papers' stored first pages ([PageSnapshots]), one store for the process. */
 private object ReaderFirstPages {
-    @Volatile
-    private var store: PageSnapshots? = null
+    @Volatile private var store: PageSnapshots? = null
 
     // Stores pages after they're shown, even if the reader has closed since.
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val readScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private fun get(context: Context): PageSnapshots = store ?: synchronized(this) {
-        store ?: PageSnapshots(
-            File(context.applicationContext.cacheDir, "first-pages"),
-            build = appBuild(context),
-        ).also { store = it }
-    }
+    private fun get(context: Context): PageSnapshots =
+        store
+            ?: synchronized(this) {
+                store
+                    ?: PageSnapshots(
+                            File(context.applicationContext.cacheDir, "first-pages"),
+                            build = appBuild(context),
+                        )
+                        .also { store = it }
+            }
 
     private fun key(file: File, index: Int, scale: Float?) =
         PageSnapshots.Key(PageSnapshots.fileIdentity(file), CropConfig.DEFAULT, index, scale)
@@ -244,10 +258,12 @@ private object ReaderFirstPages {
     /** A read started when a paper was tapped, for the reader to take. */
     private class Pending(val paperId: Long, val scale: Float?, val page: Deferred<FirstPage?>)
 
-    @Volatile
-    private var pending: Pending? = null
+    @Volatile private var pending: Pending? = null
 
-    /** Starts reading [paper]'s first page, as stored for its zoom, for [take] to take: on the tap, before the reader is composed. */
+    /**
+     * Starts reading [paper]'s first page, as stored for its zoom, for [take] to take: on the tap,
+     * before the reader is composed.
+     */
     fun prefetch(context: Context, paper: Paper) {
         val scale = ZoomStore(context).get(paper.id)
         val context = context.applicationContext
@@ -255,9 +271,17 @@ private object ReaderFirstPages {
     }
 
     /** [paper]'s first page stored for its zoom [scale], if any and its PDF is on the device. */
-    suspend fun take(context: Context, paper: Paper, scale: Float?, timeline: OpenTimeline?): FirstPage? {
-        val prefetched = pending?.also { pending = null }?.takeIf { it.paperId == paper.id && it.scale == scale }
-        val page = prefetched?.page?.await() ?: if (prefetched == null) read(context, paper, scale) else null
+    suspend fun take(
+        context: Context,
+        paper: Paper,
+        scale: Float?,
+        timeline: OpenTimeline?,
+    ): FirstPage? {
+        val prefetched =
+            pending?.also { pending = null }?.takeIf { it.paperId == paper.id && it.scale == scale }
+        val page =
+            prefetched?.page?.await()
+                ?: if (prefetched == null) read(context, paper, scale) else null
         timeline?.mark(if (page != null) "stored page read" else "no stored page")
         return page
     }
@@ -266,10 +290,15 @@ private object ReaderFirstPages {
         withContext(Dispatchers.IO) {
             try {
                 val file = PdfSource(context).cachedFile(paper) ?: return@withContext null
-                val snapshot = get(context).load(paper.id, key(file, 0, scale)) ?: return@withContext null
-                val bitmap = Bitmap.createBitmap(snapshot.width, snapshot.height, Bitmap.Config.ARGB_8888)
+                val snapshot =
+                    get(context).load(paper.id, key(file, 0, scale)) ?: return@withContext null
+                val bitmap =
+                    Bitmap.createBitmap(snapshot.width, snapshot.height, Bitmap.Config.ARGB_8888)
                 bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(snapshot.pixels))
-                FirstPage(FirstPage.Key(snapshot.index, snapshot.width, snapshot.height, scale), bitmap)
+                FirstPage(
+                    FirstPage.Key(snapshot.index, snapshot.width, snapshot.height, scale),
+                    bitmap,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -284,7 +313,14 @@ private object ReaderFirstPages {
             try {
                 val pixels = ByteBuffer.allocate(page.bitmap.byteCount)
                 page.bitmap.copyPixelsToBuffer(pixels)
-                get(context).save(paper.id, key(file, page.key.index, page.key.scale), page.key.width, page.key.height, pixels.array())
+                get(context)
+                    .save(
+                        paper.id,
+                        key(file, page.key.index, page.key.scale),
+                        page.key.width,
+                        page.key.height,
+                        pixels.array(),
+                    )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -314,16 +350,20 @@ private suspend fun load(source: PdfSource, paper: Paper, timeline: OpenTimeline
         val file = source.fetch(paper)
         timeline.mark("pdf fetched")
         coroutineScope {
-            val content = async(Dispatchers.IO) {
-                runCatching { AnalysisCache.contentHash(file) }.getOrNull().also { timeline.mark("pdf hashed") }
-            }
-            withContext(Dispatchers.IO) {
-                pages = try {
-                    PdfPages.open(file)
-                } catch (e: Exception) {
-                    source.evict(paper)
-                    throw e
+            val content =
+                async(Dispatchers.IO) {
+                    runCatching { AnalysisCache.contentHash(file) }
+                        .getOrNull()
+                        .also { timeline.mark("pdf hashed") }
                 }
+            withContext(Dispatchers.IO) {
+                pages =
+                    try {
+                        PdfPages.open(file)
+                    } catch (e: Exception) {
+                        source.evict(paper)
+                        throw e
+                    }
             }
             timeline.mark("pdf opened")
             ReaderState.Ready(pages!!, content.await(), file)
@@ -337,8 +377,8 @@ private suspend fun load(source: PdfSource, paper: Paper, timeline: OpenTimeline
 }
 
 /**
- * One page at a time, zoomed to the paper's crop: tap the left half to go back, the right half
- * to go forward, and the bottom middle for zoom controls and the page number.
+ * One page at a time, zoomed to the paper's crop: tap the left half to go back, the right half to
+ * go forward, and the bottom middle for zoom controls and the page number.
  */
 @SuppressLint("ProduceStateDoesNotAssignValue") // Same false positive as above.
 @Composable
@@ -351,8 +391,8 @@ internal fun PageReader(
     /**
      * The paper's zoom analysis for a screen of the given aspect: by default computed afresh. It
      * calls `onFresh` (on the caller's context) once it knows it must compute one, which takes
-     * seconds: until then (while it looks for a stored one) the reader shows no page rather than
-     * a whole page that zooms in moments later, two refreshes on e-ink.
+     * seconds: until then (while it looks for a stored one) the reader shows no page rather than a
+     * whole page that zooms in moments later, two refreshes on e-ink.
      */
     analyze: suspend (aspect: Float, onFresh: () -> Unit) -> PaperAnalysis = { aspect, onFresh ->
         onFresh()
@@ -364,8 +404,8 @@ internal fun PageReader(
     onCropsSolved: suspend (PaperAnalysis) -> Unit = {},
     /**
      * The first page as stored when it was last shown: if it was stored for this size and zoom,
-     * it's shown at once, before the pages open or the analysis is read, and kept if the page
-     * then renders identical, so it's drawn once.
+     * it's shown at once, before the pages open or the analysis is read, and kept if the page then
+     * renders identical, so it's drawn once.
      */
     firstPage: FirstPage? = null,
     /**
@@ -389,39 +429,53 @@ internal fun PageReader(
         // Whether the analysis is being computed afresh, rather than read from storage.
         var analyzingAfresh by remember(pages, aspect) { mutableStateOf(false) }
         // Pages render whole while it's computed afresh, so long papers are readable straight away.
-        val analysis by produceState<Result<PaperAnalysis>?>(null, pages, aspect) {
-            value = null // Don't keep using an analysis for a different screen shape.
-            if (pages == null) return@produceState
-            value = catching {
-                val started = SystemClock.elapsedRealtime()
-                timeline?.mark("analysis started for ${width}x$height")
-                analyze(aspect) {
-                    timeline?.mark("analyzing afresh")
-                    analyzingAfresh = true
-                }.also {
-                    timeline?.mark("analysis ready${if (it.restored) " (cached)" else ""} for ${width}x$height")
-                    Log.i(TAG, "Zoom analysis${if (it.restored) " (cached)" else ""}: ${it.pagesAnalyzed} of ${it.pageCount} pages (${it.pagesMeasured} measured for text), " +
-                        "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
-                        "(${it.solveMillis} ms solving), ${it.config.name}, body text ${it.glyphPx?.let { px -> "%.1f".format(px) }} px at scale 1")
-                }
-            }.onFailure { Log.w(TAG, "Zoom analysis failed; showing whole pages", it) }
-        }
+        val analysis by
+            produceState<Result<PaperAnalysis>?>(null, pages, aspect) {
+                value = null // Don't keep using an analysis for a different screen shape.
+                if (pages == null) return@produceState
+                value =
+                    catching {
+                        val started = SystemClock.elapsedRealtime()
+                        timeline?.mark("analysis started for ${width}x$height")
+                        analyze(aspect) {
+                                timeline?.mark("analyzing afresh")
+                                analyzingAfresh = true
+                            }
+                            .also {
+                                timeline?.mark(
+                                    "analysis ready${if (it.restored) " (cached)" else ""} for ${width}x$height"
+                                )
+                                Log.i(
+                                    TAG,
+                                    "Zoom analysis${if (it.restored) " (cached)" else ""}: ${it.pagesAnalyzed} of ${it.pageCount} pages (${it.pagesMeasured} measured for text), " +
+                                        "${it.auto.k} window(s) at ${it.auto.scale} in ${SystemClock.elapsedRealtime() - started} ms " +
+                                        "(${it.solveMillis} ms solving), ${it.config.name}, body text ${it.glyphPx?.let { px -> "%.1f".format(px) }} px at scale 1",
+                                )
+                            }
+                    }
+                        .onFailure { Log.w(TAG, "Zoom analysis failed; showing whole pages", it) }
+            }
         val paper = analysis?.getOrNull()?.takeIf { it.aspect == aspect }
         // The model's crops: at its automatic scale, or re-solved at the saved one. Solving can
         // fail (a saved scale that's out of range): the reader then shows whole pages. Crops
         // already solved (the automatic ones, or kept with a stored analysis) are used in the
         // same composition as the analysis, so the page starts rendering a frame sooner.
-        val solvedCrops = paper?.let { if (savedScale == null) it.auto else it.solvedAt(savedScale) }
-        val solving by produceState<Solving?>(null, paper, savedScale) {
-            value = null
-            if (paper == null || savedScale == null || paper.solvedAt(savedScale) != null) return@produceState
-            val result = catching { paper.cropsAt(savedScale) }
-            timeline?.mark("crops solved at saved scale $savedScale")
-            value = Solving(paper, savedScale, result)
-            if (result.isSuccess) onCropsSolved(paper)
+        val solvedCrops = paper?.let {
+            if (savedScale == null) it.auto else it.solvedAt(savedScale)
         }
-        val cropsResult = solvedCrops?.let { Result.success(it) }
-            ?: solving?.takeIf { it.paper === paper && it.scale == savedScale }?.result
+        val solving by
+            produceState<Solving?>(null, paper, savedScale) {
+                value = null
+                if (paper == null || savedScale == null || paper.solvedAt(savedScale) != null)
+                    return@produceState
+                val result = catching { paper.cropsAt(savedScale) }
+                timeline?.mark("crops solved at saved scale $savedScale")
+                value = Solving(paper, savedScale, result)
+                if (result.isSuccess) onCropsSolved(paper)
+            }
+        val cropsResult =
+            solvedCrops?.let { Result.success(it) }
+                ?: solving?.takeIf { it.paper === paper && it.scale == savedScale }?.result
         val crops = cropsResult?.getOrNull()
         val scale = crops?.scale ?: savedScale ?: paper?.auto?.scale ?: 1f
 
@@ -431,67 +485,105 @@ internal fun PageReader(
         val awaitingAnalysis = analysis == null && !analyzingAfresh
         val analysisPending = analysis == null
         // The stored first page, if it was stored for this size and zoom.
-        val stored = firstPage?.takeIf { it.key == FirstPage.Key(it.key.index, width, height, savedScale) }
+        val stored = firstPage?.takeIf {
+            it.key == FirstPage.Key(it.key.index, width, height, savedScale)
+        }
         // Keeps showing the previous page until the next one has rendered.
-        val page by produceState<Result<ShownPage>?>(
-            null, pages, index, width, height, paper, currentCropsResult, awaitingAnalysis, analysisPending, stored,
-        ) {
-            // The stored first page shows as soon as it's read, if nothing else has: it's checked
-            // against the page rendered as always, once that can be.
-            if (value == null && stored != null && stored.key.index == index) {
-                timeline?.mark("showing stored page ${index + 1}")
-                value = Result.success(ShownPage(index, stored.bitmap, aspect, placement = null, zoomed = true))
-            }
-            val showingStored = stored != null && value?.getOrNull()?.let { it.bitmap === stored.bitmap && it.index == index } == true
-            // Until the pages are open and the analysis read, and while it's computed afresh,
-            // the stored first page stands in for the page the analysis will place.
-            if (pages == null || awaitingAnalysis || (analysisPending && showingStored)) return@produceState
-            // The zoom is about to change: wait for it rather than render the page twice.
-            if (paper != null && currentCropsResult == null) return@produceState
-            value = catching {
-                val placement = if (paper != null && currentCrops != null) {
-                    timeline?.mark("placing page ${index + 1}")
-                    paper.place(index, currentCrops)
-                } else {
-                    null
+        val page by
+            produceState<Result<ShownPage>?>(
+                null,
+                pages,
+                index,
+                width,
+                height,
+                paper,
+                currentCropsResult,
+                awaitingAnalysis,
+                analysisPending,
+                stored,
+            ) {
+                // The stored first page shows as soon as it's read, if nothing else has: it's
+                // checked
+                // against the page rendered as always, once that can be.
+                if (value == null && stored != null && stored.key.index == index) {
+                    timeline?.mark("showing stored page ${index + 1}")
+                    value =
+                        Result.success(
+                            ShownPage(index, stored.bitmap, aspect, placement = null, zoomed = true)
+                        )
                 }
-                val window = placement?.window ?: FullPage
-                timeline?.mark("rendering ${if (placement != null) "zoomed" else "whole"} page ${index + 1}")
-                val bitmap = pages.renderRegion(index, window.regionOn(pages.pageSize(index), aspect), width, height)
-                val key = FirstPage.Key(index, width, height, savedScale)
-                if (placement != null && showingStored && withContext(Dispatchers.Default) { bitmap.sameAs(stored!!.bitmap) }) {
-                    // The page on screen already: keep its bitmap, so it isn't drawn again.
-                    Log.i(TAG, "Stored page ${index + 1} is the page rendered")
-                    onFirstPageShown(stored!!, true)
-                    ShownPage(index, stored.bitmap, aspect, placement)
-                } else {
-                    if (showingStored) Log.w(TAG, "Stored page ${index + 1} differs from the page rendered; replacing it")
-                    if (placement != null && index == 0) onFirstPageShown(FirstPage(key, bitmap), false)
-                    ShownPage(index, bitmap, aspect, placement)
+                val showingStored =
+                    stored != null &&
+                        value?.getOrNull()?.let {
+                            it.bitmap === stored.bitmap && it.index == index
+                        } == true
+                // Until the pages are open and the analysis read, and while it's computed afresh,
+                // the stored first page stands in for the page the analysis will place.
+                if (pages == null || awaitingAnalysis || (analysisPending && showingStored))
+                    return@produceState
+                // The zoom is about to change: wait for it rather than render the page twice.
+                if (paper != null && currentCropsResult == null) return@produceState
+                value = catching {
+                    val placement =
+                        if (paper != null && currentCrops != null) {
+                            timeline?.mark("placing page ${index + 1}")
+                            paper.place(index, currentCrops)
+                        } else {
+                            null
+                        }
+                    val window = placement?.window ?: FullPage
+                    timeline?.mark(
+                        "rendering ${if (placement != null) "zoomed" else "whole"} page ${index + 1}"
+                    )
+                    val bitmap =
+                        pages.renderRegion(
+                            index,
+                            window.regionOn(pages.pageSize(index), aspect),
+                            width,
+                            height,
+                        )
+                    val key = FirstPage.Key(index, width, height, savedScale)
+                    if (
+                        placement != null &&
+                            showingStored &&
+                            withContext(Dispatchers.Default) { bitmap.sameAs(stored!!.bitmap) }
+                    ) {
+                        // The page on screen already: keep its bitmap, so it isn't drawn again.
+                        Log.i(TAG, "Stored page ${index + 1} is the page rendered")
+                        onFirstPageShown(stored!!, true)
+                        ShownPage(index, stored.bitmap, aspect, placement)
+                    } else {
+                        if (showingStored)
+                            Log.w(
+                                TAG,
+                                "Stored page ${index + 1} differs from the page rendered; replacing it",
+                            )
+                        if (placement != null && index == 0)
+                            onFirstPageShown(FirstPage(key, bitmap), false)
+                        ShownPage(index, bitmap, aspect, placement)
+                    }
                 }
             }
-        }
         // The model's lost-ink curve, solved point by point while the zoom panel is open.
-        val curve by produceState<ZoomCurve?>(null, paper, panelOpen) {
-            value = null // Not the last paper's or screen shape's curve, even for a frame.
-            if (paper != null && panelOpen) paper.curve().collect { value = it }
-        }
+        val curve by
+            produceState<ZoomCurve?>(null, paper, panelOpen) {
+                value = null // Not the last paper's or screen shape's curve, even for a frame.
+                if (paper != null && panelOpen) paper.curve().collect { value = it }
+            }
 
         Box(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(pages) {
-                    detectTapGestures { offset ->
-                        // No turning pages until there are pages to turn.
-                        if (pages == null) return@detectTapGestures
-                        when (tapZone(offset.x, offset.y, size.width, size.height)) {
-                            TapZone.Back -> index = (index - 1).coerceAtLeast(0)
-                            TapZone.Forward -> index = (index + 1).coerceAtMost(pages.pageCount - 1)
-                            // Nothing to show until the analysis is done.
-                            TapZone.ZoomControls -> if (analysis != null) panelOpen = !panelOpen
-                        }
+            Modifier.fillMaxSize().pointerInput(pages) {
+                detectTapGestures { offset ->
+                    // No turning pages until there are pages to turn.
+                    if (pages == null) return@detectTapGestures
+                    when (tapZone(offset.x, offset.y, size.width, size.height)) {
+                        TapZone.Back -> index = (index - 1).coerceAtLeast(0)
+                        TapZone.Forward -> index = (index + 1).coerceAtMost(pages.pageCount - 1)
+                        // Nothing to show until the analysis is done.
+                        TapZone.ZoomControls -> if (analysis != null) panelOpen = !panelOpen
                     }
-                },
+                }
+            }
         ) {
             val result = analysis
             val pageLabel = "${index + 1} / ${pages?.pageCount}"
@@ -499,56 +591,74 @@ internal fun PageReader(
             // whole crop stays in view while you judge it.
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    page?.onSuccess { shown ->
-                        // Rendered for the whole screen; above the panel it's only scaled down,
-                        // until the whole-page preview has rendered over it. Nothing here depends
-                        // on more than the bitmap, so the stored first page, once confirmed, isn't
-                        // drawn again.
-                        val bitmap = shown.bitmap
-                        val shownIndex = shown.index
-                        val zoomed = shown.zoomed
-                        val image = remember(bitmap) { bitmap.asImageBitmap() }
-                        Image(
-                            bitmap = image,
-                            contentDescription = "Page ${shownIndex + 1}",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("page")
-                                // Its own layer: whatever else changes on screen (the system
-                                // bars leaving, say) doesn't draw the page again.
-                                .graphicsLayer()
-                                .drawWithContent {
-                                    drawContent()
-                                    timeline?.pageDrawn(bitmap, shownIndex, zoomed = zoomed)
-                                    onDrawn(bitmap)
-                                },
-                        )
-                        // Drawn for the screen shape it was placed for, and only while that
-                        // shape's analysis is current.
-                        if (panelOpen && pages != null && paper != null && shown.placement != null) {
-                            CropPreview(pages, shown.index, shown.aspect, shown.placement)
+                    page
+                        ?.onSuccess { shown ->
+                            // Rendered for the whole screen; above the panel it's only scaled down,
+                            // until the whole-page preview has rendered over it. Nothing here
+                            // depends
+                            // on more than the bitmap, so the stored first page, once confirmed,
+                            // isn't
+                            // drawn again.
+                            val bitmap = shown.bitmap
+                            val shownIndex = shown.index
+                            val zoomed = shown.zoomed
+                            val image = remember(bitmap) { bitmap.asImageBitmap() }
+                            Image(
+                                bitmap = image,
+                                contentDescription = "Page ${shownIndex + 1}",
+                                modifier =
+                                    Modifier.fillMaxSize()
+                                        .testTag("page")
+                                        // Its own layer: whatever else changes on screen (the
+                                        // system
+                                        // bars leaving, say) doesn't draw the page again.
+                                        .graphicsLayer()
+                                        .drawWithContent {
+                                            drawContent()
+                                            timeline?.pageDrawn(bitmap, shownIndex, zoomed = zoomed)
+                                            onDrawn(bitmap)
+                                        },
+                            )
+                            // Drawn for the screen shape it was placed for, and only while that
+                            // shape's analysis is current.
+                            if (
+                                panelOpen &&
+                                    pages != null &&
+                                    paper != null &&
+                                    shown.placement != null
+                            ) {
+                                CropPreview(pages, shown.index, shown.aspect, shown.placement)
+                            }
                         }
-                    }?.onFailure {
-                        Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
-                    }
+                        ?.onFailure {
+                            Message("Couldn't render page ${index + 1}: ${it.message ?: it}")
+                        }
                 }
                 val zoomError = cropsResult?.exceptionOrNull()
                 if (panelOpen && paper != null && zoomError != null) {
                     // The panel stays below, so another zoom or Auto can put it right.
                     Text(
-                        text = "$pageLabel · Couldn't zoom this paper to ${savedScale ?: scale}: " +
-                            (zoomError.message ?: zoomError),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(ReaderPaper)
-                            .padding(16.dp)
-                            .testTag("zoomError"),
+                        text =
+                            "$pageLabel · Couldn't zoom this paper to ${savedScale ?: scale}: " +
+                                (zoomError.message ?: zoomError),
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .background(ReaderPaper)
+                                .padding(16.dp)
+                                .testTag("zoomError"),
                     )
                 }
                 if (panelOpen && paper != null) {
                     ZoomPanel(
                         pageLabel = pageLabel,
-                        curve = curve ?: ZoomCurve(paper.scales, emptyMap(), paper.pagesAnalyzed, paper.auto.scale),
+                        curve =
+                            curve
+                                ?: ZoomCurve(
+                                    paper.scales,
+                                    emptyMap(),
+                                    paper.pagesAnalyzed,
+                                    paper.auto.scale,
+                                ),
                         crops = crops,
                         sampled = paper.pagesAnalyzed < paper.pageCount,
                         scale = scale,
@@ -562,13 +672,14 @@ internal fun PageReader(
             if (panelOpen && result != null && paper == null) {
                 val error = result.exceptionOrNull()
                 Text(
-                    text = "$pageLabel · Couldn't analyze this paper for zoom: " +
-                        (error?.message ?: error),
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(ReaderPaper)
-                        .padding(16.dp),
+                    text =
+                        "$pageLabel · Couldn't analyze this paper for zoom: " +
+                            (error?.message ?: error),
+                    modifier =
+                        Modifier.align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .background(ReaderPaper)
+                            .padding(16.dp),
                 )
             }
         }
@@ -576,13 +687,14 @@ internal fun PageReader(
 }
 
 /** Runs [block], turning failures other than cancellation into a failed [Result]. */
-internal suspend fun <T> catching(block: suspend () -> T): Result<T> = try {
-    Result.success(block())
-} catch (e: CancellationException) {
-    throw e
-} catch (e: Throwable) {
-    Result.failure(e)
-}
+internal suspend fun <T> catching(block: suspend () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure(e)
+    }
 
 /** Crops solved for [paper] at [scale]. */
 private class Solving(val paper: PaperAnalysis, val scale: Float, val result: Result<ModelCrops>)
@@ -599,22 +711,32 @@ private class ShownPage(
     val zoomed: Boolean = placement != null,
 )
 
-internal enum class TapZone { Back, Forward, ZoomControls }
+internal enum class TapZone {
+    Back,
+    Forward,
+    ZoomControls,
+}
 
 /** Which control a tap at ([x], [y]) on a [width] x [height] reader hits. */
-internal fun tapZone(x: Float, y: Float, width: Int, height: Int): TapZone = when {
-    y >= height * (1 - ZOOM_ZONE_HEIGHT) && x >= width / 3f && x < width * 2 / 3f ->
-        TapZone.ZoomControls
-    x < width / 2f -> TapZone.Back
-    else -> TapZone.Forward
-}
+internal fun tapZone(x: Float, y: Float, width: Int, height: Int): TapZone =
+    when {
+        y >= height * (1 - ZOOM_ZONE_HEIGHT) && x >= width / 3f && x < width * 2 / 3f ->
+            TapZone.ZoomControls
+        x < width / 2f -> TapZone.Back
+        else -> TapZone.Forward
+    }
 
 /** The zoom controls open from the middle third of this bottom share of the screen. */
 private const val ZOOM_ZONE_HEIGHT = 0.15f
 
 /** A [Message] that shows only once it's been in composition for [delayMillis]. */
 @Composable
-internal fun DelayedMessage(text: String, delayMillis: Long, modifier: Modifier = Modifier, timeline: OpenTimeline? = null) {
+internal fun DelayedMessage(
+    text: String,
+    delayMillis: Long,
+    modifier: Modifier = Modifier,
+    timeline: OpenTimeline? = null,
+) {
     var due by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(delayMillis)

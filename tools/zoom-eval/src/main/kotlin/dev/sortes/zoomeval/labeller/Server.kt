@@ -2,9 +2,9 @@ package dev.sortes.zoomeval.labeller
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import org.json.JSONException
 import java.io.File
 import java.net.InetSocketAddress
+import org.json.JSONException
 
 /**
  * The labeller's web server, for one person on a trusted host: serves the page ([web]), the
@@ -29,7 +29,8 @@ class LabellerServer(
     private val server: HttpServer = HttpServer.create(InetSocketAddress(host, port), 0)
 
     /** The port actually bound: useful when started on port 0. */
-    val port: Int get() = server.address.port
+    val port: Int
+        get() = server.address.port
 
     init {
         server.createContext("/") { exchange ->
@@ -53,24 +54,44 @@ class LabellerServer(
         when {
             path.startsWith("/api/labels/") -> {
                 val paper = path.removePrefix("/api/labels/")
-                if (!PaperLabels.PAPER_ID.matches(paper)) return send(exchange, 400, "text/plain", "Bad paper id".toByteArray())
+                if (!PaperLabels.PAPER_ID.matches(paper))
+                    return send(exchange, 400, "text/plain", "Bad paper id".toByteArray())
                 when (method) {
                     "GET" -> sendLabels(exchange, 200, paper)
-                    "PUT" -> synchronized(this) {
-                        val expected = exchange.requestHeaders.getFirst("If-Match")
-                        if (expected != null && expected != revision(paper)) return sendLabels(exchange, 409, paper)
-                        val body = exchange.requestBody.readBytes().toString(Charsets.UTF_8)
-                        val parsed = try {
-                            PaperLabels.fromText(body)
-                        } catch (e: JSONException) {
-                            return send(exchange, 400, "text/plain", "Bad labels: ${e.message}".toByteArray())
-                        } catch (e: IllegalArgumentException) {
-                            return send(exchange, 400, "text/plain", "Bad labels: ${e.message}".toByteArray())
+                    "PUT" ->
+                        synchronized(this) {
+                            val expected = exchange.requestHeaders.getFirst("If-Match")
+                            if (expected != null && expected != revision(paper))
+                                return sendLabels(exchange, 409, paper)
+                            val body = exchange.requestBody.readBytes().toString(Charsets.UTF_8)
+                            val parsed =
+                                try {
+                                    PaperLabels.fromText(body)
+                                } catch (e: JSONException) {
+                                    return send(
+                                        exchange,
+                                        400,
+                                        "text/plain",
+                                        "Bad labels: ${e.message}".toByteArray(),
+                                    )
+                                } catch (e: IllegalArgumentException) {
+                                    return send(
+                                        exchange,
+                                        400,
+                                        "text/plain",
+                                        "Bad labels: ${e.message}".toByteArray(),
+                                    )
+                                }
+                            if (parsed.paper != paper)
+                                return send(
+                                    exchange,
+                                    400,
+                                    "text/plain",
+                                    "Paper id mismatch".toByteArray(),
+                                )
+                            parsed.save(labels)
+                            sendLabels(exchange, 200, paper)
                         }
-                        if (parsed.paper != paper) return send(exchange, 400, "text/plain", "Paper id mismatch".toByteArray())
-                        parsed.save(labels)
-                        sendLabels(exchange, 200, paper)
-                    }
                     else -> send(exchange, 405, "text/plain", "Method not allowed".toByteArray())
                 }
             }
@@ -80,7 +101,9 @@ class LabellerServer(
         }
     }
 
-    /** The revision of [paper]'s saved labels: a hash of the file, or "none" before the first save. */
+    /**
+     * The revision of [paper]'s saved labels: a hash of the file, or "none" before the first save.
+     */
     fun revision(paper: String): String {
         val file = PaperLabels.fileFor(labels, paper)
         if (!file.exists()) return "none"
@@ -100,15 +123,16 @@ class LabellerServer(
         if (!file.path.startsWith(base.path + File.separator) || !file.isFile) {
             return send(exchange, 404, "text/plain", "Not found".toByteArray())
         }
-        val type = when (file.extension) {
-            "html" -> "text/html; charset=utf-8"
-            "js" -> "text/javascript; charset=utf-8"
-            "css" -> "text/css; charset=utf-8"
-            "json" -> "application/json; charset=utf-8"
-            "png" -> "image/png"
-            "txt" -> "text/plain; charset=utf-8"
-            else -> "application/octet-stream"
-        }
+        val type =
+            when (file.extension) {
+                "html" -> "text/html; charset=utf-8"
+                "js" -> "text/javascript; charset=utf-8"
+                "css" -> "text/css; charset=utf-8"
+                "json" -> "application/json; charset=utf-8"
+                "png" -> "image/png"
+                "txt" -> "text/plain; charset=utf-8"
+                else -> "application/octet-stream"
+            }
         // Revalidated every time (a re-export or an edit to the page shows at once), but answered
         // with 304 when unchanged, so the browser downloads each page image once.
         val etag = "\"${file.lastModified().toString(16)}-${file.length().toString(16)}\""

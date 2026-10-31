@@ -1,5 +1,7 @@
 package dev.sortes.app.arxiv
 
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -7,8 +9,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicInteger
 
 class RateLimitedArxivClientTest {
 
@@ -20,12 +20,16 @@ class RateLimitedArxivClientTest {
         ENTRY
     }
 
-    private val client = RateLimitedArxivClient(
-        delegate = { delegate.fetch(it) },
-        intervalMillis = 3_000,
-        clock = { now },
-        sleep = { sleeps += it; now += it },
-    )
+    private val client =
+        RateLimitedArxivClient(
+            delegate = { delegate.fetch(it) },
+            intervalMillis = 3_000,
+            clock = { now },
+            sleep = {
+                sleeps += it
+                now += it
+            },
+        )
 
     private fun fetch(id: String) = runBlocking { client.fetch(id) }
 
@@ -67,7 +71,10 @@ class RateLimitedArxivClientTest {
 
     @Test
     fun intervalCountsFromWhenTheRequestFinished() {
-        delegate = ArxivClient { now += 5_000; ENTRY } // a slow request
+        delegate = ArxivClient {
+            now += 5_000
+            ENTRY
+        } // a slow request
         fetch("a")
         fetch("b")
 
@@ -90,15 +97,19 @@ class RateLimitedArxivClientTest {
         val running = AtomicInteger()
         val maxRunning = AtomicInteger()
         val gate = CompletableDeferred<Unit>()
-        val limited = RateLimitedArxivClient({
-            maxRunning.accumulateAndGet(running.incrementAndGet(), ::maxOf)
-            try {
-                gate.await()
-                ENTRY
-            } finally {
-                running.decrementAndGet()
-            }
-        }, intervalMillis = 0)
+        val limited =
+            RateLimitedArxivClient(
+                {
+                    maxRunning.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+                    try {
+                        gate.await()
+                        ENTRY
+                    } finally {
+                        running.decrementAndGet()
+                    }
+                },
+                intervalMillis = 0,
+            )
 
         val calls = (1..3).map { async(Dispatchers.Default) { limited.fetch("$it") } }
         Thread.sleep(100) // give the others a chance to overlap if they could

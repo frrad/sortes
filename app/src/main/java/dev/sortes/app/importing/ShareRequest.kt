@@ -5,6 +5,7 @@ import dev.sortes.app.alphaxiv.AlphaxivFolderLink
 /** Something shared to the app ("Share to Sortes") that should be imported. */
 sealed interface ShareRequest {
     data class Arxiv(val text: String) : ShareRequest
+
     data class Pdf(val uri: String) : ShareRequest
 
     /** An alphaXiv shared-folder link: saved as a source and synced. */
@@ -17,9 +18,9 @@ sealed interface ShareRequest {
         internal const val FLAG_LAUNCHED_FROM_HISTORY = 0x00100000
 
         /**
-         * Maps an incoming intent's parts to a request, or null if there is nothing to import.
-         * An intent seen again because the activity is being [restored] (rotation, process death)
-         * or relaunched from Recents (see [flags]) was already handled, so yields null.
+         * Maps an incoming intent's parts to a request, or null if there is nothing to import. An
+         * intent seen again because the activity is being [restored] (rotation, process death) or
+         * relaunched from Recents (see [flags]) was already handled, so yields null.
          */
         fun from(
             action: String?,

@@ -4,10 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * A document's pages as pixels: the one part of the crop pipeline that differs between the
- * reader (Android's PdfRenderer) and zoom-eval (pdfium pinned to the version Android ships,
- * `PdfiumPdf`). Everything from the pixels on (mask
- * sizes, thresholds, which pages are rendered at what resolution) is shared, in [analyzePaper].
+ * A document's pages as pixels: the one part of the crop pipeline that differs between the reader
+ * (Android's PdfRenderer) and zoom-eval (pdfium pinned to the version Android ships, `PdfiumPdf`).
+ * Everything from the pixels on (mask sizes, thresholds, which pages are rendered at what
+ * resolution) is shared, in [analyzePaper].
  */
 interface PageRenderer {
     val pageCount: Int
@@ -21,17 +21,23 @@ interface PageRenderer {
     suspend fun renderPixels(index: Int, width: Int, height: Int): IntArray
 }
 
-/** Page [index] rendered at [width] x [height] and thresholded into an ink mask ([InkMask.fromArgb]). */
-suspend fun PageRenderer.renderMask(index: Int, width: Int, height: Int): InkMask = withContext(Dispatchers.Default) {
-    val pixels = renderPixels(index, width, height)
-    require(pixels.size == width * height) { "Page $index: expected ${width * height} pixels, got ${pixels.size}" }
-    InkMask.fromArgb(pixels, width, height)
-}
+/**
+ * Page [index] rendered at [width] x [height] and thresholded into an ink mask
+ * ([InkMask.fromArgb]).
+ */
+suspend fun PageRenderer.renderMask(index: Int, width: Int, height: Int): InkMask =
+    withContext(Dispatchers.Default) {
+        val pixels = renderPixels(index, width, height)
+        require(pixels.size == width * height) {
+            "Page $index: expected ${width * height} pixels, got ${pixels.size}"
+        }
+        InkMask.fromArgb(pixels, width, height)
+    }
 
 /**
- * How the pipeline renders one paper ([paperRaster]): one density for all its pages ([analysisDensity] over the
- * pages sampled), each page's analysis mask at that density, and, for the text model, a render
- * [TextWeights.factor] times finer in each dimension.
+ * How the pipeline renders one paper ([paperRaster]): one density for all its pages
+ * ([analysisDensity] over the pages sampled), each page's analysis mask at that density, and, for
+ * the text model, a render [TextWeights.factor] times finer in each dimension.
  */
 class PaperRaster(
     val source: PageRenderer,

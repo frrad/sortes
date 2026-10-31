@@ -60,12 +60,17 @@ class GeometryTest {
     fun inkMaskThresholdsLuminance() {
         val white = 0xFFFFFFFF.toInt()
         val black = 0xFF000000.toInt()
-        val fringe = 0xFFF0F0F0.toInt()  // faint anti-aliased glyph edge: ink
+        val fringe = 0xFFF0F0F0.toInt() // faint anti-aliased glyph edge: ink
         val midGray = 0xFF808080.toInt()
-        val red = 0xFFFF0000.toInt()  // colored figures count as ink
-        val nearWhite = 0xFFFCFCFC.toInt()  // within PAPER_MARGIN of the paper: paper
+        val red = 0xFFFF0000.toInt() // colored figures count as ink
+        val nearWhite = 0xFFFCFCFC.toInt() // within PAPER_MARGIN of the paper: paper
 
-        val mask = InkMask.fromArgb(intArrayOf(white, black, fringe, midGray, red, nearWhite, white, white), 4, 2)
+        val mask =
+            InkMask.fromArgb(
+                intArrayOf(white, black, fringe, midGray, red, nearWhite, white, white),
+                4,
+                2,
+            )
 
         assertEquals(
             listOf(false, true, true, true, true, false, false, false),

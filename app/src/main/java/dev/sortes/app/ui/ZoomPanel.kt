@@ -50,9 +50,9 @@ import kotlin.math.log10
 import kotlin.math.roundToInt
 
 /**
- * Manual zoom control: the paper's lost-ink curve with a slider along it. Left is the whole
- * page, right is zoomed in; the curve shows how much ink the crop model's crops cut off at each
- * zoom level, filling in as the model solves them.
+ * Manual zoom control: the paper's lost-ink curve with a slider along it. Left is the whole page,
+ * right is zoomed in; the curve shows how much ink the crop model's crops cut off at each zoom
+ * level, filling in as the model solves them.
  */
 @Composable
 fun ZoomPanel(
@@ -71,26 +71,30 @@ fun ZoomPanel(
     modifier: Modifier = Modifier,
 ) {
     val last = curve.scales.lastIndex
-    var position by remember(curve.scales, scale) {
-        mutableFloatStateOf(curve.nearestIndex(scale).toFloat())
-    }
+    var position by
+        remember(curve.scales, scale) {
+            mutableFloatStateOf(curve.nearestIndex(scale).toFloat())
+        }
     fun indexAt(position: Float) = position.roundToInt().coerceIn(0, last)
     val index = indexAt(position)
     val ink = LocalContentColor.current
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(ReaderPaper)
-            .border(1.dp, ink)
-            // Swallow taps so they don't turn the page underneath.
-            .pointerInput(Unit) { detectTapGestures { } }
-            // Keep the controls above the bottom system-gesture strip: there the system
-            // (SystemUI's swipe-up monitor on Boox) takes over finger drags, so the slider
-            // would take taps but not drags.
-            .windowInsetsPadding(WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("zoomPanel"),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(ReaderPaper)
+                .border(1.dp, ink)
+                // Swallow taps so they don't turn the page underneath.
+                .pointerInput(Unit) { detectTapGestures {} }
+                // Keep the controls above the bottom system-gesture strip: there the system
+                // (SystemUI's swipe-up monitor on Boox) takes over finger drags, so the slider
+                // would take taps but not drags.
+                .windowInsetsPadding(
+                    WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
+                )
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("zoomPanel")
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -106,10 +110,11 @@ fun ZoomPanel(
             OutlinedButton(
                 onClick = onAuto,
                 enabled = !isAuto,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = ink,
-                    disabledContentColor = ink.copy(alpha = 0.5f),
-                ),
+                colors =
+                    ButtonDefaults.outlinedButtonColors(
+                        contentColor = ink,
+                        disabledContentColor = ink.copy(alpha = 0.5f),
+                    ),
             ) {
                 Text(if (isAuto) "Auto ✓" else "Auto")
             }
@@ -117,15 +122,14 @@ fun ZoomPanel(
             TextButton(
                 onClick = onClose,
                 colors = ButtonDefaults.textButtonColors(contentColor = ink),
-            ) { Text("Close") }
+            ) {
+                Text("Close")
+            }
         }
         LostInkCurve(
             curve = curve,
             selected = index,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-                .padding(horizontal = 10.dp),
+            modifier = Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 10.dp),
         )
         Slider(
             value = position,
@@ -133,27 +137,34 @@ fun ZoomPanel(
             // Read the position now: the slider calls this before recomposing with the new value.
             onValueChangeFinished = { onScaleChange(curve.scales[indexAt(position)]) },
             valueRange = 0f..last.toFloat(),
-            colors = SliderDefaults.colors(
-                thumbColor = ink,
-                activeTrackColor = ink,
-                inactiveTrackColor = ink.copy(alpha = 0.2f),
-                activeTickColor = ink,
-                inactiveTickColor = ink,
-            ),
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = ink,
+                    activeTrackColor = ink,
+                    inactiveTrackColor = ink.copy(alpha = 0.2f),
+                    activeTickColor = ink,
+                    inactiveTickColor = ink,
+                ),
             modifier = Modifier.testTag("zoomSlider"),
         )
     }
 }
 
 /**
- * What zoom level [index] does: exact from [crops] if they're for that scale, else from the
- * curve's nearest computed point ("about"), else just the zoom while the curve is computed.
+ * What zoom level [index] does: exact from [crops] if they're for that scale, else from the curve's
+ * nearest computed point ("about"), else just the zoom while the curve is computed.
  */
-internal fun zoomSummary(curve: ZoomCurve, index: Int, crops: ModelCrops?, sampled: Boolean): String {
+internal fun zoomSummary(
+    curve: ZoomCurve,
+    index: Int,
+    crops: ModelCrops?,
+    sampled: Boolean,
+): String {
     val scale = curve.scales[index]
     val zoom = String.format(Locale.ROOT, "%.2f×", 1f / scale)
     val exact = crops?.takeIf { abs(it.scale - scale) < 1e-6f }
-    val point = exact?.let { ZoomCurve.Point(it.cutFraction.toFloat(), it.pagesCut) } ?: curve.points[index]
+    val point =
+        exact?.let { ZoomCurve.Point(it.cutFraction.toFloat(), it.pagesCut) } ?: curve.points[index]
     val near = point ?: curve.nearestPoint(index) ?: return "Zoom $zoom"
     val about = if (point == null) "about " else ""
     val windows = exact?.k?.takeIf { it > 1 }?.let { " · $it windows" } ?: ""
@@ -163,19 +174,20 @@ internal fun zoomSummary(curve: ZoomCurve, index: Int, crops: ModelCrops?, sampl
         "${if (sampled) " sampled" else ""} pages$windows"
 }
 
-private fun percent(fraction: Float): String = when {
-    fraction < 0.001f -> "<0.1%"
-    fraction < 0.1f -> String.format(Locale.ROOT, "%.1f%%", fraction * 100)
-    else -> String.format(Locale.ROOT, "%.0f%%", fraction * 100)
-}
+private fun percent(fraction: Float): String =
+    when {
+        fraction < 0.001f -> "<0.1%"
+        fraction < 0.1f -> String.format(Locale.ROOT, "%.1f%%", fraction * 100)
+        else -> String.format(Locale.ROOT, "%.0f%%", fraction * 100)
+    }
 
 /** Lowest lost-ink fraction the curve distinguishes from zero; the y axis is logarithmic. */
 private const val CURVE_FLOOR = 1e-4f
 
 /**
- * Lost ink against zoom, through the points computed so far. The y axis is logarithmic so the
- * small step from trimming page numbers and running heads is visible next to the steep rise
- * from cutting into text.
+ * Lost ink against zoom, through the points computed so far. The y axis is logarithmic so the small
+ * step from trimming page numbers and running heads is visible next to the steep rise from cutting
+ * into text.
  */
 @Composable
 private fun LostInkCurve(curve: ZoomCurve, selected: Int, modifier: Modifier = Modifier) {

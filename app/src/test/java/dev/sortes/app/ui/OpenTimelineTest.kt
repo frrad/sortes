@@ -15,7 +15,8 @@ class OpenTimelineTest {
 
     private var now = 1_000L
     private val logged = mutableListOf<String>()
-    private val timeline = OpenTimeline(paperId = 7, startedAt = 1_000L, clock = { now }, log = { logged += it })
+    private val timeline =
+        OpenTimeline(paperId = 7, startedAt = 1_000L, clock = { now }, log = { logged += it })
 
     @Test
     fun settlesOnTheFirstZoomedPageDrawn() {
@@ -33,9 +34,14 @@ class OpenTimelineTest {
 
         assertEquals(310L, timeline.settledMillis)
         assertEquals(listOf("whole page 1", "zoomed page 1"), timeline.frames)
-        assertEquals(listOf("pdf opened" to 40L, "drew whole page 1" to 100L, "drew zoomed page 1" to 310L), timeline.steps)
         assertEquals(
-            listOf("Opened paper 7: settled in 310 ms; 2 frame(s) [whole page 1, zoomed page 1]; pdf opened +40, drew whole page 1 +100, drew zoomed page 1 +310"),
+            listOf("pdf opened" to 40L, "drew whole page 1" to 100L, "drew zoomed page 1" to 310L),
+            timeline.steps,
+        )
+        assertEquals(
+            listOf(
+                "Opened paper 7: settled in 310 ms; 2 frame(s) [whole page 1, zoomed page 1]; pdf opened +40, drew whole page 1 +100, drew zoomed page 1 +310"
+            ),
             logged,
         )
     }
@@ -71,7 +77,12 @@ class OpenTimelineTest {
         timeline.abandon()
 
         assertEquals(1, logged.size)
-        assertTrue(logged.single(), logged.single().startsWith("Opened paper 7: not settled after 90 ms; 1 frame(s) [whole page 1]"))
+        assertTrue(
+            logged.single(),
+            logged
+                .single()
+                .startsWith("Opened paper 7: not settled after 90 ms; 1 frame(s) [whole page 1]"),
+        )
     }
 
     @Test
@@ -89,7 +100,11 @@ class OpenTimelineTest {
 
         val logs = ShadowLog.getLogsForTag(OpenTimeline.TAG).map { it.msg }
         assertEquals(
-            listOf("Opened paper 3: not settled after 70 ms", "Opened paper 3: not settled after 20 ms", "Opened paper 5: not settled after 20 ms"),
+            listOf(
+                "Opened paper 3: not settled after 70 ms",
+                "Opened paper 3: not settled after 20 ms",
+                "Opened paper 5: not settled after 20 ms",
+            ),
             logs.map { it.substringBefore(";") },
         )
     }

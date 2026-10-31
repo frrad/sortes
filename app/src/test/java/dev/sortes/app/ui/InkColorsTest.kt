@@ -23,8 +23,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogWindowProvider
@@ -42,15 +42,14 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Pins the e-ink look (see "Design for e-ink" in AGENTS.md): black text and outlines on white,
- * no colour and no grey fills, whatever the system theme. Run in light and dark system theme by
- * the subclasses below.
+ * Pins the e-ink look (see "Design for e-ink" in AGENTS.md): black text and outlines on white, no
+ * colour and no grey fills, whatever the system theme. Run in light and dark system theme by the
+ * subclasses below.
  */
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 abstract class InkColorsTest(private val systemDark: Boolean) {
 
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private var colorScheme: ColorScheme? = null
 
@@ -74,8 +73,12 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
     fun everyColorRoleIsBlackOrWhite() {
         show {}
         // ColorScheme's getters return the packed Color as a long (Color is a value class).
-        val roles = ColorScheme::class.java.methods
-            .filter { it.name.startsWith("get") && it.parameterCount == 0 && it.returnType == Long::class.java }
+        val roles =
+            ColorScheme::class.java.methods.filter {
+                it.name.startsWith("get") &&
+                    it.parameterCount == 0 &&
+                    it.returnType == Long::class.java
+            }
         assertTrue("found no colour roles", roles.size > 20)
         for (role in roles) {
             val color = Color((role.invoke(colorScheme) as Long).toULong())
@@ -85,27 +88,41 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
 
     @Test
     fun paperCardIsBlackOnWhite() {
-        show { PapersList(papers = listOf(PAPER), importStatus = ImportStatus.Failed("No network")) }
+        show {
+            PapersList(papers = listOf(PAPER), importStatus = ImportStatus.Failed("No network"))
+        }
 
-        for (text in listOf(
-            "Papers",
-            "Import failed: No network",
-            PAPER.title,
-            PAPER.authors.joinToString(", "),
-            "NeurIPS · 2017",
-            PAPER.abstract,
-        )) {
-            assertEquals(text, Color.Black, composeRule.onNodeWithText(text, useUnmergedTree = true).textColor())
+        for (text in
+            listOf(
+                "Papers",
+                "Import failed: No network",
+                PAPER.title,
+                PAPER.authors.joinToString(", "),
+                "NeurIPS · 2017",
+                PAPER.abstract,
+            )) {
+            assertEquals(
+                text,
+                Color.Black,
+                composeRule.onNodeWithText(text, useUnmergedTree = true).textColor(),
+            )
         }
         assertOutlinedInkCard(PAPER_CARD_TAG)
     }
 
     @Test
     fun sourceCardIsBlackOnWhite() {
-        show { SourcesList(sources = listOf(SOURCE), syncing = emptySet(), error = "Couldn't sync") }
+        show {
+            SourcesList(sources = listOf(SOURCE), syncing = emptySet(), error = "Couldn't sync")
+        }
 
-        for (text in listOf("Folder sources", "Couldn't sync", "Sortes", "Never synced", "Sync", "Remove")) {
-            assertEquals(text, Color.Black, composeRule.onNodeWithText(text, useUnmergedTree = true).textColor())
+        for (text in
+            listOf("Folder sources", "Couldn't sync", "Sortes", "Never synced", "Sync", "Remove")) {
+            assertEquals(
+                text,
+                Color.Black,
+                composeRule.onNodeWithText(text, useUnmergedTree = true).textColor(),
+            )
         }
         assertOutlinedInkCard(SOURCE_CARD_TAG)
         assertInkIcon("Back")
@@ -115,15 +132,22 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
     fun topBarIsBlackOnWhite() {
         show { PapersList(papers = emptyList()) }
 
-        assertEquals(Color.Black, composeRule.onNodeWithText("Papers", useUnmergedTree = true).textColor())
+        assertEquals(
+            Color.Black,
+            composeRule.onNodeWithText("Papers", useUnmergedTree = true).textColor(),
+        )
         assertInkIcon("More options")
         // The rule under the bar is solid black, not a grey or tinted divider.
         val bar = composeRule.onNodeWithText("Papers").fetchSemanticsNode().boundsInWindow
         val window = drawWindow()
         val x = window.width / 2
-        val rule = (bar.bottom.toInt()..bar.bottom.toInt() + 48).map { Color(window.getPixel(x, it)) }
+        val rule =
+            (bar.bottom.toInt()..bar.bottom.toInt() + 48).map { Color(window.getPixel(x, it)) }
         assertTrue("no black rule under the top bar: $rule", rule.any { it == Color.Black })
-        assertTrue("coloured rule under the top bar: $rule", rule.all { it.red == it.green && it.green == it.blue })
+        assertTrue(
+            "coloured rule under the top bar: $rule",
+            rule.all { it.red == it.green && it.green == it.blue },
+        )
     }
 
     @Test
@@ -140,12 +164,18 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
         composeRule.waitForIdle()
 
         for (text in listOf("Folder sources…", "Sync all folders")) {
-            assertEquals(text, Color.Black, composeRule.onNodeWithText(text, useUnmergedTree = true).textColor())
+            assertEquals(
+                text,
+                Color.Black,
+                composeRule.onNodeWithText(text, useUnmergedTree = true).textColor(),
+            )
         }
         // The menu is its own window: draw that, not the activity's.
         val popup = menuView!!.rootView
-        val bitmap = Bitmap.createBitmap(popup.width, popup.height, Bitmap.Config.ARGB_8888)
-            .also { popup.draw(Canvas(it)) }
+        val bitmap =
+            Bitmap.createBitmap(popup.width, popup.height, Bitmap.Config.ARGB_8888).also {
+                popup.draw(Canvas(it))
+            }
         composeRule.onNodeWithTag(OVERFLOW_MENU_TAG).assertExists()
         // The window is just the menu.
         assertOutlinedInk(bitmap, Rect(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()))
@@ -156,7 +186,11 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
         show { AddPaperDialog(onImportArxiv = {}, onPickPdf = {}, onDismiss = {}) }
 
         for (text in listOf("Add paper", "Pick PDF…", "Cancel")) {
-            assertEquals(text, Color.Black, composeRule.onNodeWithText(text, useUnmergedTree = true).textColor())
+            assertEquals(
+                text,
+                Color.Black,
+                composeRule.onNodeWithText(text, useUnmergedTree = true).textColor(),
+            )
         }
     }
 
@@ -192,24 +226,36 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
         assertTrue("$midGrey mid-grey pixels: a grey fill?", midGrey < pixels.size / 20)
 
         val y = bounds.center.y.toInt()
-        val edge = (bounds.left.toInt()..bounds.left.toInt() + 2).map { Color(window.getPixel(it, y)) }
-        assertTrue("no black outline at the card's left edge: $edge", edge.minOf { it.luminance() } < 0.2f)
+        val edge =
+            (bounds.left.toInt()..bounds.left.toInt() + 2).map { Color(window.getPixel(it, y)) }
+        assertTrue(
+            "no black outline at the card's left edge: $edge",
+            edge.minOf { it.luminance() } < 0.2f,
+        )
     }
 
     /** The icon is drawn in black ink: no colour, and its darkest pixels are black. */
     private fun assertInkIcon(contentDescription: String) {
-        val bounds = composeRule.onNodeWithContentDescription(contentDescription).fetchSemanticsNode().boundsInWindow
+        val bounds =
+            composeRule
+                .onNodeWithContentDescription(contentDescription)
+                .fetchSemanticsNode()
+                .boundsInWindow
         val pixels = drawWindow().pixelsIn(bounds)
         val notGrey = pixels.filter { it.red != it.green || it.green != it.blue }
-        assertTrue("coloured pixels in $contentDescription icon, e.g. ${notGrey.take(3)}", notGrey.isEmpty())
+        assertTrue(
+            "coloured pixels in $contentDescription icon, e.g. ${notGrey.take(3)}",
+            notGrey.isEmpty(),
+        )
         assertTrue("$contentDescription icon isn't black", pixels.any { it == Color.Black })
     }
 
     // captureToImage() times out under Robolectric, so draw the window ourselves.
     private fun drawWindow(): Bitmap {
         val view = composeRule.activity.window.decorView
-        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-            .also { view.draw(Canvas(it)) }
+        return Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888).also {
+            view.draw(Canvas(it))
+        }
     }
 
     private fun Bitmap.pixelsIn(bounds: Rect): List<Color> =
@@ -225,15 +271,17 @@ abstract class InkColorsTest(private val systemDark: Boolean) {
     }
 
     private companion object {
-        val PAPER = Paper(
-            id = 1,
-            title = "Attention Is All You Need",
-            authors = listOf("Ashish Vaswani", "Noam Shazeer"),
-            abstract = "We propose a new simple network architecture, the Transformer.",
-            year = 2017,
-            venue = "NeurIPS",
-        )
-        val SOURCE = FolderSource(id = 1, folderId = "01a1838a-db89-71d0-956c-e8067fdfee2a", name = "Sortes")
+        val PAPER =
+            Paper(
+                id = 1,
+                title = "Attention Is All You Need",
+                authors = listOf("Ashish Vaswani", "Noam Shazeer"),
+                abstract = "We propose a new simple network architecture, the Transformer.",
+                year = 2017,
+                venue = "NeurIPS",
+            )
+        val SOURCE =
+            FolderSource(id = 1, folderId = "01a1838a-db89-71d0-956c-e8067fdfee2a", name = "Sortes")
     }
 }
 

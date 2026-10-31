@@ -28,7 +28,10 @@ class PageFurnitureTest {
         // A one-off footnote or footer: wide, and on one page only.
         val footnote = body().rect(10, 75, 50, 77).mask()
         assertSame(footnote, numbersOnly.strip(footnote))
-        assertSame(footnote, PageFurniture.of(listOf(footnote) + List(5) { body().mask() }).strip(footnote))
+        assertSame(
+            footnote,
+            PageFurniture.of(listOf(footnote) + List(5) { body().mask() }).strip(footnote),
+        )
         // A short last line right under the text: not clear of it.
         val lastLine = body().rect(10, 71, 12, 73).mask()
         assertSame(lastLine, numbersOnly.strip(lastLine))
@@ -36,7 +39,8 @@ class PageFurnitureTest {
         val heading = body().rect(10, 3, 16, 5).mask()
         assertSame(heading, numbersOnly.strip(heading))
         // A short line mid-page isn't at an edge.
-        val middle = TestPage(60, 80).rect(10, 10, 50, 30).rect(29, 40, 31, 42).rect(10, 50, 50, 60).mask()
+        val middle =
+            TestPage(60, 80).rect(10, 10, 50, 30).rect(29, 40, 31, 42).rect(10, 50, 50, 60).mask()
         assertSame(middle, numbersOnly.strip(middle))
     }
 
@@ -52,7 +56,10 @@ class PageFurnitureTest {
     fun removesARunningHeadThatRecursAcrossThePaper() {
         // A wide running head at the same height on every page (odd pages a title, even pages
         // author and number), as on an LNCS paper.
-        val pages = List(6) { i -> body().rect(if (i % 2 == 0) 10 else 20, 2, if (i % 2 == 0) 30 else 50, 4).mask() }
+        val pages =
+            List(6) { i ->
+                body().rect(if (i % 2 == 0) 10 else 20, 2, if (i % 2 == 0) 30 else 50, 4).mask()
+            }
         val furniture = PageFurniture.of(pages)
         for (p in pages) assertEquals(40 * 60, furniture.strip(p).inkCount)
         // A page that wasn't among them loses it too.
@@ -85,7 +92,10 @@ class PageFurnitureTest {
         val numbered = tall().rect(10, 230, 90, 231).rect(85, 233, 88, 237).mask()
         assertEquals(70 * 190, PageFurniture.of(List(4) { numbered }).strip(numbered).inkCount)
         // A block taller than a line or two isn't furniture: a short paragraph at the bottom.
-        val paragraph = tall().rect(15, 228, 85, 231).rect(15, 232, 85, 235).rect(15, 236, 85, 239).mask()
-        assertTrue(PageFurniture.of(List(4) { paragraph }).strip(paragraph).inkCount == paragraph.inkCount)
+        val paragraph =
+            tall().rect(15, 228, 85, 231).rect(15, 232, 85, 235).rect(15, 236, 85, 239).mask()
+        assertTrue(
+            PageFurniture.of(List(4) { paragraph }).strip(paragraph).inkCount == paragraph.inkCount
+        )
     }
 }
