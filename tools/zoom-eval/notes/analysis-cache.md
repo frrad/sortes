@@ -39,6 +39,14 @@ truncated, damaged or foreign file is a miss: it's deleted and the paper analyse
 Writes go to a temporary file and are renamed. A fresh analysis is shown first and stored in
 the background (an application scope), so first opens don't wait for the write.
 
+Only complete analyses are stored: if any sampled page failed to render, or its 4× render
+failed (memory, say), the next open analyses again rather than keeping a worse answer for good.
+
+Not in the key: the system's PDF renderer. On Android 15 it is a Play-updated system module
+(see `renderer-fidelity.md`), so it can change without an app update; analyses stored before
+such an update stay valid crops from the previous renderer until the next app build or
+eviction. Keying on it would need the module's version, which apps can't read reliably.
+
 Files stored by older builds aren't deleted at once (their names are hashes); they go when the
 64 MB limit drops the least recently used.
 

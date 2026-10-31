@@ -287,6 +287,20 @@ class AnalysisCacheTest {
     }
 
     @Test
+    fun anAnalysisWithPagesThatFailedToRenderIsNotKept() {
+        val text = List(10) { textPage().mask() }
+        // Fine renders fail (as when memory is short). A page whose size can't even be read is
+        // left out of the sample itself, so doesn't make an analysis incomplete.
+        val pages = MaskPages(text, maxPixels = 100_000)
+        val cache = cache()
+        val analysis = runBlocking { cache.analyze(pages, "abc", aspect) }
+        assertFalse(analysis.complete)
+        assertEquals(emptyList<File>(), files())
+        assertFalse(runBlocking { cache.analyze(pages, "abc", aspect) }.restored)
+        assertTrue(runBlocking { analyzePaper(MaskPages(text), aspect) }.complete)
+    }
+
+    @Test
     fun theLeastRecentlyUsedAnalysesAreDroppedToFit() {
         val pages = BookPages(14)
         val analysis = analysed(pages, key())

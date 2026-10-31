@@ -137,8 +137,8 @@ class AnalysisCache(
     /**
      * [source]'s analysis for a screen of [aspect]: the stored one if [content] (the PDF's
      * [contentHash]) was analysed before with [config], else a fresh one, which is stored (in
-     * [saveScope], if given, after returning). A failure to store isn't the caller's problem:
-     * the paper is just analysed again next time.
+     * [saveScope], if given, after returning) if it's [PaperAnalysis.complete]. A failure to store
+     * isn't the caller's problem: the paper is just analysed again next time.
      */
     suspend fun analyze(
         source: PageRenderer,
@@ -149,6 +149,8 @@ class AnalysisCache(
         val key = Key(build, content, aspect, config)
         load(key, source)?.let { return it }
         val analysis = analyzePaper(source, aspect, config, key.maxPages)
+        // A page that failed to render may render next time: don't keep its absence for good.
+        if (!analysis.complete) return analysis
         if (saveScope != null) saveScope.launch { saveQuietly(key, analysis) } else saveQuietly(key, analysis)
         return analysis
     }

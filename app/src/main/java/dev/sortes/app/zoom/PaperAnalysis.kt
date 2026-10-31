@@ -60,6 +60,12 @@ class PaperAnalysis internal constructor(
     /** Of those, the pages whose text could be measured (their fine render didn't fail). */
     val pagesMeasured: Int get() = sampleText.count { it != null }
 
+    /**
+     * Whether every page of the sample was rendered and measured. A render can fail for a passing
+     * reason (memory), so an incomplete analysis isn't worth keeping ([AnalysisCache]).
+     */
+    val complete: Boolean get() = pagesAnalyzed == raster.sample.size && pagesMeasured == pagesAnalyzed
+
     private val solved = HashMap<Float, ModelCrops>().apply { put(auto.scale, auto) }
     private val solving = Mutex()
 

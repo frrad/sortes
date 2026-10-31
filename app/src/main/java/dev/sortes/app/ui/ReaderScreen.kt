@@ -98,8 +98,9 @@ fun ReaderScreen(paper: Paper, onClose: () -> Unit, modifier: Modifier = Modifie
                     savedScale = scale
                 },
                 analyze = { aspect ->
-                    val content = withContext(Dispatchers.IO) { AnalysisCache.contentHash(s.file) }
-                    analyses.analyze(s.pages, content, aspect)
+                    // Without a hash (the file went away), analyse without the cache.
+                    val content = withContext(Dispatchers.IO) { runCatching { AnalysisCache.contentHash(s.file) }.getOrNull() }
+                    if (content == null) analyzePaper(s.pages, aspect) else analyses.analyze(s.pages, content, aspect)
                 },
             )
         }
