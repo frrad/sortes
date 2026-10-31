@@ -1,6 +1,6 @@
 package dev.sortes.zoomeval.fit
 
-import dev.sortes.zoomeval.labeller.toMap
+import dev.sortes.zoomeval.weightValues
 import java.io.File
 
 /** Writes `report.md` and `trials.tsv` for a fit. */
@@ -9,17 +9,21 @@ class FitReport(
     private val out: File,
     /** A group of papers (e.g. one labelling round) to fit on and test the rest with, and vice versa. */
     private val split: Set<String> = emptySet(),
+    /** Papers the search doesn't see: the best set is chosen without them, and scored on them after. */
+    private val holdout: Set<String> = emptySet(),
 ) {
+    private val train = papers.map { it.paper.id }.filter { it !in holdout }
 
-    fun write(baseline: Trial, given: Trial?, tried: List<Trial>) {
-        val best = tried.minBy { it.units }
-        File(out, "report.md").writeText(markdown(baseline, given, best, tried))
+    /** Writes the report: the best of [tried] on the training papers, or [descent]'s result. */
+    fun write(baseline: Trial, given: Trial?, tried: List<Trial>, descent: Descent? = null) {
+        val best = descent?.best ?: tried.minBy { it.unitsOn(train) }
+        File(out, "report.md").writeText(markdown(baseline, given, best, tried, descent))
         File(out, "trials.tsv").writeText(tsv(tried))
     }
 
     private fun f(x: Double, digits: Int = 2) = "%.${digits}f".format(x)
 
-    private fun markdown(baseline: Trial, given: Trial?, best: Trial, tried: List<Trial>) = buildString {
+    private fun markdown(baseline: Trial, given: Trial?, best: Trial, tried: List<Trial>, descent: Descent?) = buildString {
         appendLine("# Crop model fit")
         appendLine()
         appendLine("${papers.size} labelled papers, ${tried.size} weight sets tried. Score: lower is better (see SPEC.md).")
@@ -33,8 +37,16 @@ class FitReport(
         appendLine()
         appendLine("## Best weights")
         appendLine()
-        appendLine("Score ${f(baseline.units)} with ${baseline.config.name}, **${f(best.units)}** with `${best.weights.diff()}`")
-        given?.let { appendLine("\nGiven weights (`${it.weights.diff()}`): ${f(it.units)}") }
+        appendLine("Score ${f(baseline.units)} with ${baseline.config.name}, **${f(best.units)}** with `${best.diff()}`")
+        given?.let { appendLine("\nGiven weights (`${it.diff()}`): ${f(it.units)}") }
+        if (holdout.isNotEmpty()) {
+            val held = papers.map { it.paper.id }.filter { it in holdout }
+            appendLine()
+            appendLine("Chosen on the ${train.size} training papers only: ${f(baseline.unitsOn(train))} → **${f(best.unitsOn(train))}** there. " +
+                "Held out (${held.joinToString()}): ${f(baseline.unitsOn(held))} → **${f(best.unitsOn(held))}**, " +
+                "pages agreeing ${agreeing(baseline, held)} → ${agreeing(best, held)} of ${baseline.scores.filter { it.paper in held }.sumOf { it.pages.size }}, " +
+                "zooms agreeing ${zoomsAgreeing(baseline, held)} → ${zoomsAgreeing(best, held)} of ${held.size}.")
+        }
         appendLine()
         appendLine("| paper | scale now → fitted (target) | zoom units | page units | total |")
         appendLine("| --- | --- | --- | --- | --- |")
@@ -55,7 +67,7 @@ class FitReport(
             val others = tried.minBy { it.unitsWithout(id) }
             defaultsSum += baseline.unitsOf(id)
             heldSum += others.unitsOf(id)
-            appendLine("| $id | ${f(baseline.unitsOf(id))} | ${f(others.unitsOf(id))} | `${others.weights.diff()}` |")
+            appendLine("| $id | ${f(baseline.unitsOf(id))} | ${f(others.unitsOf(id))} | `${others.diff()}` |")
         }
         appendLine("| **all** | ${f(defaultsSum)} | **${f(heldSum)}** | |")
         if (split.isNotEmpty()) {
@@ -69,12 +81,14 @@ class FitReport(
             appendLine("| --- | --- | --- | --- | --- |")
             for ((train, test) in listOf(a to b, b to a)) {
                 val fitted = tried.minBy { sum(it, train) }
-                appendLine("| ${train.joinToString()} | ${test.joinToString()} | ${f(sum(baseline, test))} | **${f(sum(fitted, test))}** | `${fitted.weights.diff()}` |")
+                appendLine("| ${train.joinToString()} | ${test.joinToString()} | ${f(sum(baseline, test))} | **${f(sum(fitted, test))}** | `${fitted.diff()}` |")
             }
         }
         appendLine()
+        descent?.let { appendSearch(it) }
         appendAgreement(baseline)
         given?.let { appendAgreement(it) }
+        if (best !== baseline && best !== given) appendAgreement(best)
         appendLine("## Pages that change")
         appendLine()
         appendLine("| paper | page | target | centre error (pt) | ideal ink cut (%) | units |")
@@ -99,7 +113,7 @@ class FitReport(
         appendLine()
         appendLine("| score | weights |")
         appendLine("| --- | --- |")
-        for (t in tried.sortedBy { it.units }.take(10)) appendLine("| ${f(t.units)} | `${t.weights.diff()}` |")
+        for (t in tried.sortedBy { it.units }.take(10)) appendLine("| ${f(t.units)} | `${t.diff()}` |")
     }
 
     /**
@@ -108,7 +122,7 @@ class FitReport(
      * the owner's crop keeps; and each paper's zoom within [AGREE_SCALE] of the owner's.
      */
     private fun StringBuilder.appendAgreement(t: Trial) {
-        appendLine("## Agreement in principle (`${t.weights.diff()}`)")
+        appendLine("## Agreement in principle (`${t.diff()}`)")
         appendLine()
         appendLine("A page agrees if its window centre is within ${f(AGREE_POINTS, 0)} pt of the owner's (or of the crop they called good) and it cuts at most ${f(AGREE_KEEP_PERCENT)}% of the page's ink that the owner's crop keeps. A paper's zoom agrees within ${f(AGREE_SCALE, 3)} of the owner's scale.")
         appendLine()
@@ -128,6 +142,29 @@ class FitReport(
         appendLine()
     }
 
+    private fun StringBuilder.appendSearch(d: Descent) {
+        appendLine("## Search")
+        appendLine()
+        appendLine("Coordinate descent on the ${d.train.size} training papers: each step tries the values around the current best and keeps the best if it gains more than ${f(d.minGain)} units there. " +
+            "*Fragile*: training papers without which the step would have decided otherwise.")
+        appendLine()
+        appendLine("| sweep | weights | from | tried (training units) | kept | fragile |")
+        appendLine("| --- | --- | --- | --- | --- | --- |")
+        for (step in d.steps) {
+            val names = step.coordinate.names
+            fun values(t: Trial) = names.joinToString("/") { "%.4g".format(t.config.weightValues().getValue(it)) }
+            val tried = step.candidates.joinToString(", ") { "${values(it)}: ${f(it.unitsOn(d.train))}" }
+            val kept = if (step.moved) "**${values(step.kept)}** (${f(step.incumbent.unitsOn(d.train) - step.kept.unitsOn(d.train))} better)" else "–"
+            appendLine("| ${step.sweep} | ${step.coordinate} | ${values(step.incumbent)}: ${f(step.incumbent.unitsOn(d.train))} | $tried | $kept | ${d.fragile(step).joinToString()} |")
+        }
+        appendLine()
+    }
+
+    private fun agreeing(t: Trial, ids: Collection<String>) = t.scores.filter { it.paper in ids }.sumOf { s -> s.pages.count { agrees(it) } }
+
+    private fun zoomsAgreeing(t: Trial, ids: Collection<String>) =
+        t.scores.count { it.paper in ids && kotlin.math.abs(it.scale - it.targetScale) <= AGREE_SCALE + 1e-9 }
+
     private fun agrees(p: PageScore) = (p.centreError ?: 0.0) <= AGREE_POINTS && p.keepCutPercent <= AGREE_KEEP_PERCENT
 
     private companion object {
@@ -137,10 +174,10 @@ class FitReport(
     }
 
     private fun tsv(tried: List<Trial>) = buildString {
-        val names = tried.first().weights.toMap().keys.toList()
+        val names = tried.first().config.weightValues().keys.toList()
         appendLine((names + tried.first().scores.map { it.paper } + "total").joinToString("\t"))
         for (t in tried) {
-            val w = t.weights.toMap()
+            val w = t.config.weightValues()
             appendLine((names.map { "%.5g".format(w.getValue(it)) } + t.scores.map { f(it.units, 3) } + f(t.units, 3)).joinToString("\t"))
         }
     }

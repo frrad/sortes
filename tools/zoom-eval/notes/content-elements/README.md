@@ -2,7 +2,9 @@
 
 *Retired: `content-experiment` was removed with the READER and TUNED configs when the text model
 shipped (see [../unified-pipeline.md](../unified-pipeline.md)); rerun it at a869e26. The component
-cost itself (`ElementLoss`) is now part of the reader.*
+cost itself (`ElementLoss`) is now part of the reader. Every number here was measured on mutool's
+renders. On pdfium's, which are the tablet's, the title-page fixes need a component weight of
+0.0133 or more, and the reader now uses 0.016 ([../pdfium-refit.md](../pdfium-refit.md)).*
 
 Offline research on digital-native PDFs, starting from merged main 950d48a.
 Neither READER nor TUNED is changed. This is a reproducible prototype, not a

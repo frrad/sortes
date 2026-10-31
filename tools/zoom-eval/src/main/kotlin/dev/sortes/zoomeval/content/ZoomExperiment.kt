@@ -21,9 +21,10 @@ import kotlin.math.abs
 
 /**
  * `zoom-experiment [--T=28,...] [--n=16,...] [--floor=0.1,...] [--elements=0.01,...] [--lines=0.1,...]
- * [--zeta=0.5] [--only=id,id] [--render=true] [--out=] [--labels=] [--corpus=] [--pdfs=]`: scores
- * variations of [CropConfig.DEFAULT]'s text model on the labelled clean papers. Each combination of
- * the listed values is a config, and each config's crops are the reader's: [readerCrops], through
+ * [--zeta=0.5] [--configs=tuned+text,tuned+text:gamma=0.08;comfortable=27] [--only=id,id] [--render=true]
+ * [--out=] [--labels=] [--corpus=] [--pdfs=]`: scores variations of [CropConfig.DEFAULT]'s text model
+ * on the labelled clean papers. Each combination of the listed values is a config (or each of
+ * `--configs`, as [ConfigSpec]s with either model's weights), and each config's crops are the reader's: [readerCrops], through
  * [dev.sortes.app.zoom.analyzePaper]. `--T=Infinity` is the plain zeta·scale zoom.
  *
  * Writes `summary.tsv` (one row per paper and config), `pages.tsv` and `paper.tsv` (each paper's
@@ -36,12 +37,15 @@ fun zoomExperimentMain(args: List<String>) = runBlocking {
         require(it.startsWith("--") && '=' in it) { "Expected --name=value: $it" }
         it.removePrefix("--").substringBefore('=') to it.substringAfter('=')
     }
-    val known = setOf("only", "out", "labels", "corpus", "pdfs", "elements", "lines", "zeta", "T", "n", "floor", "render")
+    val known = setOf("only", "out", "labels", "corpus", "pdfs", "elements", "lines", "zeta", "T", "n", "floor", "render", "configs")
+    require("configs" !in opts || opts.keys.none { it in setOf("elements", "lines", "zeta", "T", "n", "floor") }) {
+        "--configs= replaces the --T= --n= --floor= --elements= --lines= --zeta= lists"
+    }
     require(opts.keys.all { it in known }) { "Unknown option: ${opts.keys - known}" }
     val base = CropConfig.DEFAULT
     fun doubles(name: String, default: Double) = opts[name]?.split(',')?.map { it.toDouble() } ?: listOf(default)
     val zeta = (opts["zeta"] ?: base.weights.zeta.toString()).toDouble()
-    val configs = doubles("elements", base.text.elements).flatMap { e ->
+    val configs = opts["configs"]?.split(',')?.map { ConfigSpec.parse(it.trim()).config }?.distinct() ?: doubles("elements", base.text.elements).flatMap { e ->
         doubles("lines", base.text.lines).flatMap { l ->
             doubles("T", base.text.comfortable).flatMap { t ->
                 doubles("n", base.text.power).flatMap { n ->

@@ -154,5 +154,9 @@ glyph heights (by up to about 1.9 px at scale 1 on a paper) and some zooms. Unch
 `zoom-experiment` with the default config: training papers 135/144 strict 135, 19/21 zooms,
 score 47.238 (mutool: 140/144, 20/21, 35.868); round 5 57/63, 5/6 zooms, 13.546 (unchanged
 pages; score 12.426). The tables here (`final.tsv`, `grid.tsv`, `legibility.tsv`,
-`text-size-by-paper.tsv`) are kept as mutool-era records and haven't been regenerated; a re-fit
-on the tablet's pixels would redo them.
+`text-size-by-paper.tsv`) are kept as mutool-era records and haven't been regenerated.
+
+The re-fit on pdfium's renders ([../pdfium-refit.md](../pdfium-refit.md)) changed only the component
+weight, 0.01 → 0.016, which places windows and never moves a zoom; T, n, floor and the line weight
+stay. It wins back the SuperGLUE and DDPM title pages: training papers 137/144 strict 137, 19/21,
+40.391; round 5 unchanged. Its tables are pdfium's.

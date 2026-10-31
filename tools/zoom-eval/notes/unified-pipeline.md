@@ -68,6 +68,8 @@ as in `text-size/final.tsv` (e0.01 l0.1 T28 n16 f0.1, placed) and `labels/ROUND-
 These were rendered with mutool. With pdfium, which gives the tablet's crops, the same model
 scores 135/144 (19/21 zooms, 47.238) on the training papers, 57/63 (5/6) on round 5, and 193 of
 211 pages, 80.65, in the fit: see [renderer fidelity](renderer-fidelity.md#re-scoring-with-pdfium).
+Re-fitted on pdfium's renders, the component weight is now 0.016: 137/144 (19/21, 40.391), 57/63,
+and 195 of 211, 74.22 ([pdfium-refit.md](pdfium-refit.md)).
 
 `bench` (host, four threads, no rendering), and the heap the finished analysis keeps:
 

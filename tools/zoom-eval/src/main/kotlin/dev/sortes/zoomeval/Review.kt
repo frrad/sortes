@@ -32,7 +32,7 @@ data class ConfigSpec(val label: String, val config: CropConfig) {
                 require('=' in it) { "Bad override $it in $spec" }
                 it.substringBefore('=').trim() to it.substringAfter('=').trim()
             }
-            return ConfigSpec(spec, base.copy(name = spec, weights = base.weights.with(overrides)))
+            return ConfigSpec(spec, base.copy(name = spec).with(overrides))
         }
     }
 }

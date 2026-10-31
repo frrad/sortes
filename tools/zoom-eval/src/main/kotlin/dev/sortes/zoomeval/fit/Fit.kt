@@ -15,6 +15,7 @@ import dev.sortes.zoomeval.PdfiumPdf
 import dev.sortes.zoomeval.labeller.PaperLabels
 import dev.sortes.zoomeval.labeller.toMap
 import dev.sortes.zoomeval.readerCrops
+import dev.sortes.zoomeval.weightValues
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.math.exp
@@ -76,6 +77,8 @@ val SCORING_RULES = CropConfig("scoring", IGNORABLE_INK_RULES + IsolatedMarks, f
 /** A candidate's per-paper scores. */
 class Trial(val config: CropConfig, val scores: List<PaperScore>) {
     val weights: CropModelWeights get() = config.weights
+    /** The weights that differ from [CropConfig.DEFAULT]'s, both models'. */
+    fun diff(): String = config.diff()
     val units: Double get() = scores.sumOf { it.units }
     fun unitsWithout(paper: String): Double = scores.filter { it.paper != paper }.sumOf { it.units }
     fun unitsOf(paper: String): Double = scores.first { it.paper == paper }.units
@@ -103,9 +106,12 @@ suspend fun trial(papers: List<LabelledPaper>, config: CropConfig): Trial =
     Trial(config, papers.map { it.score(config) })
 
 /** The weights that differ from [base], as name=value. */
-fun CropModelWeights.diff(base: CropModelWeights = CropConfig.DEFAULT.weights): String {
-    val a = toMap()
-    val b = base.toMap()
+fun CropModelWeights.diff(base: CropModelWeights = CropConfig.DEFAULT.weights): String = diff(toMap(), base.toMap())
+
+/** The weights, the crop model's and the text model's, that differ from [base]'s, as name=value. */
+fun CropConfig.diff(base: CropConfig = CropConfig.DEFAULT): String = diff(weightValues(), base.weightValues())
+
+private fun diff(a: Map<String, Double>, b: Map<String, Double>): String {
     return a.filter { (k, v) -> b[k] != v }.entries.joinToString(", ") { (k, v) -> "$k=${"%.4g".format(v)}" }
         .ifEmpty { "(defaults)" }
 }
