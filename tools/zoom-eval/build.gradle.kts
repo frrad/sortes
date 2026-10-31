@@ -40,4 +40,8 @@ val labellerJsTest by tasks.registering(Exec::class) {
 
 tasks.test {
     dependsOn(labellerJsTest)
+    // Whether the pdfium renderer tests may skip, and which pdfium they load, decide what the
+    // tests check: inputs, so a cached run without pdfium isn't reused for one that requires it.
+    inputs.property("requirePdfium", providers.environmentVariable("SORTES_REQUIRE_PDFIUM").orElse(""))
+    inputs.property("pdfiumDir", providers.environmentVariable("SORTES_PDFIUM").orElse(""))
 }
