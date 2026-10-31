@@ -9,6 +9,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -86,6 +88,44 @@ class ImportTrackerTest {
         gate.complete(Unit)
         jobs.forEach { it.join() }
         assertTrue(tracker.status.value is ImportStatus.Done)
+    }
+
+    // Regression: the status was settled in a completion handler, but join() on a job that has
+    // already completed returns without waiting for its handlers, so a test (or caller) that
+    // joined an import could still see it running. Unconfined runs the body inside launch(), so
+    // the body's handler is registered first and sees the status as soon as the job completes.
+    @Test
+    fun statusIsSettledByTheTimeTheImportCompletes() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tracker = ImportTracker(scope)
+        var seen: ImportStatus? = null
+        val job = tracker.launch {
+            currentCoroutineContext().job.invokeOnCompletion { seen = tracker.status.value }
+            paper("A")
+        }
+
+        assertTrue(job.isCompleted)
+        assertEquals(ImportStatus.Done("A"), seen)
+        scope.cancel()
+    }
+
+    @Test
+    fun statusIsSettledByTheTimeACancelledImportCompletes() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tracker = ImportTracker(scope)
+        tracker.launch { paper("Earlier") }
+        var seen: ImportStatus? = null
+        val job = tracker.launch {
+            currentCoroutineContext().job.invokeOnCompletion { seen = tracker.status.value }
+            awaitCancellation()
+        }
+        assertEquals(ImportStatus.Running(1), tracker.status.value)
+
+        job.cancel()
+
+        assertTrue(job.isCompleted)
+        assertEquals(ImportStatus.Done("Earlier"), seen)
+        scope.cancel()
     }
 
     @Test
